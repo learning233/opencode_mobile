@@ -11,13 +11,13 @@
 </p>
 
 > [!WARNING]
-> **NOT FOR PRODUCTION USE** — This project is currently in active development.
+> **UNOFFICIAL PROJECT & NOT FOR PRODUCTION USE** — This is an **unofficial** mobile client for OpenCode and is currently in active development.
 
 ---
 
 ## 📱 About The Project
 
-**OpenCode Mobile** is a mobile client built with **Flutter** and **Rust** for OpenCode. 
+**OpenCode Mobile** is an **unofficial** mobile client built with **Flutter** and **Rust** for OpenCode. 
 
 It is designed to run seamlessly on Android smartphones and tablets:
 - **Phone UI**: Clean, single-column conversational interface.

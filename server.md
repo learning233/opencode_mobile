@@ -1,4 +1,8 @@
-# OpenCode 服务器部署与运维指南
+# OpenCode 服务器部署与运维指南（仅供参考）
+
+<p align="right">
+  <a href="./server_en.md">English</a> | <b>简体中文</b>
+</p>
 
 ## 一、 安装与环境配置
 

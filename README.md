@@ -27,9 +27,15 @@ Voice input currently supports Chinese, English, Japanese, and Korean. Whether a
 
 ---
 
-## 🚀 Release Notes (v0.9.8)
+## 🚀 Release Notes (v0.9.9)
 
 Here are the latest updates and bug fixes:
+
+1. **Message Queue**: Messages submitted while AI is generating responses are added to a pending area and sent automatically once completed.
+2. **Privacy Enhancement**: Hidden specific IP addresses from both runtime logs and the user interface.
+3. **In-App Browser**: Tab bar now prioritizes displaying web page titles over raw URLs.
+
+### v0.9.8
 
 1. **WebView Extension**: Added preview button support to open pre-configured IP and port directly (long-press to configure port; supports binding a fixed port for each project).
 2. **Terminal Page**: Termux-inspired terminal page featuring keyboard shortcuts and custom commands.

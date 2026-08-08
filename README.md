@@ -35,6 +35,8 @@ Here are the latest updates and bug fixes:
 2. **Privacy Enhancement**: Hidden specific IP addresses from both runtime logs and the user interface.
 3. **In-App Browser**: Tab bar now prioritizes displaying web page titles over raw URLs.
 
+As demand is limited, it won't be open-sourced. Bugs will still be fixed if reported.
+
 ### v0.9.8
 
 1. **WebView Extension**: Added preview button support to open pre-configured IP and port directly (long-press to configure port; supports binding a fixed port for each project).

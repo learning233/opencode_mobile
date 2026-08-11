@@ -33,7 +33,7 @@ Here are the latest updates and bug fixes:
 
 ### v0.9.10
 
-1. **Browser Preview Optimization**: Optimized the browser preview logic. When a port is bound, existing tabs are refreshed instead of opening a new tab.
+1. **Browser Preview Optimization**: Improved browser preview behavior — if a port is bound, opening a preview now refreshes the existing tab instead of launching a new one.
 
 ### v0.9.9
 

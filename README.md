@@ -27,9 +27,15 @@ Voice input currently supports Chinese, English, Japanese, and Korean. Whether a
 
 ---
 
-## 🚀 Release Notes (v0.9.9)
+## 🚀 Release Notes (v0.9.10)
 
 Here are the latest updates and bug fixes:
+
+### v0.9.10
+
+1. **Browser Preview Optimization**: Optimized the browser preview logic. When a port is bound, existing tabs are refreshed instead of opening a new tab.
+
+### v0.9.9
 
 1. **Message Queue**: Messages submitted while AI is generating responses are added to a pending area and sent automatically once completed.
 2. **Privacy Enhancement**: Hidden specific IP addresses from both runtime logs and the user interface.

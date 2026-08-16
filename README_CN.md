@@ -15,6 +15,11 @@
 
 ---
 
+> [!IMPORTANT]
+> 如遇历史消息无法继续聊天，请立即更新 OpenCode 版本。如果是按照 [server.md](./server.md) 中安装的，升级完执行 `sudo systemctl restart opencode`。
+
+
+
 ## 📱 项目简介
 
 **OpenCode Mobile** 是基于 **Flutter** 和 **Rust** 开发的 OpenCode **非官方**移动端客户端。

@@ -15,6 +15,10 @@
 
 ---
 
+> [!IMPORTANT]
+> If you cannot continue chatting in historical sessions, please update your OpenCode version immediately. If installed following [server_en.md](./server_en.md), run `sudo systemctl restart opencode` after upgrading.
+
+
 ## 📱 About The Project
 
 **OpenCode Mobile** is an **unofficial** mobile client built with **Flutter** and **Rust** for OpenCode. 

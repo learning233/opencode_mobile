@@ -1,0 +1,62 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+/clone
+.opencode-git
+.codegraph
+.superpowers
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+rust/target/
+assets/sensevoice/model1_small.onnx
+assets/vad_stream.onnx
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Third-party kterm build & media artifacts
+lib/third_party/kterm/build/
+lib/third_party/kterm/media/
+lib/third_party/kterm/example/assets/*.gz
+lib/third_party/kterm/script/lines.txt
+lib/third_party/kterm/script/cmatrix.txt
+lib/third_party/kterm/example/fonts/
+/docs_my
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release

@@ -1,0 +1,56 @@
+# ──────────────────────────────────────────────────────────────
+# Fuzz: heavy fuzz tests — nightly + manual trigger only
+# ──────────────────────────────────────────────────────────────
+name: Fuzz
+
+on:
+  schedule:
+    # nightly at 03:00 UTC
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      soak_iterations:
+        description: "Soak test iterations (default 1000)"
+        required: false
+        default: "1000"
+        type: string
+      seeds:
+        description: "Number of random seeds (default 100)"
+        required: false
+        default: "100"
+        type: string
+
+concurrency:
+  group: fuzz-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60  # soak can be slow
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Dart
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Install dependencies
+        run: dart pub get
+
+      - name: dart analyze
+        run: dart analyze
+
+      # ── Heavy fuzz tests ──────────────────────────────────
+      - name: Fuzz parser (bulk + byte-by-byte + core isolated)
+        run: >
+          dart test test/src/fuzz_test.dart --reporter expanded
+        timeout-minutes: 30
+
+      - name: State transition fuzz
+        run: >
+          dart test test/fuzz/state_transition_fuzz_test.dart --reporter expanded
+        timeout-minutes: 10

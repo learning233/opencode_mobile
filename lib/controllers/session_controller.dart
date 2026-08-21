@@ -1,0 +1,3406 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:isolate';
+import 'dart:math' as math;
+import 'dart:typed_data';
+import 'package:flutter/widgets.dart';
+import 'package:get/get.dart';
+import '../api/endpoints.dart';
+import '../api/models/event.dart';
+import '../api/models/message.dart';
+import '../api/models/session.dart';
+import '../api/models/snapshot_file_diff.dart';
+import '../api/models/tool_diff_parser.dart';
+import '../api/opencode_client.dart';
+import '../api/sidecar_manager.dart';
+import '../api/sse_client.dart';
+import '../controllers/project_controller.dart';
+import '../controllers/settings_controller.dart';
+import '../controllers/tablet_tool_controller.dart';
+import '../init.dart';
+import '../models/model_info.dart';
+import '../models/session_runtime_state.dart';
+import '../services/app_feedback_service.dart';
+import '../utils/app_logger.dart';
+import '../utils/diff_paths.dart';
+import '../utils/error_formatter.dart';
+import '../utils/image_cache.dart';
+import '../utils/image_compressor.dart';
+import '../utils/snackbar_utils.dart';
+import '../utils/translations.dart';
+
+class _SubtaskOwner {
+  const _SubtaskOwner({required this.rootSessionId, this.rootUserMessageId});
+
+  final String rootSessionId;
+  final String? rootUserMessageId;
+}
+
+class SessionController extends GetxController with WidgetsBindingObserver {
+  final OpenCodeClient _client = OpenCodeClient();
+
+  final sessions = <SessionModel>[].obs;
+  final activeSessionId = ''.obs;
+  final openedSessionIds = <String>[].obs;
+
+  /// Last `fetchSessions` failure (null = last fetch succeeded). Consumed by
+  /// the session list error view; `fetchSessions` never rethrows so callers
+  /// cannot rely on try/catch.
+  final sessionsError = RxnString();
+
+  /// 请求代际：切项目时自增，用于丢弃上一个项目的在途响应
+  /// （`fetchSessions`/`loadMessages`/`fetchModels` 共享），避免旧目录的
+  /// 会话/消息/模型列表覆盖新项目状态。
+  int _sessionFetchSeq = 0;
+
+  /// 最近一次已发出的 `fetchSessions` 所属代际；用于同一代际去重（在途则跳过），
+  /// 切项目（代际变化）后允许新请求覆盖在途旧请求。
+  int _lastSessionFetchIssuedSeq = -1;
+
+  /// 最近一次已发出的 `fetchModels` 所属代际；作用同 [_lastSessionFetchIssuedSeq]，
+  /// 避免切项目时在途旧请求阻塞新项目模型列表刷新。
+  int _lastModelsFetchIssuedSeq = -1;
+
+  final sessionRuntimeStates = <String, SessionRuntimeState>{};
+  final _subtaskOwners = <String, _SubtaskOwner>{};
+  final _parentSessionIds = <String, String>{};
+  final _subtaskDirectUserMessageIds = <String, String>{};
+  final _pendingSubtaskToolParts = <String, List<Part>>{};
+  final _processedFileToolParts = <String>{};
+  final availableAgents = <String>['plan', 'build'].obs;
+  final isLoadingModels = false.obs;
+  final showReasoning = true.obs;
+
+  /// Per-tool auto-collapse prefs (desktop parity). Missing keys default true.
+  final cardAutoCollapse = <String, bool>{'bash': true}.obs;
+
+  /// Maps question request IDs → tool-part refs (desktop `_questionRequests`).
+  final _questionRequests = <String, QuestionRequestRef>{};
+
+  /// Pending clarifying-question tool part in [sessionId] messages.
+  Part? pendingQuestionPartFor(String sessionId) {
+    if (sessionId.isEmpty) return null;
+    for (final msg in stateOf(sessionId).messages) {
+      for (final part in msg.parts) {
+        if (part.type == PartType.tool &&
+            part.toolName == 'question' &&
+            (part.toolStatus == ToolStateStatus.running ||
+                part.toolStatus == ToolStateStatus.pending)) {
+          return part;
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Question requestID (`que_...`) for a pending question tool call, resolved
+  /// from the SSE-populated local index. `null` when unknown — caller should
+  /// fall back to `GET /question`. Mirrors the server-side
+  /// `tool.callID == part.callID` match without a network round trip.
+  String? questionIDForCallID(String callId, {String? sessionId}) =>
+      questionRequestIDForCallID(_questionRequests, callId, sessionId: sessionId);
+
+  /// Pure reverse lookup: first `que_...` requestID whose ref's [callId]
+  /// matches, preferring the entry for [sessionId] when provided. callID is
+  /// the primary key (globally unique tool call ID); sessionId only breaks
+  /// ties between entries sharing a callID.
+  static String? questionRequestIDForCallID(
+    Map<String, QuestionRequestRef> requests,
+    String callId, {
+    String? sessionId,
+  }) {
+    if (callId.isEmpty) return null;
+    String? sameSession;
+    String? first;
+    for (final entry in requests.entries) {
+      final ref = entry.value;
+      if (ref.callId.isEmpty || ref.callId != callId) continue;
+      first ??= entry.key;
+      if (sessionId != null &&
+          sessionId.isNotEmpty &&
+          ref.sessionId == sessionId) {
+        sameSession = entry.key;
+      }
+    }
+    return sameSession ?? first;
+  }
+
+  final _allModels = <ModelInfo>[];
+  final availableModels = <ModelInfo>[].obs;
+
+  List<ModelInfo> get allModels => List.unmodifiable(_allModels);
+
+  SseClient? _sseClient;
+  StreamSubscription<SseEvent>? _sseSub;
+
+  /// 隐藏的内部临时会话 ID（如图片转文字的识图请求）。其 SSE 事件不进入
+  /// 正常 UI 处理（不插入 session 列表、不触发反馈音/关键词检测），改走
+  /// [_handleHiddenEvent] 收集识图文本，完成后由 [describeImagesToText] 删除。
+  final _hiddenSessionIds = <String>{};
+
+  /// 隐藏会话的识图结果完成器：key = 临时会话 ID。
+  final _hiddenVisionCompleters = <String, Completer<String?>>{};
+
+  /// The server URL the current [_sseClient] was created against, used by
+  /// [_connectSse] to detect a redundant connect to the same target
+  /// (e.g. startup `onProjectChanged` + `initializeAfterConnect` double call)
+  /// and to force a fresh client when the server changed after a reconnect.
+  String _sseServerUrl = '';
+
+  /// True once the current [SseClient] has reached a successful connection.
+  /// Used to distinguish a first connect (startup already fetched everything)
+  /// from a reconnect after a drop (server does not replay missed events, so
+  /// local state may be stale and needs a refresh).
+  bool _sseHasConnected = false;
+  final math.Random _idRandom = math.Random();
+  int _lastIdTimestamp = 0;
+  int _idCounter = 0;
+  final _pendingPartDeltas = <String, _PendingPartDelta>{};
+  Timer? _partDeltaFlushTimer;
+  static const _partDeltaFlushInterval = Duration(milliseconds: 80);
+
+  /// Sessions with an in-flight generation since the last idle/error, used to
+  /// reliably emit completion feedback even when `_onSessionStatus` already
+  /// reset `isGenerating` before `_onSessionIdle`.
+  final _feedbackGeneratingSessions = <String>{};
+
+  void _markFeedbackGenerating(String sessionId) {
+    if (sessionId.isNotEmpty) _feedbackGeneratingSessions.add(sessionId);
+  }
+
+  SessionRuntimeState get activeState {
+    final id = activeSessionId.value;
+    return getOrCreateSessionState(id);
+  }
+
+  SessionRuntimeState stateOf(String sessionId) =>
+      getOrCreateSessionState(sessionId);
+
+  void initializeAfterConnect() {
+    final dir = _resolveSseDirectory();
+    final serverUrl = SidecarManager.instance.baseUrl;
+    // 启动阶段 refreshAfterConnect 恢复项目会先经 onProjectChanged 拉取过同一目标的
+    // 模型/会话；若 SSE 已指向该目标且健康，说明数据正由实时事件保持同步，无需重复拉取。
+    if (!_hasLiveSseFor(serverUrl: serverUrl, directory: dir)) {
+      fetchModels();
+      fetchSessions();
+      // 手动重连（连接页换服务器/修复凭据、或旧连接已断开）时，旧连接在本会话内
+      // 曾建立过（_sseHasConnected），此时刷新已打开会话并纠正断线期间可能卡住的
+      // 生成态 —— 与 SSE 自动重连的 _refreshAfterReconnect 走同一逻辑。
+      if (_sseHasConnected && openedSessionIds.isNotEmpty) {
+        _refreshAfterReconnect();
+      }
+    }
+    _connectSse();
+  }
+
+  /// Called when the user switches projects.
+  void onProjectChanged(String directory) {
+    // 递增请求代际：丢弃切项目前仍在途的会话/消息/模型响应。
+    _sessionFetchSeq++;
+    // Clear previous session state
+    sessions.clear();
+    activeSessionId.value = '';
+    openedSessionIds.clear();
+    sessionRuntimeStates.clear();
+    _feedbackGeneratingSessions.clear();
+    _parentSessionIds.clear();
+    _subtaskOwners.clear();
+    _subtaskDirectUserMessageIds.clear();
+    _pendingSubtaskToolParts.clear();
+    _processedFileToolParts.clear();
+    _questionRequests.clear();
+    _discardPendingPartDeltas();
+    _allModels.clear();
+    availableModels.clear();
+
+    // Re-fetch for new project
+    fetchModels();
+    fetchSessions();
+
+    // Reconnect SSE with new directory scope
+    _connectSse();
+  }
+
+  @override
+  void onInit() {
+    super.onInit();
+    // 监听前后台切换，App 回到前台时按需恢复 SSE（见 didChangeAppLifecycleState）。
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void onClose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _discardPendingPartDeltas();
+    _sseSub?.cancel();
+    _sseClient?.dispose();
+    super.onClose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    // 允许后台联网时 SSE 可能仍保持连接，因此按实际状态判断是否恢复：
+    // 只有确实断线才触发重连；凭据失败时重连无意义，交给用户处理。
+    final sse = _sseClient;
+    if (sse == null || sse.isConnected || sse.isCredentialFailed) return;
+    AppLogger.i('App resumed — SSE not connected, reconnecting');
+    sse.connect();
+  }
+
+  String getSessionName(String id) {
+    final s = sessions.firstWhereOrNull((x) => x.id == id);
+    if (s != null) {
+      final name = s.displayName;
+      if (name.isNotEmpty) return name;
+      final prefix = s.id.length >= 4 ? s.id.substring(0, 4) : s.id;
+      return 'Session #$prefix';
+    }
+    return 'Session #$id';
+  }
+
+  SessionRuntimeState getOrCreateSessionState(String sessionId) {
+    if (sessionId.isEmpty) return SessionRuntimeState('');
+    var state = sessionRuntimeStates[sessionId];
+    if (state == null) {
+      state = SessionRuntimeState(sessionId);
+      final defaultKey = Global.settings.defaultModelKey;
+      if (defaultKey != null && defaultKey.isNotEmpty) {
+        state.selectedModel.value = defaultKey;
+      }
+      sessionRuntimeStates[sessionId] = state;
+      _syncThinkingLevelsForSelection(state: state);
+    }
+    return state;
+  }
+
+  String selectedModelName(String key) {
+    if (key.isEmpty && availableModels.isNotEmpty) {
+      return availableModels.first.name.isNotEmpty
+          ? availableModels.first.name
+          : availableModels.first.id;
+    }
+    final m = availableModels.firstWhereOrNull(
+      (m) => m.key == key || m.id == key,
+    );
+    if (m != null) return m.name.isNotEmpty ? m.name : m.id;
+    return key.isNotEmpty ? key : 'Select model';
+  }
+
+  /// OpenCode ascending ID (desktop parity): `{prefix}_{12hex}{14rand}`.
+  String _ascendingId(String prefix) {
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    if (timestamp != _lastIdTimestamp) {
+      _lastIdTimestamp = timestamp;
+      _idCounter = 0;
+    }
+    _idCounter++;
+
+    final time =
+        BigInt.from(timestamp) * BigInt.from(0x1000) + BigInt.from(_idCounter);
+    final timeHex = (time & BigInt.parse('ffffffffffff', radix: 16))
+        .toRadixString(16)
+        .padLeft(12, '0');
+    const chars =
+        '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+    final suffix = List.generate(
+      14,
+      (_) => chars[_idRandom.nextInt(chars.length)],
+    ).join();
+    return '${prefix}_$timeHex$suffix';
+  }
+
+  // ── Subtask Ownership & Tool Diffs ──
+
+  bool _isRootSession(SessionModel session) =>
+      session.parentID == null || session.parentID!.isEmpty;
+
+  bool _isKnownRootSessionId(String sessionId) =>
+      sessionId.isNotEmpty &&
+      (sessionId == activeSessionId.value ||
+          sessions.any((session) => session.id == sessionId));
+
+  String? _ownerUserMessageId(String sessionId, String assistantMessageId) {
+    final messages = sessionRuntimeStates[sessionId]?.messages;
+    if (messages == null) return null;
+    final assistantIndex = messages.indexWhere(
+      (message) => message.id == assistantMessageId,
+    );
+    if (assistantIndex < 0) return null;
+    final assistant = messages[assistantIndex];
+    final parentId = assistant.parentID;
+    if (parentId != null && parentId.isNotEmpty) {
+      for (final message in messages) {
+        if (message.id == parentId && message.role == MessageRole.user) {
+          return message.id;
+        }
+      }
+    }
+    for (var i = assistantIndex - 1; i >= 0; i--) {
+      if (messages[i].role == MessageRole.user) return messages[i].id;
+    }
+    return null;
+  }
+
+  bool _isRootUserMessage(String rootSessionId, String messageId) {
+    if (rootSessionId.isEmpty || messageId.isEmpty) return false;
+    final messages = sessionRuntimeStates[rootSessionId]?.messages;
+    if (messages == null) return false;
+    return messages.any(
+      (message) => message.id == messageId && message.role == MessageRole.user,
+    );
+  }
+
+  Future<void> _registerSubtaskOwner(String parentSessionId, Part part) async {
+    if (part.type != PartType.tool || part.toolName != 'task') return;
+    final metadata = part.toolMetadata;
+    final childSessionId = metadata?['sessionId']?.toString() ?? '';
+    if (childSessionId.isEmpty) return;
+    final metadataParentId = metadata?['parentSessionId']?.toString() ?? '';
+    final directParentId = metadataParentId.isNotEmpty
+        ? metadataParentId
+        : parentSessionId;
+    if (directParentId.isEmpty || directParentId == childSessionId) return;
+    _parentSessionIds[childSessionId] = directParentId;
+    final directUserMessageId = _ownerUserMessageId(
+      directParentId,
+      part.messageID,
+    );
+    if (directUserMessageId != null) {
+      _subtaskDirectUserMessageIds[childSessionId] = directUserMessageId;
+    }
+    await _refreshSubtaskOwners();
+  }
+
+  Future<void> _registerParentSession(
+    String childSessionId,
+    String parentSessionId,
+  ) async {
+    if (childSessionId.isEmpty ||
+        parentSessionId.isEmpty ||
+        childSessionId == parentSessionId) {
+      return;
+    }
+    _parentSessionIds[childSessionId] = parentSessionId;
+    await _refreshSubtaskOwners();
+  }
+
+  void clearSubtaskTracking(String sessionId) {
+    _parentSessionIds.remove(sessionId);
+    _subtaskOwners.remove(sessionId);
+    _subtaskDirectUserMessageIds.remove(sessionId);
+    _pendingSubtaskToolParts.remove(sessionId);
+    _processedFileToolParts.removeWhere(
+      (key) => key.startsWith('$sessionId:part:'),
+    );
+  }
+
+  /// Resolve a (subtask) session ID to its ultimate root session ID.
+  String resolveRootSessionId(String id) {
+    if (id.isEmpty) return id;
+    var current = id;
+    final visited = <String>{current};
+    while (_parentSessionIds.containsKey(current)) {
+      final parent = _parentSessionIds[current];
+      if (parent == null || parent.isEmpty || !visited.add(parent)) break;
+      current = parent;
+    }
+    return current;
+  }
+
+  /// Session id (root or a descendant subtask) that currently holds a pending
+  /// permission request within [rootId]'s session tree. Root's own request
+  /// takes priority; deeper child sessions are scanned recursively via the
+  /// reactive `childSessions` obs list. Returns null when nothing is pending.
+  String? sessionIdWithPendingPermission(
+    String rootId, [
+    Set<String>? visited,
+  ]) {
+    if (rootId.isEmpty) return null;
+    final set = visited ?? <String>{};
+    if (!set.add(rootId)) return null;
+    if (getOrCreateSessionState(rootId).pendingPermission.value != null) {
+      return rootId;
+    }
+    for (final child in getOrCreateSessionState(rootId).childSessions) {
+      final found = sessionIdWithPendingPermission(child.id, set);
+      if (found != null) return found;
+    }
+    return null;
+  }
+
+  /// First pending `question` tool part within [rootId]'s session tree (root
+  /// first, then descendant subtasks recursively). Returns null when none.
+  Part? pendingQuestionInTree(String rootId, [Set<String>? visited]) {
+    if (rootId.isEmpty) return null;
+    final set = visited ?? <String>{};
+    if (!set.add(rootId)) return null;
+    final rootPending = pendingQuestionPartFor(rootId);
+    if (rootPending != null) return rootPending;
+    for (final child in getOrCreateSessionState(rootId).childSessions) {
+      final childPending = pendingQuestionInTree(child.id, set);
+      if (childPending != null) return childPending;
+    }
+    return null;
+  }
+
+  Future<void> _refreshSubtaskOwners() async {
+    for (final childSessionId in _parentSessionIds.keys.toList()) {
+      final visited = <String>{childSessionId};
+      var current = childSessionId;
+      String? rootUserMessageId;
+      while (true) {
+        final parent = _parentSessionIds[current];
+        if (parent == null || parent.isEmpty || !visited.add(parent)) break;
+        if (_isKnownRootSessionId(parent)) {
+          final candidate = _subtaskDirectUserMessageIds[current];
+          if (candidate != null &&
+              candidate.isNotEmpty &&
+              _isRootUserMessage(parent, candidate)) {
+            rootUserMessageId = candidate;
+          } else {
+            rootUserMessageId = null;
+          }
+        }
+        current = parent;
+      }
+      if (current == childSessionId) continue;
+      if (!_isKnownRootSessionId(current)) {
+        _subtaskOwners.remove(childSessionId);
+        continue;
+      }
+      _subtaskOwners[childSessionId] = _SubtaskOwner(
+        rootSessionId: current,
+        rootUserMessageId: rootUserMessageId,
+      );
+    }
+
+    for (final childSessionId in _pendingSubtaskToolParts.keys.toList()) {
+      if (!_subtaskOwners.containsKey(childSessionId)) continue;
+      final pending = _pendingSubtaskToolParts.remove(childSessionId);
+      if (pending == null) continue;
+      for (final pendingPart in pending) {
+        await _processToolPart(childSessionId, pendingPart);
+      }
+    }
+  }
+
+  Future<void> _processToolPart(String sessionId, Part part) async {
+    final tool = part.toolName;
+    if (tool != 'edit' && tool != 'write' && tool != 'apply_patch') {
+      return;
+    }
+    final partKey = '$sessionId:part:${part.id}';
+    if (_processedFileToolParts.contains(partKey)) return;
+
+    final subtaskOwner = _subtaskOwners[sessionId];
+    final isKnownRoot = _isKnownRootSessionId(sessionId);
+    final isKnownChild = _parentSessionIds.containsKey(sessionId);
+
+    if (subtaskOwner == null && (isKnownChild || !isKnownRoot)) {
+      final pending = _pendingSubtaskToolParts.putIfAbsent(sessionId, () => []);
+      if (!pending.any((item) => item.id == part.id)) pending.add(part);
+      return;
+    }
+
+    final ownerSessionId = subtaskOwner?.rootSessionId ?? sessionId;
+    final ownerUserMessageId = subtaskOwner?.rootUserMessageId;
+
+    if (ownerUserMessageId == null || ownerUserMessageId.isEmpty) return;
+    if (!_processedFileToolParts.add(partKey)) return;
+
+    final diffs = ToolDiffParser.parse(part);
+    if (diffs.isEmpty) return;
+
+    final rootState = getOrCreateSessionState(ownerSessionId);
+    final list = rootState.messageSubtaskDiffs.putIfAbsent(
+      ownerUserMessageId,
+      () => <SnapshotFileDiff>[],
+    );
+
+    for (final d in diffs) {
+      if (d.file.isEmpty) continue;
+      final idx = list.indexWhere((x) => x.file == d.file);
+      if (idx == -1) {
+        list.add(d);
+      } else {
+        list[idx] = SnapshotFileDiff.merge(list[idx], d);
+      }
+    }
+    rootState.messageSubtaskDiffs.refresh();
+  }
+
+  // ── Persist openedSessionIds ──
+
+  void _persistOpenedIds() {
+    final projectKey = Get.isRegistered<ProjectController>()
+        ? (Get.find<ProjectController>().activeProject.value?.worktree ?? '')
+        : '';
+    final list = openedSessionIds.toList();
+    AppLogger.i('💾 [OpenedSessions] Saving for project [$projectKey]: $list');
+    Global.setOpenedSessionIdsForProject(projectKey, list);
+  }
+
+  // ── Fetch Models ──
+
+  Future<void> fetchModels() async {
+    final seq = _sessionFetchSeq;
+    // 同一代际已有在途请求则跳过；切项目（代际变化）后允许新请求覆盖在途旧请求，
+    // 避免旧目录的在途 fetch 阻塞新项目的模型列表刷新（模型列表会一直为空）。
+    if (_lastModelsFetchIssuedSeq == seq) return;
+    _lastModelsFetchIssuedSeq = seq;
+    isLoadingModels.value = true;
+    try {
+      final modelList = <ModelInfo>[];
+      Map<String, dynamic> defaultModels = {};
+
+      final response = await _client.get(
+        ApiEndpoints.configProviders,
+        skipDirectory: true,
+      );
+      // 切项目后丢弃过期模型列表，避免旧项目模型污染新项目选择。
+      if (seq != _sessionFetchSeq) return;
+      if (response.statusCode == 200 && response.data is Map) {
+        final data = response.data as Map;
+        defaultModels = data['default'] is Map
+            ? Map<String, dynamic>.from(data['default'] as Map)
+            : {};
+        final providers = data['providers'] as List? ?? [];
+        for (final p in providers) {
+          if (p is! Map) continue;
+          final pMap = Map<String, dynamic>.from(p);
+          final providerId = pMap['id'] as String? ?? '';
+          final models = pMap['models'] is Map
+              ? Map<String, dynamic>.from(pMap['models'] as Map)
+              : <String, dynamic>{};
+          for (final entry in models.entries) {
+            final m = entry.value;
+            if (m is! Map) continue;
+            final mMap = Map<String, dynamic>.from(m);
+            mMap.putIfAbsent('id', () => entry.key.toString());
+            modelList.add(
+              ModelInfo.fromJson({...mMap, 'providerID': providerId}),
+            );
+          }
+        }
+      }
+
+      if (modelList.isNotEmpty) {
+        _allModels.clear();
+        _allModels.addAll(modelList);
+        updateAvailableModels();
+
+        final state = activeState;
+        if (state.selectedModel.value.isEmpty && availableModels.isNotEmpty) {
+          final savedId = Global.savedModelId;
+          if (savedId != null &&
+              availableModels.any((m) => m.key == savedId || m.id == savedId)) {
+            state.selectedModel.value = savedId;
+          } else {
+            final defaultKey = defaultModels.entries
+                .map((e) => '${e.key}:${e.value}')
+                .where((key) => availableModels.any((m) => m.key == key))
+                .firstOrNull;
+            state.selectedModel.value = defaultKey ?? availableModels.first.key;
+          }
+        }
+        if (state.selectedModel.value.isNotEmpty) {
+          Global.setSavedModelId(state.selectedModel.value);
+        }
+      }
+
+      for (final entry in sessionRuntimeStates.entries) {
+        _syncThinkingLevelsForSelection(state: entry.value);
+      }
+      _syncThinkingLevelsForSelection();
+    } catch (e) {
+      AppLogger.e('fetchModels failed: $e');
+    } finally {
+      isLoadingModels.value = false;
+      // 仅最新代际完成后复位，允许后续同代际重试；过期请求不动该标记。
+      if (seq == _sessionFetchSeq) {
+        _lastModelsFetchIssuedSeq = -1;
+      }
+    }
+  }
+
+  // ── Session Management ──
+
+  Future<void> fetchSessions({bool restoreOpened = true}) async {
+    final seq = _sessionFetchSeq;
+    // 同一代际已有在途请求则跳过；切项目（代际变化）后允许新请求覆盖在途旧请求，
+    // 避免旧目录的在途 fetch 阻塞新项目的必要刷新。
+    if (_lastSessionFetchIssuedSeq == seq) return;
+    _lastSessionFetchIssuedSeq = seq;
+    try {
+      final response = await _client.get(ApiEndpoints.sessions);
+      // 切项目后返回：丢弃旧目录的响应，不写入新项目状态。
+      if (seq != _sessionFetchSeq) return;
+      if (response.statusCode == 200) {
+        final data = response.data;
+        List<SessionModel> list;
+        if (data is List) {
+          list = data
+              .map(
+                (json) => SessionModel.fromJson(json as Map<String, dynamic>),
+              )
+              .toList();
+        } else if (data is Map && data['data'] is List) {
+          list = (data['data'] as List)
+              .map(
+                (json) => SessionModel.fromJson(json as Map<String, dynamic>),
+              )
+              .toList();
+        } else {
+          list = [];
+        }
+        sessionsError.value = null;
+        final roots = list.where(_isRootSession).toList();
+        sessions.assignAll(roots);
+
+        for (final s in list.where((s) => !_isRootSession(s))) {
+          if (s.parentID != null && s.parentID!.isNotEmpty) {
+            _parentSessionIds[s.id] = s.parentID!;
+            // 同步重建父会话的子会话树：重启/SSE 重连后 session.created 不会重放，
+            // 仅回填 _parentSessionIds 无法被 sessionIdWithPendingPermission /
+            // pendingQuestionInTree 遍历到，正在运行的子会话权限/提问卡会上浮失败。
+            final parentState = getOrCreateSessionState(s.parentID!);
+            final idx = parentState.childSessions.indexWhere(
+              (c) => c.id == s.id,
+            );
+            if (idx != -1) {
+              parentState.childSessions[idx] = s;
+            } else {
+              parentState.childSessions.add(s);
+            }
+          }
+        }
+        unawaited(_refreshSubtaskOwners());
+
+        if (restoreOpened) {
+          // Restore opened sessions
+          _restoreOpenedSessions();
+        }
+      } else {
+        sessionsError.value = 'HTTP ${response.statusCode}';
+      }
+    } catch (e) {
+      if (seq != _sessionFetchSeq) return;
+      sessionsError.value = e.toString();
+      AppLogger.e('fetchSessions failed: $e');
+    } finally {
+      // 仅最新代际完成后复位，允许后续同代际重试；过期请求不动该标记。
+      if (seq == _sessionFetchSeq) {
+        _lastSessionFetchIssuedSeq = -1;
+      }
+    }
+  }
+
+  void _restoreOpenedSessions() {
+    final projectKey = Get.isRegistered<ProjectController>()
+        ? (Get.find<ProjectController>().activeProject.value?.worktree ?? '')
+        : '';
+    final saved = Global.openedSessionIdsForProject(projectKey);
+    AppLogger.i(
+      '📂 [OpenedSessions] Reading for project [$projectKey]: saved=$saved',
+    );
+    if (saved.isNotEmpty) {
+      // Only keep sessions that still exist on the server
+      final valid = saved
+          .where((id) => sessions.any((s) => s.id == id))
+          .toList();
+      AppLogger.i(
+        '✅ [OpenedSessions] Restored valid sessions for [$projectKey]: $valid',
+      );
+      openedSessionIds.assignAll(valid);
+
+      // Auto-select the first valid opened session
+      if (valid.isNotEmpty && activeSessionId.value.isEmpty) {
+        _activateSessionWithoutPersist(valid.first);
+      }
+
+      // Prefetch the remaining restored tabs in the background so switching to
+      // them after restart is instant instead of a blocking full-history fetch
+      // on each tab switch. `loadMessages`' hasLoadedHistory guard dedupes with
+      // the selectSession call above (and any concurrent SSE pre-population).
+      for (final id in valid) {
+        if (id != activeSessionId.value) {
+          unawaited(loadMessages(id));
+        }
+      }
+    }
+  }
+
+  Future<void> createNewSession() async {
+    try {
+      // Capture current active session's model and thinking level to inherit
+      final currentModel = activeState.selectedModel.value;
+      final currentLevel = activeState.selectedThinkingLevel.value;
+
+      // v1 POST /session uses instance directory via x-opencode-directory.
+      final response = await _client.post(
+        ApiEndpoints.sessions,
+        data: <String, dynamic>{},
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = response.data;
+        final sessionJson = (data is Map && data['data'] is Map)
+            ? Map<String, dynamic>.from(data['data'] as Map)
+            : data is Map
+            ? Map<String, dynamic>.from(data)
+            : <String, dynamic>{};
+        final session = SessionModel.fromJson(sessionJson);
+        sessions.insert(0, session);
+
+        // Inherit current session's model and thinking level for new session
+        final newState = getOrCreateSessionState(session.id);
+        if (currentModel.isNotEmpty) {
+          newState.selectedModel.value = currentModel;
+          newState.selectedThinkingLevel.value = currentLevel;
+          _syncThinkingLevelsForSelection(state: newState);
+        }
+
+        selectSession(session.id);
+      }
+    } catch (e) {
+      AppLogger.e('createNewSession failed: $e');
+    }
+  }
+
+  /// Attach a screenshot (PNG bytes) to the active session's draft images so it
+  /// appears in the input box. If no session is open, auto-creates one first.
+  /// Returns false only when no active session could be obtained.
+  Future<bool> attachScreenshotToActiveSession(Uint8List bytes) async {
+    var sid = activeSessionId.value;
+    if (sid.isEmpty) {
+      await createNewSession();
+      sid = activeSessionId.value;
+    }
+    if (sid.isEmpty) return false;
+    stateOf(sid).attachedImages.add(
+      (bytes: bytes, mime: 'image/png', ext: 'png'),
+    );
+    return true;
+  }
+
+  /// 找一个支持识图（`capabilities.input` 含 image）的模型，作为图片转文字
+  /// 的后备模型。
+  ///
+  /// 优先级：
+  /// 1. 用户在「识图设置」里选定的模型（[Global.visionModelKey]）；
+  /// 2. 未设置时，从输入框模型列表 [availableModels] 里选第一个支持识图的模型。
+  ModelInfo? _findVisionModel() {
+    final configured = Global.visionModelKey;
+    if (configured != null && configured.isNotEmpty) {
+      final byKey = availableModels.firstWhereOrNull(
+        (m) => m.key == configured || m.id == configured,
+      );
+      if (byKey != null) return byKey;
+      final byKeyAll = _allModels.firstWhereOrNull(
+        (m) => m.key == configured || m.id == configured,
+      );
+      if (byKeyAll != null) return byKeyAll;
+    }
+    return availableModels.firstWhereOrNull((m) => m.supportsImage);
+  }
+
+  /// 当前配置的识图模型 key（可能为 null = 自动）。
+  String? get visionModelKey => Global.visionModelKey;
+
+  /// 设置识图模型（key 为 `providerId:id`）。
+  Future<void> setVisionModel(String key) =>
+      Global.setVisionModelKey(key);
+
+  /// 是否存在可用的识图模型（已配置的，或输入框模型列表里第一个支持识图的）。
+  bool get hasVisionModel => _findVisionModel() != null;
+
+  /// 当前实际用于识图的模型名（已配置的，或输入框列表里第一个支持识图的）。
+  String get visionModelName {
+    final model = _findVisionModel();
+    if (model == null) return '';
+    return model.name.isNotEmpty ? model.name : model.id;
+  }
+
+  /// 把 [images] 发给一个支持识图的模型，返回其文本描述；失败或超时返回 null。
+  ///
+  /// 用一个隐藏的临时会话执行（SSE 事件被 [_hiddenSessionIds] 屏蔽，不会污染
+  /// 聊天界面/触发反馈），结果通过轮询消息接口拿到，最后删除临时会话。返回后
+  /// 调用方可用该文本替换输入框里的图片。
+  Future<String?> describeImagesToText(
+    List<PickedImage> images, {
+    required String prompt,
+  }) async {
+    if (images.isEmpty) return null;
+    final visionModel = _findVisionModel();
+    if (visionModel == null) {
+      AppLogger.w('describeImagesToText: no vision-capable model found '
+          '(availableModels=${availableModels.length}, total=${_allModels.length})');
+      return null;
+    }
+    AppLogger.i('describeImagesToText: using vision model '
+        '${visionModel.providerId}/${visionModel.id} (name=${visionModel.name}, '
+        'availableModels=${availableModels.length}, total=${_allModels.length})');
+
+    String? tempId;
+    try {
+      final resp = await _client.post(
+        ApiEndpoints.sessions,
+        data: <String, dynamic>{},
+      );
+      if (resp.statusCode != 200 && resp.statusCode != 201) return null;
+      final data = resp.data;
+      final sessionJson = (data is Map && data['data'] is Map)
+          ? Map<String, dynamic>.from(data['data'] as Map)
+          : data is Map
+          ? Map<String, dynamic>.from(data)
+          : <String, dynamic>{};
+      tempId = sessionJson['id']?.toString() ?? '';
+      if (tempId.isEmpty) return null;
+
+      _hiddenSessionIds.add(tempId);
+      // 若 session.created SSE 已先于 HTTP 响应到达，把临时会话从可见列表里摘掉。
+      sessions.removeWhere((s) => s.id == tempId);
+
+      // 注册 SSE 驱动的完成器：idle 时由 _handleHiddenEvent 完成。
+      final completer = Completer<String?>();
+      _hiddenVisionCompleters[tempId] = completer;
+
+      final messageId = _ascendingId('msg');
+      final partsJson = <Map<String, dynamic>>[];
+      partsJson.add({
+        'id': _ascendingId('prt'),
+        'type': 'text',
+        'text': prompt,
+      });
+      // 识图前先压缩一次（与发送路径一致，1280px / JPEG 85），避免大图
+      // 以原尺寸 base64 上传拖慢识图。
+      var sendImages = images;
+      if (images.isNotEmpty) {
+        try {
+          sendImages = await Isolate.run(() => compressImagesSync(images));
+        } catch (e) {
+          AppLogger.e('compress images (vision) failed: $e');
+        }
+      }
+      for (var i = 0; i < sendImages.length; i++) {
+        final img = sendImages[i];
+        partsJson.add({
+          'id': _ascendingId('prt'),
+          'type': 'file',
+          'url': 'data:${img.mime};base64,${base64Encode(img.bytes)}',
+          'mime': img.mime,
+          'filename': 'image_${i + 1}.${img.ext}',
+        });
+      }
+
+      final body = <String, dynamic>{
+        'messageID': messageId,
+        'parts': partsJson,
+        'agent': 'plan',
+        'model': {
+          'providerID': visionModel.providerId,
+          'modelID': visionModel.id,
+        },
+      };
+      await _client.post(
+        ApiEndpoints.sessionPromptAsync(tempId),
+        data: body,
+      );
+
+      // SSE 已连接时等待 idle/error 事件驱动完成；否则或超时则回退到轮询。
+      final sse = _sseClient;
+      final sseAlive = sse != null &&
+          sse.isConnected &&
+          !sse.isCredentialFailed &&
+          sse.queryParams['directory'] == _client.activeDirectory;
+      if (sseAlive) {
+        try {
+          final result = await completer.future.timeout(_visionSseTimeout);
+          return result;
+        } on TimeoutException {
+          AppLogger.w('describeImagesToText: SSE timed out, polling fallback');
+        }
+      } else {
+        AppLogger.w('describeImagesToText: SSE not connected, polling fallback');
+      }
+      return await _pollVisionReply(tempId);
+    } catch (e) {
+      AppLogger.e('describeImagesToText failed: $e');
+      return null;
+    } finally {
+      if (tempId != null && tempId.isNotEmpty) {
+        _hiddenSessionIds.remove(tempId);
+        _hiddenVisionCompleters.remove(tempId);
+        sessionRuntimeStates.remove(tempId);
+        try {
+          await _client.delete(ApiEndpoints.sessionDelete(tempId));
+        } catch (e) {
+          AppLogger.e('describeImagesToText cleanup failed: $e');
+        }
+      }
+    }
+  }
+
+  /// 轮询临时会话的消息，直到拿到非空 assistant 文本，超时返回 null。
+  /// 仅在 SSE 未连接或 SSE 超时后作为兜底。
+  static const _visionPollInterval = Duration(milliseconds: 400);
+  static const _visionPollTimeout = Duration(seconds: 30);
+  static const _visionSseTimeout = Duration(seconds: 20);
+
+  Future<String?> _pollVisionReply(String tempId) async {
+    final deadline = DateTime.now().add(_visionPollTimeout);
+    var lastText = '';
+    var stableCount = 0;
+    while (DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(_visionPollInterval);
+      final text = await _fetchVisionReplyText(tempId);
+      if (text != null && text.isNotEmpty) {
+        if (text == lastText) {
+          stableCount++;
+        } else {
+          stableCount = 1;
+          lastText = text;
+        }
+        // 连续两次一致视为流式结束。
+        if (stableCount >= 2) return text;
+      }
+    }
+    return lastText.isNotEmpty ? lastText : null;
+  }
+
+  Future<bool> deleteSession(String id) async {
+    try {
+      await _client.delete(ApiEndpoints.sessionDelete(id));
+      sessions.removeWhere((s) => s.id == id);
+      sessionRuntimeStates.remove(id);
+      openedSessionIds.remove(id);
+      _feedbackGeneratingSessions.remove(id);
+      clearSubtaskTracking(id);
+      _discardPendingPartDeltas(sessionIds: {id});
+      _persistOpenedIds();
+      if (activeSessionId.value == id) {
+        activeSessionId.value = openedSessionIds.isNotEmpty
+            ? openedSessionIds.last
+            : '';
+      }
+      return true;
+    } catch (e) {
+      AppLogger.e('deleteSession failed: $e');
+      return false;
+    }
+  }
+
+  /// 恢复流程专用：仅设置 activeSessionId 并加载消息，不把会话加入
+  /// openedSessionIds、也不持久化，避免启动/切项目恢复误写库导致
+  /// 被清空的页签"复活"。用户主动操作仍走 [selectSession]。
+  void _activateSessionWithoutPersist(String id) {
+    if (id.isEmpty) return;
+    if (_parentSessionIds.containsKey(id)) return;
+    activeSessionId.value = id;
+    final state = getOrCreateSessionState(id);
+    _syncThinkingLevelsForSelection(state: state);
+    loadMessages(id);
+  }
+
+  void selectSession(String id) {
+    if (id.isEmpty) return;
+    if (_parentSessionIds.containsKey(id)) return;
+    activeSessionId.value = id;
+    final state = getOrCreateSessionState(id);
+    if (!openedSessionIds.contains(id)) {
+      openedSessionIds.add(id);
+      _persistOpenedIds();
+    }
+    _syncThinkingLevelsForSelection(state: state);
+    loadMessages(id);
+  }
+
+  void closeSession(String id) {
+    openedSessionIds.remove(id);
+    _persistOpenedIds();
+    if (activeSessionId.value == id) {
+      activeSessionId.value = openedSessionIds.isNotEmpty
+          ? openedSessionIds.last
+          : '';
+    }
+  }
+
+  void clearAllOpenedSessions() {
+    openedSessionIds.clear();
+    activeSessionId.value = '';
+    _persistOpenedIds();
+    AppLogger.i('🧹 Cleared all opened sessions');
+  }
+
+  /// Fork the current session at [messageId] and switch to the new branch.
+  Future<String?> forkSessionAt(String messageId) async {
+    final sessionId = activeSessionId.value;
+    if (sessionId.isEmpty || messageId.isEmpty) return null;
+    final state = getOrCreateSessionState(sessionId);
+    if (state.isGenerating.value) {
+      Snack.warning(LocaleKeys.sessionWaitGenerationFinish.tr);
+      return null;
+    }
+    try {
+      final response = await _client
+          .post(
+            ApiEndpoints.sessionFork(sessionId),
+            data: {'messageID': messageId},
+          )
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = response.data;
+        final sessionJson = (data is Map && data['data'] is Map)
+            ? Map<String, dynamic>.from(data['data'] as Map)
+            : data is Map
+            ? Map<String, dynamic>.from(data)
+            : <String, dynamic>{};
+        final newSession = SessionModel.fromJson(sessionJson);
+        final index = sessions.indexWhere((s) => s.id == newSession.id);
+        if (index != -1) {
+          sessions[index] = newSession;
+        } else {
+          sessions.insert(0, newSession);
+        }
+        selectSession(newSession.id);
+        return newSession.id;
+      }
+      Snack.error(LocaleKeys.sessionForkFailed.tr);
+    } on TimeoutException {
+      AppLogger.e('forkSessionAt timed out');
+      Snack.error(LocaleKeys.sessionForkFailed.tr);
+    } catch (e) {
+      AppLogger.e('forkSessionAt failed: $e');
+      Snack.error('${LocaleKeys.sessionForkFailed.tr}: $e');
+    }
+    return null;
+  }
+
+  /// Revert session timeline to [messageId] (hides later messages via
+  /// [SessionRuntimeState.revertMessageID]).
+  Future<void> revertMessage(String messageId) async {
+    final sessionId = activeSessionId.value;
+    if (sessionId.isEmpty || messageId.isEmpty) return;
+    final state = getOrCreateSessionState(sessionId);
+    if (state.isGenerating.value) {
+      Snack.warning(LocaleKeys.shRevertBlockedGenerating.tr);
+      return;
+    }
+    try {
+      final response = await _client.post(
+        ApiEndpoints.sessionRevert(sessionId),
+        data: {'messageID': messageId},
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = response.data;
+        final sessionJson = (data is Map && data['data'] is Map)
+            ? Map<String, dynamic>.from(data['data'] as Map)
+            : data is Map
+            ? Map<String, dynamic>.from(data)
+            : <String, dynamic>{};
+        if (sessionJson.isNotEmpty) {
+          final updated = SessionModel.fromJson(sessionJson);
+          final index = sessions.indexWhere((s) => s.id == updated.id);
+          if (index != -1) sessions[index] = updated;
+          getOrCreateSessionState(sessionId).revertMessageID.value =
+              updated.revert?.messageID ?? messageId;
+        } else {
+          getOrCreateSessionState(sessionId).revertMessageID.value = messageId;
+        }
+      }
+    } catch (e) {
+      AppLogger.e('revertMessage failed: $e');
+      Snack.error('${LocaleKeys.sessionRevertFailed.tr}: $e');
+    }
+  }
+
+  // ── Messages ──
+
+  Future<void> loadMessages(
+    String sessionId, {
+    bool force = false,
+    bool reconcileGenerating = false,
+  }) async {
+    if (sessionId.isEmpty) return;
+    final seq = _sessionFetchSeq;
+    // Lazy guard: don't re-fetch sessions whose history is already loaded.
+    // selectSession fires on every PageView swipe, so an unconditional reload
+    // would both spam the server and clobber in-flight streaming / optimistic
+    // messages with a stale snapshot (desktop parity: only fetch once). Uses a
+    // dedicated flag instead of messages.isNotEmpty because SSE may pre-populate
+    // messages for a not-yet-opened session, which must not skip the first fetch.
+    if (!force && stateOf(sessionId).hasLoadedHistory) return;
+    // Fire the todo fetch concurrently with the full-history GET below so its
+    // ~one round-trip of latency is hidden behind the much slower message fetch
+    // instead of running serially after it. SSE todoUpdated also populates
+    // todos and sets hasFetchedTodos; this only fills the gap for sessions whose
+    // in-flight todos never change again (e.g. paused mid-turn after restart).
+    unawaited(_fetchTodosIfEmpty(sessionId, seq));
+    try {
+      final response = await _client.get(
+        ApiEndpoints.sessionMessages(sessionId),
+      );
+      // 切项目后返回：不重建/不写过期会话状态，避免污染新项目内存。
+      if (seq != _sessionFetchSeq) return;
+      if (response.statusCode == 200) {
+        final data = response.data;
+        final List rawMessages;
+        if (data is List) {
+          rawMessages = data;
+        } else if (data is Map && data['data'] is List) {
+          rawMessages = data['data'] as List;
+        } else {
+          rawMessages = [];
+        }
+        final msgs = rawMessages
+            .whereType<Map>()
+            .map(
+              (json) => MessageModel.fromJson(Map<String, dynamic>.from(json)),
+            )
+            .where((m) => m.isChatMessage)
+            .toList();
+        // API may return newest-first; keep chronological for the timeline.
+        final state = stateOf(sessionId);
+        state.hasLoadedHistory = true;
+        if (msgs.length >= 2 &&
+            (msgs.first.time?['created'] is num) &&
+            (msgs.last.time?['created'] is num) &&
+            (msgs.first.time!['created'] as num) >
+                (msgs.last.time!['created'] as num)) {
+          state.messages.assignAll(msgs.reversed.toList());
+        } else {
+          state.messages.assignAll(msgs);
+        }
+        // 断网重连兜底：离线期间错过的 idle 事件会让 isGenerating 残留 true，
+        // 依据刚拉取到的历史判定回合是否已收尾并纠正（详见 _reconcileGeneratingAfterReconnect）。
+        if (reconcileGenerating) {
+          _reconcileGeneratingAfterReconnect(state);
+        }
+        // Detect if the session is currently executing/generating on the server
+        // Commented out to avoid incorrect thinking state when session was previously manually aborted.
+        // if (state.messages.isNotEmpty) {
+        //   final lastMsg = state.messages.last;
+        //   if (lastMsg.role == MessageRole.assistant) {
+        //     final hasStepFinish = lastMsg.parts.any(
+        //       (p) => p.type == PartType.stepFinish,
+        //     );
+        //     final hasRunningTool = lastMsg.parts.any(
+        //       (p) =>
+        //           p.type == PartType.tool &&
+        //           (p.toolStatus == ToolStateStatus.running ||
+        //               p.toolStatus == ToolStateStatus.pending),
+        //     );
+        //     if (!hasStepFinish || hasRunningTool) {
+        //       state.isGenerating.value = true;
+        //     }
+        //   }
+        // }
+
+        // Sync selectedModel and selectedThinkingLevel from last sent/used model in history
+        if (state.messages.isNotEmpty) {
+          final lastMsgWithModel = state.messages.reversed
+              .cast<MessageModel?>()
+              .firstWhere(
+                (m) => m != null && (m.model != null || m.raw['model'] is Map),
+                orElse: () => null,
+              );
+          if (lastMsgWithModel != null) {
+            final modelMap = lastMsgWithModel.model;
+            if (modelMap != null) {
+              final providerID =
+                  (modelMap['providerID'] ?? modelMap['provider_id'])
+                      ?.toString() ??
+                  '';
+              final modelID =
+                  (modelMap['id'] ??
+                          modelMap['modelID'] ??
+                          modelMap['model_id'])
+                      ?.toString() ??
+                  '';
+              final variant = modelMap['variant']?.toString() ?? '';
+
+              // Find if this model exists in availableModels
+              final matched = availableModels.firstWhereOrNull((m) {
+                if (providerID.isNotEmpty && modelID.isNotEmpty) {
+                  return m.providerId == providerID && m.id == modelID;
+                }
+                return m.key == modelID || m.id == modelID;
+              });
+
+              if (matched != null) {
+                state.selectedModel.value = matched.key;
+                if (variant.isNotEmpty && matched.variants.contains(variant)) {
+                  state.selectedThinkingLevel.value = variant;
+                }
+              } else if (availableModels.isNotEmpty) {
+                // Fallback: pick one from availableModels if previous model is no longer available
+                state.selectedModel.value = availableModels.first.key;
+                state.selectedThinkingLevel.value = '';
+              }
+              _syncThinkingLevelsForSelection(state: state);
+            }
+          }
+        }
+
+        // Batch restore of idle sessions: leftover pending questions are stale.
+        // Skip while generating so a live question is not wiped mid-turn.
+        if (!state.isGenerating.value) {
+          _markStaleQuestionsSkipped(state);
+        }
+      }
+    } catch (e) {
+      AppLogger.e('loadMessages failed: $e');
+    }
+  }
+
+  Future<void> _fetchTodosIfEmpty(String sessionId, int seq) async {
+    final state = stateOf(sessionId);
+    if (state.hasFetchedTodos || state.todos.isNotEmpty) return;
+    state.hasFetchedTodos = true;
+    try {
+      final response = await _client.get(ApiEndpoints.sessionTodo(sessionId));
+      // 切项目后丢弃过期 todo 响应，不污染新项目状态。
+      if (seq != _sessionFetchSeq) return;
+      if (response.statusCode == 200) {
+        final responseData = response.data;
+        final data = responseData is Map<String, dynamic>
+            ? (responseData['data'] as List? ?? [])
+            : (responseData is List ? responseData : []);
+        if (data.isNotEmpty) {
+          final parsed = data
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList();
+          if (parsed.isNotEmpty &&
+              parsed.every((t) => t['status']?.toString() == 'completed')) {
+            state.todos.clear();
+          } else {
+            state.todos.assignAll(parsed);
+          }
+        }
+      }
+    } catch (e) {
+      // Allow a retry on a transient failure; otherwise the flag would stay
+      // set and the todo panel would be permanently hidden for this session.
+      state.hasFetchedTodos = false;
+      AppLogger.e('fetchTodos failed: $e');
+    }
+  }
+
+  void clearPendingPrompt([String? sessionId]) {
+    final id = sessionId ?? activeSessionId.value;
+    if (id.isEmpty) return;
+    stateOf(id).clearPendingPrompt();
+  }
+
+  Future<void> sendPendingPromptImmediately([String? sessionId]) async {
+    final id = sessionId ?? activeSessionId.value;
+    if (id.isEmpty) return;
+    final state = stateOf(id);
+    if (!state.hasPendingPrompt) return;
+    final text = state.pendingPromptText.value;
+    final images = state.pendingPromptImages.toList();
+    final files = state.pendingPromptAttachedFiles.toList();
+    state.clearPendingPrompt();
+    if (activeSessionId.value != id) {
+      selectSession(id);
+    }
+    await abortGeneration(sessionId: id);
+    await sendPrompt(
+      text,
+      images: images,
+      overrideFiles: files,
+      force: true,
+      targetSessionId: id,
+    );
+  }
+
+  void _checkAndSendPendingPrompt([String? sessionId]) {
+    final id = sessionId ?? activeSessionId.value;
+    if (id.isEmpty) return;
+    final state = stateOf(id);
+    if (!state.hasPendingPrompt) return;
+    final text = state.pendingPromptText.value;
+    final images = state.pendingPromptImages.toList();
+    final files = state.pendingPromptAttachedFiles.toList();
+    final overrideAgent =
+        state.pendingPromptAgent.value.isNotEmpty
+            ? state.pendingPromptAgent.value
+            : null;
+    final overrideModel =
+        state.pendingPromptModel.value.isNotEmpty
+            ? state.pendingPromptModel.value
+            : null;
+    state.clearPendingPrompt();
+    unawaited(
+      sendPrompt(
+        text,
+        images: images,
+        overrideFiles: files,
+        overrideAgent: overrideAgent,
+        overrideModel: overrideModel,
+        force: true,
+        targetSessionId: id,
+      ),
+    );
+  }
+
+  void _queuePendingPrompt(
+    SessionRuntimeState state,
+    String text,
+    List<PickedImage> images,
+    List<String> files, {
+    String? overrideAgent,
+    String? overrideModel,
+  }) {
+    if (state.pendingPromptText.value.isEmpty) {
+      state.pendingPromptText.value = text;
+    } else if (text.isNotEmpty) {
+      state.pendingPromptText.value = '${state.pendingPromptText.value}\n$text';
+    }
+    state.pendingPromptImages.addAll(images);
+    for (final f in files) {
+      if (!state.pendingPromptAttachedFiles.contains(f)) {
+        state.pendingPromptAttachedFiles.add(f);
+      }
+    }
+    if (overrideAgent != null && overrideAgent.isNotEmpty) {
+      state.pendingPromptAgent.value = overrideAgent;
+    }
+    if (overrideModel != null && overrideModel.isNotEmpty) {
+      state.pendingPromptModel.value = overrideModel;
+    }
+  }
+
+  // ── Send Prompt ──
+
+  Future<void> sendPrompt(
+    String text, {
+    List<PickedImage> images = const [],
+    List<String>? overrideFiles,
+    bool force = false,
+    String? targetSessionId,
+    String? overrideModel,
+    String? overrideAgent,
+  }) async {
+    final sessionId = targetSessionId ?? activeSessionId.value;
+    if (sessionId.isEmpty) return;
+    final state = getOrCreateSessionState(sessionId);
+    final filesToSend = overrideFiles ?? state.attachedFiles.toList();
+    if (text.trim().isEmpty && images.isEmpty && filesToSend.isEmpty) return;
+
+    // 发送新消息时自动折叠 changefiles：新回合文件变化不再触发右侧持续刷新，
+    // 用户重新展开时（现有 onToggle 会 openReviewSession）再刷新右侧。
+    if (state.expandedSection.value == SessionExpandedSection.diff) {
+      state.expandedSection.value = SessionExpandedSection.none;
+    }
+
+    // 回滚后继续发新消息 = 会话继续：镜像服务端 prompt 时的 revert.cleanup，
+    // 丢弃回滚点之后的消息并清除本地截断，否则新消息会被 revertMessageID 隐藏。
+    if (state.revertMessageID.value.isNotEmpty) {
+      final revertIdx = state.messages.indexWhere(
+        (m) => m.id == state.revertMessageID.value,
+      );
+      if (revertIdx != -1) {
+        state.messages.removeRange(revertIdx, state.messages.length);
+      }
+      state.revertMessageID.value = '';
+    }
+
+    state.showStartExecutionButton.value = false;
+
+    // 如果发送新消息时，先前的 TODO 已全部完成，则清空旧 TODO，隐去 TodoPanel，等待后续新 TODO 触发
+    if (state.todos.isNotEmpty &&
+        state.todos.every((t) => t['status']?.toString() == 'completed')) {
+      state.todos.clear();
+    }
+
+    if (state.isGenerating.value && state.isRetrying.value && !force) {
+      await abortGeneration(sessionId: sessionId);
+      state.clearPendingPrompt();
+      state.isRetrying.value = false;
+      state.isCompacting.value = false;
+      state.isGenerating.value = false;
+      state.generatingAgent.value = '';
+      state.lastError.value = null;
+    }
+
+    if (state.isGenerating.value && !force) {
+      _queuePendingPrompt(
+        state,
+        text,
+        images,
+        filesToSend,
+        overrideAgent: overrideAgent,
+        overrideModel: overrideModel,
+      );
+      if (overrideFiles == null) {
+        state.attachedFiles.clear();
+        state.attachedImages.clear();
+      }
+      return;
+    }
+
+    if (text.trim().isEmpty && images.isEmpty && filesToSend.isEmpty) return;
+
+    final selectedModelKey = overrideModel ?? state.selectedModel.value;
+    final selectedAgentName = overrideAgent ?? state.selectedAgent.value;
+
+    state.isGenerating.value = true;
+    _markFeedbackGenerating(sessionId);
+    state.generatingAgent.value = selectedAgentName;
+    state.sessionStatus.value = 'running';
+    state.wasAborted.value = false;
+    state.isCompacting.value = false;
+    state.isRetrying.value = false;
+    state.keywordDetectionAlert.value = false;
+    state.lastError.value = null;
+
+    if (overrideFiles == null) {
+      state.attachedFiles.clear();
+      state.attachedImages.clear();
+    }
+
+    final messageId = _ascendingId('msg');
+    final partsJson = <Map<String, dynamic>>[];
+    final partModels = <Part>[];
+
+    if (text.trim().isNotEmpty) {
+      final partId = _ascendingId('prt');
+      final textRaw = {'id': partId, 'type': 'text', 'text': text};
+      partsJson.add(textRaw);
+      partModels.add(
+        Part(
+          id: partId,
+          sessionID: sessionId,
+          messageID: messageId,
+          type: PartType.text,
+          raw: textRaw,
+        ),
+      );
+    }
+
+    // Image parts — downscale/compress first (keeps the server-stored history
+    // payload small), cache the bytes locally for fast re-render, then send as
+    // a base64 data URL so a remote server never has to read a client-local
+    // file path (server handles `data:` at prompt.ts). The real MIME is
+    // declared so the model receives the correct mediaType; the backend
+    // image.normalize will still downscale/re-encode if needed.
+    var sendImages = images;
+    if (images.isNotEmpty) {
+      // image 包是同步纯 Dart 计算，放到后台隔离区批量压缩，避免发送时卡 UI。
+      try {
+        sendImages = await Isolate.run(() => compressImagesSync(images));
+      } catch (e) {
+        AppLogger.e('compress images failed: $e');
+      }
+    }
+
+    for (var i = 0; i < sendImages.length; i++) {
+      final img = sendImages[i];
+      final partId = _ascendingId('prt');
+      unawaited(defaultImageCache.write(messageId, partId, img.bytes));
+      final imgRaw = {
+        'id': partId,
+        'type': 'file',
+        'url': 'data:${img.mime};base64,${base64Encode(img.bytes)}',
+        'mime': img.mime,
+        'filename': 'image_${i + 1}.${img.ext}',
+      };
+      partsJson.add(imgRaw);
+      partModels.add(
+        Part(
+          id: partId,
+          sessionID: sessionId,
+          messageID: messageId,
+          type: PartType.file,
+          raw: imgRaw,
+        ),
+      );
+    }
+
+    // File attachments — absolute file:// URL with optional line range.
+    for (final fileRef in filesToSend) {
+      final partId = _ascendingId('prt');
+      final refParts = fileRef.split(' #');
+      final filePath = refParts[0];
+      final filename = filePath.split('/').last.split('\\').last;
+
+      var lineRange = '';
+      if (refParts.length > 1) {
+        lineRange = refParts[1];
+      }
+
+      final absolutePath = _toAbsolutePath(filePath);
+      var queryParams = '';
+      if (lineRange.isNotEmpty) {
+        final rangeStr = lineRange.startsWith('L')
+            ? lineRange.substring(1)
+            : lineRange;
+        final rangeParts = rangeStr.split('-');
+        final startLine = int.tryParse(rangeParts[0]);
+        if (startLine != null) {
+          final endLine = rangeParts.length > 1
+              ? int.tryParse(rangeParts[1])
+              : startLine;
+          queryParams = '?start=$startLine&end=$endLine';
+        }
+      }
+
+      final filePartRaw = {
+        'id': partId,
+        'type': 'file',
+        'url': '${Uri.file(absolutePath)}$queryParams',
+        'mime': 'text/plain',
+        'filename': filename,
+        if (lineRange.isNotEmpty) 'lineRange': lineRange,
+      };
+      partsJson.add(filePartRaw);
+      partModels.add(
+        Part(
+          id: partId,
+          sessionID: sessionId,
+          messageID: messageId,
+          type: PartType.file,
+          raw: filePartRaw,
+        ),
+      );
+    }
+
+    final optimisticMessage = MessageModel(
+      id: messageId,
+      sessionID: sessionId,
+      role: MessageRole.user,
+      parts: partModels,
+      raw: {
+        'id': messageId,
+        'sessionID': sessionId,
+        'role': 'user',
+        'parts': partsJson,
+      },
+    );
+    state.messages.add(optimisticMessage);
+
+    // v1 prompt_async body (desktop parity):
+    // { messageID?, parts, model?: {providerID, modelID}, agent?, variant? }
+    final body = <String, dynamic>{'messageID': messageId, 'parts': partsJson};
+
+    if (selectedModelKey.isNotEmpty) {
+      final info =
+          _findModel(selectedModelKey) ??
+          _allModels.firstWhereOrNull(
+            (m) => m.key == selectedModelKey || m.id == selectedModelKey,
+          );
+      if (info != null) {
+        body['model'] = {'providerID': info.providerId, 'modelID': info.id};
+      }
+    }
+    if (selectedAgentName.isNotEmpty) {
+      body['agent'] = selectedAgentName;
+    }
+    final variant = state.selectedThinkingLevel.value;
+    if (variant.isNotEmpty) {
+      body['variant'] = variant;
+    }
+
+    try {
+      await _client.post(
+        ApiEndpoints.sessionPromptAsync(sessionId),
+        data: body,
+      );
+    } catch (e) {
+      AppLogger.e('sendPrompt failed: $e');
+      state.isGenerating.value = false;
+      state.isRetrying.value = false;
+      state.generatingAgent.value = '';
+      state.messages.removeWhere((m) => m.id == messageId);
+      final errMsg = ErrorFormatter.format(e);
+      state.lastError.value = errMsg.isNotEmpty ? errMsg : e.toString();
+      if (force) {
+        if (state.pendingPromptText.value.isEmpty) {
+          state.pendingPromptText.value = text;
+        } else {
+          state.pendingPromptText.value =
+              '$text\n${state.pendingPromptText.value}';
+        }
+        state.pendingPromptImages.addAll(images);
+        for (final f in filesToSend) {
+          if (!state.pendingPromptAttachedFiles.contains(f)) {
+            state.pendingPromptAttachedFiles.add(f);
+          }
+        }
+      }
+    }
+  }
+
+  /// Resolve workspace-relative paths against active project worktree.
+  String _toAbsolutePath(String path) {
+    final normalized = path.replaceAll('\\', '/');
+    final isAbsolute =
+        normalized.startsWith('/') ||
+        RegExp(r'^[a-zA-Z]:/').hasMatch(normalized);
+    if (isAbsolute) {
+      return File(path).absolute.path;
+    }
+    String worktree = '';
+    try {
+      worktree =
+          Get.find<ProjectController>().activeProject.value?.worktree ?? '';
+    } catch (_) {}
+    if (worktree.isEmpty) {
+      worktree = _client.activeDirectory ?? '';
+    }
+    if (worktree.isEmpty) return File(path).absolute.path;
+    final joined = worktree.endsWith('/') || worktree.endsWith('\\')
+        ? '$worktree$path'
+        : '$worktree${Platform.pathSeparator}$path';
+    return File(joined).absolute.path;
+  }
+
+  Future<void> abortGeneration({String? sessionId}) async {
+    final id = sessionId ?? activeSessionId.value;
+    if (id.isEmpty) return;
+    final state = getOrCreateSessionState(id);
+    state.wasAborted.value = true;
+    state.suppressAbortErrorUntilMs =
+        DateTime.now().millisecondsSinceEpoch + 10000;
+    state.isGenerating.value = false;
+    state.isRetrying.value = false;
+    state.generatingAgent.value = '';
+    state.lastError.value = null;
+    state.sessionStatus.value = 'idle';
+
+    final abortedIds = <String>{
+      id,
+      ...state.childSessions.map((child) => child.id),
+    };
+    _discardPendingPartDeltas(sessionIds: abortedIds);
+
+    // Cascade abort suppression and termination to active child sessions
+    for (final child in state.childSessions) {
+      final childState = sessionRuntimeStates[child.id];
+      if (childState != null) {
+        childState.wasAborted.value = true;
+        childState.suppressAbortErrorUntilMs =
+            DateTime.now().millisecondsSinceEpoch + 10000;
+        childState.isGenerating.value = false;
+        childState.isRetrying.value = false;
+        childState.generatingAgent.value = '';
+        childState.lastError.value = null;
+        childState.sessionStatus.value = 'idle';
+        unawaited(
+          Future(() async {
+            try {
+              await _client.post(ApiEndpoints.sessionAbort(child.id));
+              _markRunningToolPartsAborted(childState);
+            } catch (_) {}
+          }),
+        );
+      }
+    }
+
+    try {
+      await _client.post(ApiEndpoints.sessionAbort(id));
+      // Belt-and-suspenders: the backend normally finalizes in-flight tool
+      // parts via `message.part.updated` (interrupted => error), but that event
+      // can be lost to an SSE reconnect race. Finalize them locally so the card
+      // spinner always stops. Scoped strictly to the aborted session only.
+      _markRunningToolPartsAborted(state);
+    } catch (e) {
+      state.suppressAbortErrorUntilMs = 0;
+      AppLogger.e('abortGeneration failed: $e');
+    }
+  }
+
+  /// Locally marks still-running/pending tool parts in [state] as aborted.
+  ///
+  /// Only the **last assistant message** is scanned: the in-flight tool parts
+  /// of an active turn always live on the current assistant message, and
+  /// scanning history risks mis-marking stale parts. Callers choose the scope
+  /// (the aborted session itself or its related child sessions). No other
+  /// session is ever touched. The backend's own later `message.part.updated`
+  /// event (same terminal shape) simply replaces the local mark.
+  void _markRunningToolPartsAborted(SessionRuntimeState state) {
+    if (state.messages.isEmpty) return;
+    final idx = state.messages
+        .lastIndexWhere((m) => m.role == MessageRole.assistant);
+    if (idx == -1) return;
+    final msg = state.messages[idx];
+    final isZh = Get.locale?.languageCode.startsWith('zh') ?? true;
+    final abortText =
+        isZh ? '消息已被用户或系统中断。' : 'Message was aborted by user or system.';
+    final now = DateTime.now().millisecondsSinceEpoch;
+    var changed = false;
+    final newParts = <Part>[];
+    for (final part in msg.parts) {
+      if (part.type == PartType.tool &&
+          (part.toolStatus == ToolStateStatus.running ||
+              part.toolStatus == ToolStateStatus.pending)) {
+        final raw = Map<String, dynamic>.from(part.raw);
+        final toolState = Map<String, dynamic>.from(
+          (part.raw['state'] as Map?) ?? const {},
+        );
+        final metadata = toolState['metadata'] is Map
+            ? Map<String, dynamic>.from(toolState['metadata'] as Map)
+            : <String, dynamic>{};
+        final start = toolState['time'] is Map
+            ? (toolState['time'] as Map)['start']
+            : null;
+        metadata['interrupted'] = true;
+        toolState
+          ..['status'] = 'error'
+          ..['error'] = abortText
+          ..['metadata'] = metadata
+          ..['time'] = <String, dynamic>{'start': start, 'end': now};
+        raw['state'] = toolState;
+        newParts.add(
+          Part(
+            id: part.id,
+            sessionID: part.sessionID,
+            messageID: part.messageID,
+            type: part.type,
+            raw: raw,
+          ),
+        );
+        changed = true;
+      } else {
+        newParts.add(part);
+      }
+    }
+    if (changed) {
+      state.messages[idx] = MessageModel(
+        id: msg.id,
+        sessionID: msg.sessionID,
+        role: msg.role,
+        parts: newParts,
+        raw: msg.raw,
+      );
+    }
+  }
+
+  Future<bool> compactActiveSession() async {
+    final sessionId = activeSessionId.value;
+    if (sessionId.isEmpty) {
+      Snack.warning(
+        LocaleKeys.chatSelectSessionFirst.tr,
+        title: LocaleKeys.chatContextCompaction.tr,
+      );
+      return false;
+    }
+    final state = getOrCreateSessionState(sessionId);
+    if (state.isGenerating.value) {
+      Snack.warning(
+        LocaleKeys.chatWaitGenerationToCompact.tr,
+        title: LocaleKeys.chatContextCompaction.tr,
+      );
+      return false;
+    }
+
+    final info = _findModel(state.selectedModel.value);
+    if (info == null) {
+      Snack.warning(
+        LocaleKeys.chatSelectSessionFirst.tr,
+        title: LocaleKeys.chatContextCompaction.tr,
+      );
+      return false;
+    }
+
+    state.isCompacting.value = true;
+    state.manualCompactionPending = true;
+    state.lastError.value = null;
+
+    try {
+      await _client.post(
+        ApiEndpoints.sessionSummarize(sessionId),
+        data: <String, dynamic>{
+          'providerID': info.providerId,
+          'modelID': info.id,
+        },
+      );
+      return true;
+    } catch (e) {
+      state.isCompacting.value = false;
+      state.manualCompactionPending = false;
+      AppLogger.e('compactActiveSession failed: $e');
+      Snack.error(LocaleKeys.chatCompactionFailed.tr);
+      return false;
+    }
+  }
+
+  // ── Model / Agent Selection ──
+
+  void updateAvailableModels() {
+    if (_allModels.isEmpty) {
+      availableModels.clear();
+      return;
+    }
+    if (!Get.isRegistered<SettingsController>()) {
+      availableModels.assignAll(_allModels);
+      _syncThinkingLevelsForSelection();
+      return;
+    }
+    final settings = Get.find<SettingsController>();
+    final visible = _allModels
+        .where((m) => settings.isModelVisible(m, _allModels))
+        .toList();
+    // Visibility filter can hide everything (e.g. all release dates > 6 months).
+    // Fall back so the prompt bar always has a model picker.
+    availableModels.assignAll(visible.isNotEmpty ? visible : _allModels);
+    _syncThinkingLevelsForSelection();
+  }
+
+  void _syncThinkingLevelsForSelection({SessionRuntimeState? state}) {
+    final target = state ?? activeState;
+    var key = target.selectedModel.value;
+    if (key.isEmpty && availableModels.isNotEmpty) {
+      key = availableModels.first.key;
+      target.selectedModel.value = key;
+    }
+    if (key.isEmpty) {
+      target.thinkingLevels.clear();
+      target.selectedThinkingLevel.value = '';
+      return;
+    }
+    // Prefer visible list; fall back to full catalog for variants.
+    final model =
+        _findModel(key) ??
+        _allModels.firstWhereOrNull((m) => m.key == key || m.id == key);
+    final levels = model?.variants ?? const <String>[];
+    target.thinkingLevels.assignAll(levels);
+    if (target.selectedThinkingLevel.value.isNotEmpty &&
+        !levels.contains(target.selectedThinkingLevel.value)) {
+      target.selectedThinkingLevel.value = '';
+    }
+  }
+
+  ModelInfo? _findModel(String key) {
+    return availableModels.firstWhereOrNull((m) => m.key == key || m.id == key);
+  }
+
+  /// 公开的模型解析入口，供 UI（输入框识图判断）按 key/id 查找模型。
+  /// 优先查可见模型列表，其次回退全量目录。
+  ModelInfo? resolveModel(String key) {
+    if (key.isEmpty) return null;
+    return _findModel(key) ??
+        _allModels.firstWhereOrNull((m) => m.key == key || m.id == key);
+  }
+
+  void selectModel(String modelKey) {
+    final state = activeState;
+    state.selectedModel.value = modelKey;
+    _syncThinkingLevelsForSelection(state: state);
+    state.selectedThinkingLevel.value = '';
+  }
+
+  void selectThinkingLevel(String level) {
+    final state = activeState;
+    state.selectedThinkingLevel.value = level;
+  }
+
+  void selectAgent(String agentName) {
+    // v1 has no dedicated session agent switch endpoint; agent is sent
+    // with the next prompt_async body.
+    activeState.selectedAgent.value = agentName;
+  }
+
+  // ── Context Token Calculation ──
+
+  /// Extract active context token total from a message raw structure,
+  /// accounting for input, output, reasoning, and prompt cache (read & write).
+  int _extractContextTokens(MessageModel msg) {
+    final raw = msg.raw;
+    final info = raw['info'];
+    final dynamic tokensMap =
+        (info is Map ? info['tokens'] : null) ??
+        raw['tokens'] ??
+        msg.model?['usage'] ??
+        msg.model?['tokens'];
+
+    int asInt(dynamic v) => v is num ? v.toInt() : 0;
+
+    if (tokensMap is Map) {
+      final cache = tokensMap['cache'];
+      final cacheRead = cache is Map ? asInt(cache['read']) : 0;
+      final cacheWrite = cache is Map ? asInt(cache['write']) : 0;
+      final sum =
+          asInt(tokensMap['input']) +
+          asInt(tokensMap['output']) +
+          asInt(tokensMap['reasoning']) +
+          cacheRead +
+          cacheWrite;
+      if (sum > 0) return sum;
+    }
+
+    // Check stepFinish parts fallback
+    for (final part in msg.parts.reversed) {
+      final ft = part.finishTokens;
+      if (ft != null) {
+        final cache = ft['cache'];
+        final cacheRead = cache is Map ? asInt(cache['read']) : 0;
+        final cacheWrite = cache is Map ? asInt(cache['write']) : 0;
+        final sum =
+            asInt(ft['input']) +
+            asInt(ft['output']) +
+            asInt(ft['reasoning']) +
+            cacheRead +
+            cacheWrite;
+        if (sum > 0) return sum;
+      }
+    }
+    return 0;
+  }
+
+  /// Active context token usage obtained from the latest assistant session message.
+  int activeSessionMessageTokens(String sessionId) {
+    final state = stateOf(sessionId);
+    for (final msg in state.messages.reversed) {
+      if (msg.role != MessageRole.assistant) continue;
+      final tokens = _extractContextTokens(msg);
+      if (tokens > 0) return tokens;
+    }
+    return 0;
+  }
+
+  /// Get the maximum context limit (in tokens) for the selected model.
+  int modelContextLimitFor(String sessionId) {
+    final modelKey = stateOf(sessionId).selectedModel.value;
+    if (modelKey.isEmpty) return 0;
+    final info =
+        _findModel(modelKey) ??
+        _allModels.firstWhereOrNull(
+          (m) => m.key == modelKey || m.id == modelKey,
+        );
+    return info?.contextLimit ?? 0;
+  }
+
+  /// Helper to format large token numbers (e.g. 1.2k, 128k, 1M).
+  String formatTokenCount(int count) {
+    if (count >= 1000000) {
+      final v = count / 1000000;
+      return '${v.toStringAsFixed(v >= 10 ? 0 : 1)}M';
+    } else if (count >= 1000) {
+      final v = count / 1000;
+      return '${v.toStringAsFixed(v >= 10 ? 0 : 1)}k';
+    }
+    return '$count';
+  }
+
+  // ── Permission ──
+
+  Future<void> respondPermission(
+    String id,
+    String action, {
+    String? sessionId,
+  }) async {
+    final sid = sessionId ?? activeSessionId.value;
+    if (sid.isEmpty) return;
+    try {
+      final reply = switch (action) {
+        'allow' => 'once',
+        'deny' => 'reject',
+        _ => action,
+      };
+      await _client.post(
+        ApiEndpoints.permissionReply(id),
+        data: {'reply': reply},
+      );
+      getOrCreateSessionState(sid).pendingPermission.value = null;
+    } catch (e) {
+      AppLogger.e('respondPermission failed: $e');
+    }
+  }
+
+  // ── Questions ──
+
+  /// Reply via v1 flat question API. [answers] is list-of-lists of selected labels.
+  Future<void> respondQuestion(
+    String requestId,
+    dynamic reply, {
+    String? sessionId,
+  }) async {
+    final sid = sessionId ?? activeSessionId.value;
+    if (sid.isEmpty || requestId.isEmpty) return;
+    final Map<String, dynamic> body;
+    if (reply is Map<String, dynamic>) {
+      body = reply;
+    } else if (reply is List) {
+      body = {
+        'answers': reply
+            .map(
+              (e) => e is List
+                  ? e.map((x) => x.toString()).toList()
+                  : [e.toString()],
+            )
+            .toList(),
+      };
+    } else {
+      body = {
+        'answers': [
+          [reply.toString()],
+        ],
+      };
+    }
+    try {
+      final response = await _client.post(
+        ApiEndpoints.questionReply(requestId),
+        data: body,
+      );
+      final code = response.statusCode ?? 0;
+      if (code == 200 || code == 201 || code == 204) {
+        noteQuestionResolved(
+          requestId,
+          sessionId: sid,
+          rejected: false,
+          answers: body['answers'],
+        );
+      }
+    } catch (e) {
+      AppLogger.e('respondQuestion failed: $e');
+    }
+  }
+
+  Future<void> rejectQuestion(String requestId, {String? sessionId}) async {
+    final sid = sessionId ?? activeSessionId.value;
+    if (sid.isEmpty || requestId.isEmpty) return;
+    try {
+      final response = await _client.post(
+        ApiEndpoints.questionReject(requestId),
+      );
+      final code = response.statusCode ?? 0;
+      if (code == 200 || code == 201 || code == 204) {
+        noteQuestionResolved(requestId, sessionId: sid, rejected: true);
+      }
+    } catch (e) {
+      AppLogger.e('rejectQuestion failed: $e');
+    }
+  }
+
+  /// Optimistic / post-HTTP local sync after QuestionCard replies via v1 API.
+  void noteQuestionResolved(
+    String requestId, {
+    required String sessionId,
+    required bool rejected,
+    dynamic answers,
+  }) {
+    if (requestId.isEmpty || sessionId.isEmpty) return;
+    _applyQuestionResolved(
+      sessionId: sessionId,
+      requestId: requestId,
+      rejected: rejected,
+      answers: answers,
+    );
+  }
+
+  // ── SSE ──
+
+  String? _resolveSseDirectory() {
+    try {
+      return _client.activeDirectory ??
+          (Get.isRegistered<ProjectController>()
+              ? Get.find<ProjectController>().activeProject.value?.worktree
+              : null);
+    } catch (e) {
+      AppLogger.e('SSE directory resolve failed: $e');
+      return null;
+    }
+  }
+
+  /// 是否已有一个指向相同服务器+目录、且连接中/已连接、非凭据失效的 SSE 客户端。
+  /// `initializeAfterConnect` 与 `_connectSse` 共用此判定：目标相同且 SSE 健康时，
+  /// 模型/会话数据正由实时事件保持同步，重复拉取与重复连接都无意义。
+  bool _hasLiveSseFor({
+    required String serverUrl,
+    required String? directory,
+  }) {
+    final sse = _sseClient;
+    return sse != null &&
+        !sse.isCredentialFailed &&
+        (sse.isConnected || sse.isConnecting) &&
+        _sseServerUrl == serverUrl &&
+        sse.queryParams['directory'] == directory;
+  }
+
+  void _connectSse() {
+    final dir = _resolveSseDirectory();
+    final serverUrl = SidecarManager.instance.baseUrl;
+    // 幂等守卫：已有一个指向相同服务器与目录、且正在连接/已连接的客户端时直接复用，
+    // 避免启动阶段 onProjectChanged 与 initializeAfterConnect 各建一条 SSE 连接
+    // （日志里 "SSE connecting" 重复出现，并多一次被立即销毁的 HTTP 请求）。
+    if (_hasLiveSseFor(serverUrl: serverUrl, directory: dir)) {
+      AppLogger.d('SSE already connecting to same target, reusing client');
+      return;
+    }
+    _sseSub?.cancel();
+    _sseClient?.dispose();
+    _sseHasConnected = false;
+    AppLogger.i('SSE connecting to ${ApiEndpoints.sseEvent}');
+    _sseServerUrl = serverUrl;
+    _sseClient = SseClient(_client, ApiEndpoints.sseEvent);
+    if (dir != null && dir.isNotEmpty) {
+      _sseClient!.queryParams['directory'] = dir;
+    }
+    _sseClient!.onStatusChange = (connected) {
+      if (connected) {
+        AppLogger.i('SSE connected');
+        // Server never replays missed events on (re)connect, so a reconnect
+        // after a drop can leave local sessions stale/truncated. Refresh them.
+        if (_sseHasConnected) {
+          _refreshAfterReconnect();
+        }
+        _sseHasConnected = true;
+      } else {
+        AppLogger.w('SSE disconnected, reconnecting…');
+        // Soft toast — avoid spam by only showing when user has a project.
+        if (Get.isRegistered<ProjectController>() &&
+            Get.find<ProjectController>().activeProject.value != null) {
+          Snack.warning(
+            LocaleKeys.mobileSseReconnecting.tr,
+            title: 'Connection',
+            duration: const Duration(seconds: 2),
+          );
+        }
+      }
+    };
+    _sseClient!.onError = (e) {
+      AppLogger.e('SSE error: $e');
+      // 凭据失效时 SseClient 已停止重连，这里给用户可操作的提示。
+      if (_sseClient?.isCredentialFailed ?? false) {
+        Snack.error(LocaleKeys.mobileSseAuthFailed.tr);
+      }
+    };
+    _sseSub = _sseClient!.stream.listen(
+      _handleEvent,
+      onError: (e) {
+        AppLogger.e('SSE stream error: $e');
+      },
+    );
+    _sseClient!.connect();
+  }
+
+  /// Refresh local state after an SSE reconnect: force-reload the messages of
+  /// every opened session (heals content missed/truncated while disconnected)
+  /// and refresh the session list without touching the user's opened tabs.
+  void _refreshAfterReconnect() {
+    AppLogger.i('SSE reconnected — refreshing opened sessions');
+    unawaited(fetchSessions(restoreOpened: false));
+    for (final id in openedSessionIds.toList()) {
+      unawaited(loadMessages(id, force: true, reconcileGenerating: true));
+    }
+  }
+
+  /// 断网重连后纠正"卡住"的生成态：离线窗口内服务端已跑完但 idle 事件丢失，
+  /// 导致 [SessionRuntimeState.isGenerating] 残留 true（输入框一直显示"停止"）。
+  ///
+  /// 只在 `isGenerating` 已为 true 时动作，且仅在证据充分（回合已收尾）时清理，
+  /// 绝不从 false 反置 true —— 避免误判"此前手动中止的会话仍在生成"。
+  /// 不置 `sessionStatus='idle'`：保留 delta 冲刷的 turnEnded 守卫（见
+  /// `_flushPendingPartDeltas`），万一回合仍在进行，后续事件仍可重新拉起。
+  void _reconcileGeneratingAfterReconnect(SessionRuntimeState state) {
+    if (!state.isGenerating.value) return;
+    if (turnAppearsFinished(
+      messages: state.messages,
+      wasAborted: state.wasAborted.value,
+    )) {
+      state.isGenerating.value = false;
+      state.generatingAgent.value = '';
+    }
+  }
+
+  /// 依据拉取到的历史判定某会话的回合是否已收尾（供断网重连兜底与单测复用）。
+  /// 规则：手动中止过 → 视为已结束；否则看最后一条 assistant 消息 ——
+  /// 以 `stepFinish` 收尾且无运行/挂起中的 tool，即为回合完成。
+  @visibleForTesting
+  static bool turnAppearsFinished({
+    required List<MessageModel> messages,
+    required bool wasAborted,
+  }) {
+    if (wasAborted) return true;
+    final idx = messages
+        .lastIndexWhere((m) => m.role == MessageRole.assistant);
+    if (idx == -1) return false;
+    final last = messages[idx];
+    final hasStepFinish =
+        last.parts.any((p) => p.type == PartType.stepFinish);
+    final hasActiveTool = last.parts.any(
+      (p) =>
+          p.type == PartType.tool &&
+          (p.toolStatus == ToolStateStatus.running ||
+              p.toolStatus == ToolStateStatus.pending),
+    );
+    return hasStepFinish && !hasActiveTool;
+  }
+
+  /// 处理隐藏临时会话（如图片转文字）的 SSE 事件：不触碰任何 UI 状态。
+  /// idle 时用一次权威的 GET 拉取最终文本并完成完成器；error 直接失败。
+  void _handleHiddenEvent(String sessionId, SseEvent event) {
+    final completer = _hiddenVisionCompleters[sessionId];
+    if (completer == null || completer.isCompleted) return;
+
+    switch (event.type) {
+      case EventTypes.sessionIdle:
+        unawaited(_resolveHiddenVisionText(sessionId));
+      case EventTypes.sessionError:
+        _finishHiddenVision(sessionId, null);
+    }
+  }
+
+  /// idle 事件后拉取临时会话的最终 assistant 文本（可能恰好落后于持久化，
+  /// 故短暂重试几次），然后完成完成器。
+  Future<void> _resolveHiddenVisionText(String sessionId) async {
+    String? text;
+    for (var i = 0; i < 3; i++) {
+      text = await _fetchVisionReplyText(sessionId);
+      if (text != null && text.isNotEmpty) break;
+      await Future<void>.delayed(_visionPollInterval);
+    }
+    _finishHiddenVision(sessionId, text);
+  }
+
+  /// 单次 GET 临时会话消息，取最后一个非空 assistant 文本。
+  Future<String?> _fetchVisionReplyText(String tempId) async {
+    try {
+      final resp = await _client.get(ApiEndpoints.sessionMessages(tempId));
+      final List rawMessages;
+      if (resp.statusCode == 200) {
+        final data = resp.data;
+        if (data is List) {
+          rawMessages = data;
+        } else if (data is Map && data['data'] is List) {
+          rawMessages = data['data'] as List;
+        } else {
+          rawMessages = [];
+        }
+        final msgs = rawMessages
+            .whereType<Map>()
+            .map((m) => MessageModel.fromJson(Map<String, dynamic>.from(m)))
+            .where((m) => m.isChatMessage)
+            .toList();
+        final assistant = msgs
+            .where((m) => m.role == MessageRole.assistant)
+            .map((m) => m.content)
+            .where((t) => t.trim().isNotEmpty)
+            .toList();
+        if (assistant.isNotEmpty) return assistant.last.trim();
+      }
+    } catch (e) {
+      AppLogger.e('_fetchVisionReplyText error: $e');
+    }
+    return null;
+  }
+
+  void _finishHiddenVision(String sessionId, String? text) {
+    final completer = _hiddenVisionCompleters.remove(sessionId);
+    if (completer == null || completer.isCompleted) return;
+    final trimmed = text?.trim();
+    completer.complete(trimmed != null && trimmed.isNotEmpty ? trimmed : null);
+  }
+
+  void _handleEvent(SseEvent event) {
+    final sid = event.sessionID;
+    if (sid.isNotEmpty && _hiddenSessionIds.contains(sid)) {
+      _handleHiddenEvent(sid, event);
+      return;
+    }
+    switch (event.type) {
+      case EventTypes.sessionCreated:
+        _onSessionCreated(event);
+      case EventTypes.sessionUpdated:
+        _onSessionUpdated(event);
+      case EventTypes.sessionDeleted:
+        _onSessionDeleted(event);
+      case EventTypes.sessionStatus:
+        _onSessionStatus(event);
+      case EventTypes.sessionIdle:
+        _flushPendingPartDeltas();
+        _onSessionIdle(event);
+      case EventTypes.sessionError:
+        _flushPendingPartDeltas();
+        _onSessionError(event);
+      case EventTypes.messagePartDelta:
+        _onPartDelta(event);
+      case EventTypes.messagePartUpdated:
+        _flushPendingPartDeltas();
+        _onPartUpdated(event);
+      case EventTypes.messageUpdated:
+        _flushPendingPartDeltas();
+        _onMessageUpdated(event);
+      case EventTypes.messageRemoved:
+        _flushPendingPartDeltas();
+        _onMessageRemoved(event);
+      case EventTypes.messagePartRemoved:
+        _flushPendingPartDeltas();
+        _onPartRemoved(event);
+      case EventTypes.sessionDiff:
+        _onSessionDiff(event);
+        break;
+      case EventTypes.sessionCompacted:
+        _onSessionCompacted(event);
+      case EventTypes.sessionNextCompactionStarted:
+        _onSessionNextCompactionStarted(event);
+      case EventTypes.sessionNextCompactionEnded:
+        _onSessionNextCompactionEnded(event);
+      case EventTypes.permissionAsked:
+        _onPermissionAsked(event);
+      case EventTypes.permissionReplied:
+        _onPermissionReplied(event);
+      case EventTypes.questionAsked:
+        _onQuestionAsked(event);
+      case EventTypes.questionReplied:
+        _onQuestionResolved(event, rejected: false);
+      case EventTypes.questionRejected:
+        _onQuestionResolved(event, rejected: true);
+      case EventTypes.todoUpdated:
+        _onTodoUpdated(event);
+      case EventTypes.fileEdited:
+        _onFileChanged(event);
+      case EventTypes.fileWatcherUpdated:
+        _onFileChanged(event);
+      case EventTypes.sessionMoved:
+      case EventTypes.sessionAgentSwitched:
+      case EventTypes.sessionModelSwitched:
+        break;
+    }
+  }
+
+  /// Consumes `file.edited` / `file.watcher.updated` SSE events and notifies
+  /// the file-tree cache + opened editors so they stay in sync with the agent's
+  /// changes. The SSE stream is scoped to the active directory, so any file
+  /// event reaching here belongs to the current worktree; listeners debounce
+  /// the actual refresh themselves.
+  void _onFileChanged(SseEvent event) {
+    final raw = event.properties['file']?.toString() ?? '';
+    if (raw.isEmpty) return;
+    if (Get.isRegistered<TabletToolController>()) {
+      final ctrl = Get.find<TabletToolController>();
+      ctrl.lastChangedFile.value = raw;
+      // 失效对应已打开页签的缓存，避免惰性重建时展示过期内容。SSE 事件作用域
+      // 是当前活动目录，故只失效匹配当前 worktree 的页签（同相对路径的其它
+      // worktree 页签内容未变，不应被波及）。
+      final currentWorktree = _client.activeDirectory;
+      for (final f in ctrl.openedFiles.toList()) {
+        if (diffPathsEqual(f.path, raw) &&
+            (f.worktree == null || f.worktree == currentWorktree)) {
+          ctrl.invalidateFileContent(f.path, worktree: f.worktree);
+        }
+      }
+      ctrl.fileChangeTick.value++;
+    }
+  }
+
+  void _onSessionCreated(SseEvent event) {
+    final info = event.info;
+    if (info.isNotEmpty) {
+      final newSession = SessionModel.fromJson(info);
+      if (!_isRootSession(newSession)) {
+        unawaited(_registerParentSession(newSession.id, newSession.parentID!));
+      }
+      if (_isRootSession(newSession)) {
+        final index = sessions.indexWhere((s) => s.id == newSession.id);
+        if (index != -1) {
+          sessions[index] = newSession;
+        } else {
+          sessions.insert(0, newSession);
+        }
+        unawaited(_refreshSubtaskOwners());
+      } else {
+        sessions.removeWhere((s) => s.id == newSession.id);
+        final parentState = getOrCreateSessionState(newSession.parentID!);
+        final idx = parentState.childSessions.indexWhere(
+          (s) => s.id == newSession.id,
+        );
+        if (idx != -1) {
+          parentState.childSessions[idx] = newSession;
+        } else {
+          parentState.childSessions.add(newSession);
+        }
+      }
+    }
+  }
+
+  void _onSessionUpdated(SseEvent event) {
+    final info = event.info;
+    if (info.isNotEmpty) {
+      final updated = SessionModel.fromJson(info);
+      if (!_isRootSession(updated)) {
+        unawaited(_registerParentSession(updated.id, updated.parentID!));
+      }
+      if (_isRootSession(updated)) {
+        final index = sessions.indexWhere((s) => s.id == updated.id);
+        if (index != -1) {
+          sessions[index] = updated;
+        }
+        unawaited(_refreshSubtaskOwners());
+      } else {
+        sessions.removeWhere((s) => s.id == updated.id);
+        final parentState = getOrCreateSessionState(updated.parentID!);
+        final idx = parentState.childSessions.indexWhere(
+          (s) => s.id == updated.id,
+        );
+        if (idx != -1) {
+          parentState.childSessions[idx] = updated;
+        } else {
+          parentState.childSessions.add(updated);
+        }
+      }
+    }
+  }
+
+  void _onSessionDeleted(SseEvent event) {
+    final sid = event.sessionID;
+    final parent = _parentSessionIds[sid];
+    if (parent != null) {
+      sessionRuntimeStates[parent]?.childSessions.removeWhere(
+        (s) => s.id == sid,
+      );
+    }
+    sessions.removeWhere((s) => s.id == sid);
+    sessionRuntimeStates.remove(sid);
+    _feedbackGeneratingSessions.remove(sid);
+    openedSessionIds.remove(sid);
+    clearSubtaskTracking(sid);
+    // The active session was deleted on the server: re-point to another open
+    // session, mirroring the fallback in deleteSession (which the SSE path
+    // previously lacked). 没有已打开页签时置空，避免标题/内容错位。
+    if (activeSessionId.value == sid) {
+      activeSessionId.value = openedSessionIds.isNotEmpty
+          ? openedSessionIds.last
+          : '';
+    }
+  }
+
+  void _onSessionStatus(SseEvent event) {
+    final sid = event.sessionID;
+    if (sid.isEmpty) return;
+    final state = getOrCreateSessionState(sid);
+    final st = event.statusType;
+    final isIdle = st == 'idle' || st.isEmpty;
+    final wasRetrying = state.isRetrying.value;
+    final retryError = _formatRetryStatusError(event.status);
+
+    if (state.wasAborted.value && !isIdle) {
+      return;
+    }
+
+    state.isGenerating.value = !isIdle;
+    state.sessionStatus.value = st.isNotEmpty
+        ? st
+        : (isIdle ? 'idle' : 'running');
+
+    if (!isIdle && !state.wasAborted.value) {
+      _markFeedbackGenerating(sid);
+    }
+
+    if (st == 'retry') {
+      state.isRetrying.value = true;
+    } else if (wasRetrying) {
+      state.isRetrying.value = false;
+      state.lastError.value = null;
+    }
+
+    if (retryError != null) state.lastError.value = retryError;
+
+    if (isIdle) {
+      state.generatingAgent.value = '';
+      state.isCompacting.value = false;
+      state.manualCompactionPending = false;
+      state.isRetrying.value = false;
+      // Do NOT clear wasAborted here: the abort flag must survive the trailing
+      // status/idle events so _onSessionIdle can still detect a manual abort
+      // and suppress the "start execution" button + completion feedback. It is
+      // only reset in sendPrompt when the next turn starts.
+    }
+  }
+
+  void _onSessionIdle(SseEvent event) {
+    final sid = event.sessionID.isNotEmpty
+        ? event.sessionID
+        : activeSessionId.value;
+    if (sid.isEmpty) return;
+    final state = getOrCreateSessionState(sid);
+    final wasRetrying = state.isRetrying.value;
+    final wasGenerating =
+        _feedbackGeneratingSessions.remove(sid) || state.isGenerating.value;
+    final agentBeforeClear = state.generatingAgent.value.isNotEmpty
+        ? state.generatingAgent.value
+        : state.selectedAgent.value;
+    final isManualAborted = state.wasAborted.value;
+
+    state.isGenerating.value = false;
+    state.isCompacting.value = false;
+    state.manualCompactionPending = false;
+    state.isRetrying.value = false;
+    state.generatingAgent.value = '';
+    state.sessionStatus.value = 'idle';
+    if (wasRetrying) state.lastError.value = null;
+
+    if (agentBeforeClear == 'plan' && !isManualAborted) {
+      state.showStartExecutionButton.value = true;
+    }
+
+    // Completion feedback: only for real generations, skip manual aborts,
+    // queued follow-ups and subtask (child) sessions.
+    if (wasGenerating &&
+        !isManualAborted &&
+        !state.hasPendingPrompt &&
+        !_parentSessionIds.containsKey(sid)) {
+      _notifyFeedback(
+        type: FeedbackType.generationCompleted,
+        title: LocaleKeys.feedbackCompleted.tr,
+        message: LocaleKeys.feedbackCompletedMsg.trParams({
+          'session': getSessionName(sid),
+        }),
+        sessionId: sid,
+      );
+    }
+
+    _updateKeywordDetectionAlert(sid);
+    _checkAndSendPendingPrompt(sid);
+  }
+
+  void _updateKeywordDetectionAlert(String sessionId) {
+    if (sessionId.isEmpty) return;
+    final state = sessionRuntimeStates[sessionId];
+    if (state == null) return;
+    final keywords = Global.keywordsRx
+        .map((k) => k.trim())
+        .where((k) => k.isNotEmpty)
+        .toList();
+    if (keywords.isEmpty) {
+      state.keywordDetectionAlert.value = false;
+      return;
+    }
+    final lastUserIndex = state.messages.lastIndexWhere(
+      (m) => m.role == MessageRole.user,
+    );
+    if (lastUserIndex == -1) {
+      state.keywordDetectionAlert.value = false;
+      return;
+    }
+    final hasKeyword = state.messages.skip(lastUserIndex + 1).any((m) {
+      if (m.role != MessageRole.assistant) return false;
+      return m.parts.any((p) {
+        if (p.type != PartType.text) return false;
+        return keywords.any(p.text.contains);
+      });
+    });
+    state.keywordDetectionAlert.value = hasKeyword;
+  }
+
+  void _onSessionError(SseEvent event) {
+    final errorSessionId = event.sessionID;
+    final isAbortError = _isAbortError(event.error);
+    final isContextOverflowWithAutoCompaction =
+        _isContextOverflowError(event.error) && _isAutoCompactionEnabled();
+    var suppressedAutoCompactionError = false;
+
+    if (errorSessionId.isNotEmpty) {
+      final state = getOrCreateSessionState(errorSessionId);
+      final shouldWaitForAutoCompaction =
+          isContextOverflowWithAutoCompaction &&
+          !state.isCompacting.value &&
+          !state.wasAborted.value;
+      if (isAbortError && _shouldSuppressAbortError(state)) {
+        state.suppressAbortErrorUntilMs = 0;
+      } else if (shouldWaitForAutoCompaction) {
+        suppressedAutoCompactionError = true;
+        state.suppressAbortErrorUntilMs = 0;
+        state.isGenerating.value = true;
+        _markFeedbackGenerating(errorSessionId);
+        state.isCompacting.value = true;
+        state.isRetrying.value = false;
+        state.lastError.value = null;
+      } else {
+        state.suppressAbortErrorUntilMs = 0;
+        state.isGenerating.value = false;
+        state.isCompacting.value = false;
+        state.manualCompactionPending = false;
+        state.isRetrying.value = false;
+        state.generatingAgent.value = '';
+        state.sessionStatus.value = 'error';
+        state.lastError.value = ErrorFormatter.format(event.error);
+      }
+    } else {
+      final activeState = getOrCreateSessionState(activeSessionId.value);
+      final shouldWaitForAutoCompaction =
+          isContextOverflowWithAutoCompaction &&
+          !activeState.isCompacting.value &&
+          !activeState.wasAborted.value;
+      if (isAbortError && _shouldSuppressAbortError(activeState)) {
+        activeState.suppressAbortErrorUntilMs = 0;
+      } else if (shouldWaitForAutoCompaction) {
+        suppressedAutoCompactionError = true;
+        activeState.suppressAbortErrorUntilMs = 0;
+        activeState.isGenerating.value = true;
+        _markFeedbackGenerating(activeSessionId.value);
+        activeState.isCompacting.value = true;
+        activeState.isRetrying.value = false;
+        activeState.lastError.value = null;
+      } else {
+        activeState.suppressAbortErrorUntilMs = 0;
+        activeState.isGenerating.value = false;
+        activeState.isCompacting.value = false;
+        activeState.manualCompactionPending = false;
+        activeState.isRetrying.value = false;
+        activeState.generatingAgent.value = '';
+        activeState.sessionStatus.value = 'error';
+        activeState.lastError.value = ErrorFormatter.format(event.error);
+      }
+    }
+
+    final effectiveErrorId = errorSessionId.isNotEmpty
+        ? errorSessionId
+        : activeSessionId.value;
+    // Error feedback: skip abort errors (manual abort) and auto-compaction.
+    if (!isAbortError && !suppressedAutoCompactionError) {
+      _feedbackGeneratingSessions.remove(effectiveErrorId);
+      final errState = sessionRuntimeStates[effectiveErrorId];
+      if (errState != null && !errState.wasAborted.value) {
+        _notifyFeedback(
+          type: FeedbackType.generationError,
+          title: LocaleKeys.feedbackError.tr,
+          message: LocaleKeys.feedbackErrorMsg.trParams({
+            'session': getSessionName(effectiveErrorId),
+            'error': ErrorFormatter.format(event.error),
+          }),
+          sessionId: effectiveErrorId,
+        );
+      }
+    }
+    if (!suppressedAutoCompactionError) {
+      _checkAndSendPendingPrompt(effectiveErrorId);
+    }
+  }
+
+  bool _isAbortError(Map<String, dynamic> error) {
+    final name = error['name']?.toString() ?? '';
+    return name == 'MessageAbortedError' || name == 'AbortedError';
+  }
+
+  bool _isContextOverflowError(Map<String, dynamic> error) {
+    return error['name']?.toString() == 'ContextOverflowError';
+  }
+
+  bool _isAutoCompactionEnabled() {
+    try {
+      final compaction = Get.find<SettingsController>().compaction;
+      return compaction?['auto'] as bool? ?? true;
+    } catch (e) {
+      AppLogger.e('SessionController: read compaction setting failed $e');
+      return true;
+    }
+  }
+
+  bool _shouldSuppressAbortError(SessionRuntimeState state) {
+    return state.suppressAbortErrorUntilMs >
+        DateTime.now().millisecondsSinceEpoch;
+  }
+
+  String? _formatRetryStatusError(Map<String, dynamic> status) {
+    if (status['type']?.toString() != 'retry') return null;
+    final statusMessage = status['message']?.toString().trim() ?? '';
+    final action = status['action'];
+    if (action is! Map) {
+      if (statusMessage.isNotEmpty) return statusMessage;
+      return LocaleKeys.retryLimited.tr;
+    }
+
+    final title = action['title']?.toString().trim() ?? '';
+    final message = action['message']?.toString().trim() ?? '';
+    final reason = action['reason']?.toString().trim() ?? '';
+
+    if (title.isNotEmpty && message.isNotEmpty) {
+      return '$title\n$message';
+    }
+    if (message.isNotEmpty) return message;
+    if (title.isNotEmpty) return title;
+    if (reason.isNotEmpty) {
+      return LocaleKeys.retryLimitedReason.trParams({'reason': reason});
+    }
+    if (statusMessage.isNotEmpty) return statusMessage;
+    return LocaleKeys.retryLimited.tr;
+  }
+
+  void _onPartDelta(SseEvent event) {
+    final msgId = event.messageID;
+    final partId = event.partID;
+    final delta = event.delta;
+    final field = event.properties['field']?.toString() ?? 'text';
+    if (msgId.isEmpty || partId.isEmpty || delta.isEmpty) return;
+
+    final sessionId = event.sessionID.isNotEmpty
+        ? event.sessionID
+        : (event.part['sessionID']?.toString() ?? '');
+    if (sessionId.isEmpty) return;
+
+    final deltaState = sessionRuntimeStates[sessionId];
+    if (deltaState != null && deltaState.wasAborted.value) return;
+
+    final key = '$sessionId\u0000$msgId\u0000$partId\u0000$field';
+    final pending = _pendingPartDeltas[key];
+    if (pending == null) {
+      _pendingPartDeltas[key] = _PendingPartDelta(
+        sessionId: sessionId,
+        messageId: msgId,
+        partId: partId,
+        field: field,
+        delta: delta,
+      );
+    } else {
+      pending.delta += delta;
+    }
+
+    _partDeltaFlushTimer ??= Timer(
+      _partDeltaFlushInterval,
+      _flushPendingPartDeltas,
+    );
+  }
+
+  void _flushPendingPartDeltas() {
+    if (_pendingPartDeltas.isEmpty) {
+      _partDeltaFlushTimer?.cancel();
+      _partDeltaFlushTimer = null;
+      return;
+    }
+
+    _partDeltaFlushTimer?.cancel();
+    _partDeltaFlushTimer = null;
+
+    final pending = _pendingPartDeltas.values.toList(growable: false);
+    _pendingPartDeltas.clear();
+
+    final bySession = <String, List<_PendingPartDelta>>{};
+    for (final item in pending) {
+      bySession.putIfAbsent(item.sessionId, () => []).add(item);
+    }
+
+    for (final entry in bySession.entries) {
+      final state = getOrCreateSessionState(entry.key);
+      var changed = false;
+      for (final item in entry.value) {
+        changed = _applyPartDelta(state, item) || changed;
+      }
+      // A late delta flush must not re-arm isGenerating once the server has
+      // told us the turn ended (idle/error), or the UI would stick spinning.
+      final turnEnded = state.sessionStatus.value == 'idle' ||
+          state.sessionStatus.value == 'error';
+      if (changed &&
+          !state.isGenerating.value &&
+          !state.wasAborted.value &&
+          !turnEnded) {
+        state.isGenerating.value = true;
+        _markFeedbackGenerating(entry.key);
+      }
+      if (changed && state.isRetrying.value) {
+        state.isRetrying.value = false;
+        state.lastError.value = null;
+      }
+    }
+  }
+
+  void _discardPendingPartDeltas({Set<String>? sessionIds}) {
+    if (sessionIds == null) {
+      _partDeltaFlushTimer?.cancel();
+      _partDeltaFlushTimer = null;
+      _pendingPartDeltas.clear();
+      return;
+    }
+    if (sessionIds.isEmpty) return;
+    _pendingPartDeltas.removeWhere((key, v) => sessionIds.contains(v.sessionId));
+    if (_pendingPartDeltas.isEmpty) {
+      _partDeltaFlushTimer?.cancel();
+      _partDeltaFlushTimer = null;
+    }
+  }
+
+  bool _applyPartDelta(SessionRuntimeState state, _PendingPartDelta item) {
+    final msgIdx = state.messages.indexWhere((m) => m.id == item.messageId);
+    if (msgIdx == -1) return false;
+
+    final message = state.messages[msgIdx];
+    final existingParts = [...message.parts];
+    final partIdx = existingParts.indexWhere((p) => p.id == item.partId);
+    if (partIdx == -1) return false;
+
+    final existing = existingParts[partIdx];
+    final raw = Map<String, dynamic>.from(existing.raw);
+    raw[item.field] = '${raw[item.field] ?? ''}${item.delta}';
+    existingParts[partIdx] = Part(
+      id: existing.id,
+      sessionID: existing.sessionID,
+      messageID: existing.messageID,
+      type: existing.type,
+      raw: raw,
+    );
+
+    state.messages[msgIdx] = MessageModel(
+      id: message.id,
+      sessionID: message.sessionID,
+      role: message.role,
+      parts: existingParts,
+      raw: message.raw,
+    );
+    return true;
+  }
+
+  void _onPartRemoved(SseEvent event) {
+    final msgId = event.messageID;
+    final partId = event.partID;
+    if (msgId.isEmpty || partId.isEmpty) return;
+    final sessionId = event.sessionID;
+    if (sessionId.isEmpty) return;
+
+    final state = sessionRuntimeStates[sessionId];
+    if (state == null) return;
+    final idx = state.messages.indexWhere((m) => m.id == msgId);
+    if (idx == -1) return;
+    final newParts = state.messages[idx].parts
+        .where((p) => p.id != partId)
+        .toList();
+    state.messages[idx] = MessageModel(
+      id: state.messages[idx].id,
+      sessionID: state.messages[idx].sessionID,
+      role: state.messages[idx].role,
+      parts: newParts,
+      raw: state.messages[idx].raw,
+    );
+  }
+
+  void _onSessionCompacted(SseEvent event) {
+    final sid = event.sessionID.isNotEmpty
+        ? event.sessionID
+        : activeSessionId.value;
+    if (sid.isEmpty) return;
+    final state = getOrCreateSessionState(sid);
+    state.isCompacting.value = false;
+    state.lastError.value = null;
+    if (state.manualCompactionPending) {
+      state.manualCompactionPending = false;
+      Snack.success(
+        LocaleKeys.chatManualCompactCompleted.tr,
+        title: LocaleKeys.chatContextCompaction.tr,
+      );
+    }
+    if (sid == activeSessionId.value) {
+      loadMessages(sid, force: true);
+    }
+  }
+
+  void _onSessionNextCompactionStarted(SseEvent event) {
+    final sid = event.sessionID.isNotEmpty
+        ? event.sessionID
+        : activeSessionId.value;
+    if (sid.isEmpty) return;
+    final state = getOrCreateSessionState(sid);
+    state.isCompacting.value = true;
+    state.lastError.value = null;
+  }
+
+  void _onSessionNextCompactionEnded(SseEvent event) {
+    final sid = event.sessionID.isNotEmpty
+        ? event.sessionID
+        : activeSessionId.value;
+    if (sid.isEmpty) return;
+    final state = getOrCreateSessionState(sid);
+    state.isCompacting.value = false;
+    state.lastError.value = null;
+    if (state.manualCompactionPending) {
+      state.manualCompactionPending = false;
+      Snack.success(
+        LocaleKeys.chatManualCompactCompleted.tr,
+        title: LocaleKeys.chatContextCompaction.tr,
+      );
+    }
+    if (sid == activeSessionId.value) {
+      loadMessages(sid, force: true);
+    }
+  }
+
+  void _onPartUpdated(SseEvent event) {
+    // Desktop: message.part.updated carries the part under `properties.part`.
+    final partJson = event.part.isNotEmpty
+        ? event.part
+        : (event.info.isNotEmpty ? event.info : const <String, dynamic>{});
+    if (partJson.isEmpty) return;
+
+    try {
+      final part = Part.fromJson(partJson);
+      final sid = event.sessionID.isNotEmpty ? event.sessionID : part.sessionID;
+      if (sid.isEmpty) return;
+      final state = getOrCreateSessionState(sid);
+
+      if (part.type == PartType.text && state.isRetrying.value) {
+        state.isRetrying.value = false;
+        state.lastError.value = null;
+      }
+
+      _upsertPartInState(state, part);
+
+      if (part.type == PartType.tool && part.toolName == 'question') {
+        _rememberQuestionToolPart(part, sid);
+      }
+
+      unawaited(_registerSubtaskOwner(sid, part));
+
+      if (part.type == PartType.tool &&
+          part.toolStatus == ToolStateStatus.completed) {
+        unawaited(_processToolPart(sid, part));
+      }
+    } catch (e) {
+      AppLogger.e('_onPartUpdated failed: $e');
+    }
+  }
+
+  /// Insert or replace a part on its message (desktop `_upsertPartInState`).
+  /// New tool/reasoning cards arrive this way during streaming.
+  void _upsertPartInState(SessionRuntimeState state, Part part) {
+    final msgId = part.messageID;
+    final partId = part.id;
+    if (msgId.isEmpty || partId.isEmpty) return;
+
+    var idx = state.messages.indexWhere((m) => m.id == msgId);
+    if (idx == -1) {
+      if (part.sessionID.isNotEmpty &&
+          state.sessionId.isNotEmpty &&
+          part.sessionID != state.sessionId) {
+        return;
+      }
+      state.messages.add(
+        MessageModel(
+          id: msgId,
+          sessionID: part.sessionID.isNotEmpty
+              ? part.sessionID
+              : state.sessionId,
+          role: MessageRole.assistant,
+          parts: [part],
+          raw: const {'role': 'assistant'},
+        ),
+      );
+      return;
+    }
+
+    final existingParts = [...state.messages[idx].parts];
+    final pIdx = existingParts.indexWhere((p) => p.id == partId);
+    if (pIdx == -1) {
+      existingParts.add(part);
+    } else {
+      existingParts[pIdx] = part;
+    }
+
+    state.messages[idx] = MessageModel(
+      id: state.messages[idx].id,
+      sessionID: state.messages[idx].sessionID,
+      role: state.messages[idx].role,
+      parts: existingParts,
+      raw: state.messages[idx].raw,
+    );
+  }
+
+  void _onMessageUpdated(SseEvent event) {
+    final sid = event.sessionID;
+    if (sid.isEmpty) return;
+    final state = sessionRuntimeStates[sid];
+    if (state == null) return;
+    final info = event.info;
+    if (info.isEmpty) return;
+    try {
+      final msg = MessageModel.fromJson(info);
+      final idx = state.messages.indexWhere((m) => m.id == msg.id);
+      if (idx != -1) {
+        final existing = state.messages[idx];
+        // summarize() may update info.summary without resending parts.
+        if (msg.parts.isEmpty && existing.parts.isNotEmpty) {
+          final raw = Map<String, dynamic>.from(existing.raw);
+          if (msg.raw.containsKey('summary')) {
+            raw['summary'] = msg.raw['summary'];
+          }
+          if (msg.raw['info'] is Map) {
+            final infoMap = Map<String, dynamic>.from(
+              (raw['info'] is Map)
+                  ? Map<String, dynamic>.from(raw['info'] as Map)
+                  : const <String, dynamic>{},
+            );
+            final incomingInfo = Map<String, dynamic>.from(
+              msg.raw['info'] as Map,
+            );
+            if (incomingInfo.containsKey('summary')) {
+              infoMap['summary'] = incomingInfo['summary'];
+            }
+            raw['info'] = infoMap;
+          }
+          state.messages[idx] = MessageModel(
+            id: existing.id,
+            sessionID: existing.sessionID,
+            role: existing.role,
+            parts: existing.parts,
+            raw: raw,
+          );
+        } else {
+          state.messages[idx] = msg;
+        }
+      } else {
+        state.messages.add(msg);
+      }
+    } catch (e) {
+      AppLogger.e('_onMessageUpdated failed: $e');
+    }
+  }
+
+  void _onMessageRemoved(SseEvent event) {
+    final sid = event.sessionID;
+    if (sid.isEmpty) return;
+    final state = sessionRuntimeStates[sid];
+    if (state == null) return;
+    final mid = event.properties['messageID']?.toString() ?? '';
+    if (mid.isNotEmpty) {
+      state.messages.removeWhere((m) => m.id == mid);
+    }
+  }
+
+  void _onPermissionAsked(SseEvent event) {
+    final props = event.properties;
+    if (props['id'] == null) return;
+    final pending = PendingPermission.fromEvent(props);
+    final sid = pending.sessionID.isNotEmpty
+        ? pending.sessionID
+        : event.sessionID;
+    if (sid.isEmpty) return;
+    getOrCreateSessionState(sid).pendingPermission.value = pending;
+
+    _notifyFeedback(
+      type: FeedbackType.permissionRequested,
+      title: LocaleKeys.feedbackPermission.tr,
+      message: LocaleKeys.feedbackPermissionMsg.trParams({
+        'session': getSessionName(sid),
+      }),
+      sessionId: sid,
+    );
+  }
+
+  void _onQuestionAsked(SseEvent event) {
+    final requestId = event.properties['id']?.toString() ?? '';
+    final sessionId = event.sessionID;
+    if (requestId.isEmpty || sessionId.isEmpty) return;
+
+    final tool = event.properties['tool'];
+    if (tool is Map) {
+      final messageId = tool['messageID']?.toString() ?? '';
+      final callId = tool['callID']?.toString() ?? '';
+      if (messageId.isNotEmpty || callId.isNotEmpty) {
+        _questionRequests[requestId] = QuestionRequestRef(
+          sessionId: sessionId,
+          messageId: messageId,
+          callId: callId,
+        );
+      }
+    }
+
+    _notifyFeedback(
+      type: FeedbackType.questionRequested,
+      title: LocaleKeys.feedbackQuestion.tr,
+      message: LocaleKeys.feedbackQuestionMsg.trParams({
+        'session': getSessionName(sessionId),
+      }),
+      sessionId: sessionId,
+    );
+  }
+
+  void _notifyFeedback({
+    required FeedbackType type,
+    required String title,
+    required String message,
+    required String sessionId,
+  }) {
+    if (Get.isRegistered<AppFeedbackService>()) {
+      unawaited(
+        AppFeedbackService.to.notify(
+          type: type,
+          title: title,
+          message: message,
+          sessionId: sessionId,
+        ),
+      );
+    }
+  }
+
+  void _rememberQuestionToolPart(Part part, String fallbackSessionId) {
+    final sessionId = part.sessionID.isNotEmpty
+        ? part.sessionID
+        : fallbackSessionId;
+    if (sessionId.isEmpty) return;
+    MapEntry<String, QuestionRequestRef>? existing;
+    for (final entry in _questionRequests.entries) {
+      final ref = entry.value;
+      if (ref.sessionId != sessionId) continue;
+      if (ref.messageId.isNotEmpty && ref.messageId != part.messageID) {
+        continue;
+      }
+      if (ref.callId.isNotEmpty && ref.callId == part.callID) {
+        existing = entry;
+        break;
+      }
+    }
+    if (existing == null) return;
+    _questionRequests[existing.key] = existing.value.copyWith(partId: part.id);
+  }
+
+  void _onQuestionResolved(SseEvent event, {required bool rejected}) {
+    final requestId =
+        event.properties['requestID']?.toString() ??
+        event.properties['id']?.toString() ??
+        '';
+    if (requestId.isEmpty) return;
+    final ref = _questionRequests[requestId];
+    final sessionId = event.sessionID.isNotEmpty
+        ? event.sessionID
+        : (ref?.sessionId ?? '');
+    if (sessionId.isEmpty) return;
+    _applyQuestionResolved(
+      sessionId: sessionId,
+      requestId: requestId,
+      rejected: rejected,
+      answers: event.properties['answers'],
+    );
+  }
+
+  /// Update the matching question tool part after reply/reject (SSE or local).
+  void _applyQuestionResolved({
+    required String sessionId,
+    required String requestId,
+    required bool rejected,
+    dynamic answers,
+  }) {
+    final ref = _questionRequests.remove(requestId);
+    final state = sessionRuntimeStates[sessionId];
+    if (state == null) return;
+
+    for (var mi = 0; mi < state.messages.length; mi++) {
+      final msg = state.messages[mi];
+      final parts = [...msg.parts];
+      final partIndex = parts.indexWhere((part) {
+        if (part.type != PartType.tool || part.toolName != 'question') {
+          return false;
+        }
+        if (ref?.partId?.isNotEmpty == true && part.id == ref!.partId) {
+          return true;
+        }
+        if (ref?.callId.isNotEmpty == true && part.callID == ref!.callId) {
+          return true;
+        }
+        // Fallback: only one pending question in this session.
+        return part.toolStatus == ToolStateStatus.running ||
+            part.toolStatus == ToolStateStatus.pending;
+      });
+      if (partIndex == -1) continue;
+
+      final part = parts[partIndex];
+      if (part.toolStatus != ToolStateStatus.running &&
+          part.toolStatus != ToolStateStatus.pending) {
+        return;
+      }
+      parts[partIndex] = _questionPartWithStatus(
+        part,
+        rejected ? ToolStateStatus.error : ToolStateStatus.completed,
+        output: rejected
+            ? null
+            : <String, dynamic>{'answers': answers ?? const []},
+        error: rejected ? 'Question rejected' : null,
+      );
+      state.messages[mi] = MessageModel(
+        id: msg.id,
+        sessionID: msg.sessionID,
+        role: msg.role,
+        parts: parts,
+        raw: msg.raw,
+      );
+      return;
+    }
+  }
+
+  Part _questionPartWithStatus(
+    Part part,
+    ToolStateStatus status, {
+    dynamic output,
+    String? error,
+  }) {
+    final raw = Map<String, dynamic>.from(part.raw);
+    final toolState = Map<String, dynamic>.from(
+      (part.raw['state'] as Map?) ?? const {},
+    );
+    toolState['status'] = switch (status) {
+      ToolStateStatus.pending => 'pending',
+      ToolStateStatus.running => 'running',
+      ToolStateStatus.completed => 'completed',
+      ToolStateStatus.error => 'error',
+    };
+    if (output != null) toolState['output'] = output;
+    if (error != null) toolState['error'] = error;
+    raw['state'] = toolState;
+    return Part(
+      id: part.id,
+      sessionID: part.sessionID,
+      messageID: part.messageID,
+      type: part.type,
+      raw: raw,
+    );
+  }
+
+  /// After batch message load, mark leftover pending questions as skipped.
+  void _markStaleQuestionsSkipped(SessionRuntimeState state) {
+    for (int mi = 0; mi < state.messages.length; mi++) {
+      final msg = state.messages[mi];
+      var changed = false;
+      final newParts = <Part>[];
+      for (final part in msg.parts) {
+        if (part.type == PartType.tool &&
+            part.toolName == 'question' &&
+            (part.toolStatus == ToolStateStatus.running ||
+                part.toolStatus == ToolStateStatus.pending)) {
+          final modifiedRaw = Map<String, dynamic>.from(part.raw);
+          final modifiedState = Map<String, dynamic>.from(
+            (part.raw['state'] as Map?) ?? const {},
+          );
+          modifiedState['status'] = 'completed';
+          modifiedState['output'] = <String, dynamic>{'skipped': true};
+          modifiedRaw['state'] = modifiedState;
+          newParts.add(
+            Part(
+              id: part.id,
+              sessionID: part.sessionID,
+              messageID: part.messageID,
+              type: part.type,
+              raw: modifiedRaw,
+            ),
+          );
+          changed = true;
+        } else {
+          newParts.add(part);
+        }
+      }
+      if (changed) {
+        state.messages[mi] = MessageModel(
+          id: msg.id,
+          sessionID: msg.sessionID,
+          role: msg.role,
+          parts: newParts,
+          raw: msg.raw,
+        );
+      }
+    }
+  }
+
+  void _onPermissionReplied(SseEvent event) {
+    final sid = event.sessionID;
+    if (sid.isEmpty) return;
+    final requestId =
+        event.properties['id']?.toString() ??
+        event.properties['requestID']?.toString() ??
+        '';
+    final state = getOrCreateSessionState(sid);
+    final pending = state.pendingPermission.value;
+    if (pending == null) return;
+    if (requestId.isEmpty || pending.id == requestId) {
+      state.pendingPermission.value = null;
+    }
+  }
+
+  void _onTodoUpdated(SseEvent event) {
+    final sid = event.sessionID;
+    if (sid.isEmpty) return;
+    final parsed = <Map<String, dynamic>>[];
+    for (final item in event.todos) {
+      if (item is Map) {
+        parsed.add(Map<String, dynamic>.from(item));
+      }
+    }
+    final state = getOrCreateSessionState(sid);
+    state.hasFetchedTodos = true;
+    state.todos.assignAll(parsed);
+  }
+
+  void _onSessionDiff(SseEvent event) {
+    final sid = event.sessionID;
+    if (sid.isEmpty) return;
+    final rawList = event.diffs;
+    if (rawList.isEmpty) return;
+    final list = rawList
+        .whereType<Map>()
+        .map((e) => SnapshotFileDiff.fromJson(Map<String, dynamic>.from(e)))
+        .where((d) => d.file.isNotEmpty)
+        .toList();
+    final state = getOrCreateSessionState(sid);
+    state.sessionDiffs.assignAll(list);
+  }
+
+  /// 根据滑动手势方向（[isForward] 为 true 表示在 PageView 中向后/向右切至下一个 Card），
+  /// 寻找后续 opened 卡片中是否有需要用户优先响应的待办事件（如待审批权限、待回答提问）。
+  /// 若存在待办卡片，返回智能跳跃的目标索引；若不存在，退回降级为相邻切页。
+  int getNextAttentionPageIndex({
+    required int currentIndex,
+    required List<String> openedIds,
+    required bool isForward,
+  }) {
+    if (openedIds.isEmpty) return 0;
+    if (currentIndex < 0 || currentIndex >= openedIds.length) return 0;
+
+    if (isForward) {
+      // 前向搜寻：currentIndex + 1 到 openedIds.length - 1
+      for (int i = currentIndex + 1; i < openedIds.length; i++) {
+        final id = openedIds[i];
+        final state = stateOf(id);
+        if (state.requiresAction) {
+          return i;
+        }
+      }
+      return (currentIndex + 1).clamp(0, openedIds.length - 1);
+    } else {
+      // 后向搜寻：currentIndex - 1 到 0
+      for (int i = currentIndex - 1; i >= 0; i--) {
+        final id = openedIds[i];
+        final state = stateOf(id);
+        if (state.requiresAction) {
+          return i;
+        }
+      }
+      return (currentIndex - 1).clamp(0, openedIds.length - 1);
+    }
+  }
+}
+
+class _PendingPartDelta {
+  final String sessionId;
+  final String messageId;
+  final String partId;
+  final String field;
+  String delta;
+
+  _PendingPartDelta({
+    required this.sessionId,
+    required this.messageId,
+    required this.partId,
+    required this.field,
+    required this.delta,
+  });
+}
+
+class QuestionRequestRef {
+  final String sessionId;
+  final String messageId;
+  final String callId;
+  final String? partId;
+
+  const QuestionRequestRef({
+    required this.sessionId,
+    required this.messageId,
+    required this.callId,
+    this.partId,
+  });
+
+  QuestionRequestRef copyWith({String? partId}) => QuestionRequestRef(
+    sessionId: sessionId,
+    messageId: messageId,
+    callId: callId,
+    partId: partId ?? this.partId,
+  );
+}

@@ -1,0 +1,60 @@
+name: opencode_app
+description: "A new Flutter project."
+publish_to: 'none'
+
+version: 0.9.10+5
+
+environment:
+  sdk: ^3.10.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  get: ^4.7.3
+  shared_preferences: ^2.5.5
+  url_launcher: ^6.3.2
+  dio: ^5.9.2
+  web_socket_channel: ^3.0.3
+  logger: ^2.6.2
+  path: ^1.9.1
+  path_provider: ^2.1.6
+  flutter_markdown_plus: ^1.0.12
+  markdown: ^7.3.1
+  kterm:
+    path: lib/third_party/kterm
+  zmodem_lbp:
+    path: lib/third_party/zmodem_lbp
+  image_picker: ^1.2.3
+  re_editor: ^0.10.0
+  re_highlight: ^0.0.3
+  audioplayers: ^6.7.1
+  permission_handler: ^12.0.3
+  rust_lib_opencode_app:
+    path: rust_builder
+  flutter_rust_bridge: 2.12.0
+  record: ^6.2.1
+  flutter_local_notifications: 22.2.0
+  webview_flutter: ^4.14.1
+  image: ^4.8.0
+  package_info_plus: ^10.2.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  integration_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/dang.mp3
+    - assets/pet_call.mp3
+    - assets/sensevoice/tokens.txt
+    - assets/sensevoice/am.mvn
+    - assets/vad_stream.onnx
+    - onnx/libonnxruntime.so
+    - assets/browser/html-to-image.min.js

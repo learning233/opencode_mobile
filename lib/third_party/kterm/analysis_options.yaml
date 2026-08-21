@@ -1,0 +1,17 @@
+include: package:lints/recommended.yaml
+
+linter:
+  rules:
+    prefer_function_declarations_over_variables: false
+    prefer_conditional_assignment: false
+
+analyzer:
+  plugins: []
+  exclude:
+    - coverage/**
+    - example/**
+    - docs/**
+    - test/**
+    - script/**
+  errors:
+    deprecated_member_use: ignore

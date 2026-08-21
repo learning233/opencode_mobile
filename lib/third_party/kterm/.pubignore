@@ -1,0 +1,35 @@
+# .pubignore - kterm package optimization
+
+# AI & Dev Tools
+.claude/
+.cursors/
+CLAUDE.md
+.github/
+
+# Scripts & Binaries
+bin/
+scripts/
+script/
+
+# Tests (not published)
+test/
+integration_test/
+
+# Example (large build files shouldn't be published)
+example/
+!example/README.md
+
+# Media (large demo images)
+media/
+
+# Build & Coverage
+build/
+.dart_tool/
+coverage/
+.packages
+
+# Lock file (library shouldn't include lock)
+pubspec.lock
+
+# Docs (must be "doc" for pub.dev)
+docs/

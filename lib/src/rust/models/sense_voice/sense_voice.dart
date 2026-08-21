@@ -6,7 +6,6 @@
 import '../../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-/// SenseVoice 模型配置，参考 sherpa-onnx 的 OfflineSenseVoiceModelConfig
 class SenseVoiceConfig {
   final String modelPath;
   final String vocabPath;

@@ -8,21 +8,11 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 class SileroVadModelConfig {
   final String model;
-
-  /// VAD 阈值。如果丢段太多就降低这个值。如果每个分段都和 max_speech_duration 差不多长就提高这个值。
   final double threshold;
   final int sampleRate;
-
-  /// 最小静音片段（秒）。设置的太小会产生过多片段。
   final double minSilenceDuration;
-
-  /// 最小说话片段（秒）。设置的太大会丢掉小片段。
   final double minSpeechDuration;
-
-  /// 最大语音时长（秒）
   final double maxSpeechDuration;
-
-  /// 语音段首尾的填充（毫秒）。sherpa-onnx 中有 padding 概念，这里以毫秒体现
   final int speechPadMs;
 
   const SileroVadModelConfig({

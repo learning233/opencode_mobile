@@ -20,7 +20,7 @@
 
 ---
 
-Tokens are way too expensive right now, couldn't even afford DeepSeek Flash anymore, so decided to open-source this.
+Tokens are just way too expensive right now—can't even afford DeepSeek Flash anymore, so I decided to open-source this.
 
 My Windows offline speech-to-text project is available on the Microsoft Store:
 - Microsoft Store: https://apps.microsoft.com/detail/9pdf92ts07pf

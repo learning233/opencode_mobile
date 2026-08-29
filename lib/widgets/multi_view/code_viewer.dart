@@ -26,6 +26,7 @@ class FileEditorPage extends StatefulWidget {
   final String? initialContent;
   final String? fileType;
   final String? worktree;
+  final int? initialLine;
 
   const FileEditorPage({
     super.key,
@@ -34,6 +35,7 @@ class FileEditorPage extends StatefulWidget {
     this.initialContent,
     this.fileType,
     this.worktree,
+    this.initialLine,
   });
 
   @override
@@ -43,6 +45,7 @@ class FileEditorPage extends StatefulWidget {
 class _FileEditorPageState extends State<FileEditorPage> {
   late CodeLineEditingController _controller;
   late CodeFindController _findController;
+  late final CodeScrollController _scrollController;
   final FocusNode _focusNode = FocusNode();
   final OpenCodeClient _client = OpenCodeClient();
   StreamSubscription<int>? _fileChangeSub;
@@ -51,6 +54,10 @@ class _FileEditorPageState extends State<FileEditorPage> {
   String? _error;
   int _requestSeq = 0;
   Worker? _wordWrapWorker;
+  Worker? _lineWorker;
+
+  // Selected line highlight state
+  int? _selectedLineIndex;
 
   // Editor settings state
   bool _wordWrap = false;
@@ -63,6 +70,8 @@ class _FileEditorPageState extends State<FileEditorPage> {
     super.initState();
     _fontSize = Global.settings.editorFontSize;
     _showLineNumbers = Global.settings.editorShowLineNumbers;
+    _scrollController = CodeScrollController();
+
     String? initial;
     if (Get.isRegistered<TabletToolController>()) {
       final toolCtrl = Get.find<TabletToolController>();
@@ -76,6 +85,14 @@ class _FileEditorPageState extends State<FileEditorPage> {
           });
         }
       });
+      // 监听外部跳转行号请求（如搜索结果点击）
+      _lineWorker = ever(toolCtrl.activeTargetLine, (line) {
+        if (line != null && toolCtrl.activeFilePath.value == widget.filePath && mounted) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _jumpToLine(line);
+          });
+        }
+      });
       // 惰性重建时优先取内容缓存，避免重新下载。
       initial =
           widget.initialContent ??
@@ -85,10 +102,19 @@ class _FileEditorPageState extends State<FileEditorPage> {
       initial = widget.initialContent;
     }
     if (initial != null) {
-      _controller = CodeLineEditingController.fromText(initial);
+      _controller = _createController(text: initial);
       _initFindController();
+      final line = widget.initialLine ??
+          (Get.isRegistered<TabletToolController>()
+              ? Get.find<TabletToolController>().activeTargetLine.value
+              : null);
+      if (line != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _jumpToLine(line);
+        });
+      }
     } else {
-      _controller = CodeLineEditingController();
+      _controller = _createController();
       _initFindController();
       _isLoading = true;
       _loadFile();
@@ -108,6 +134,67 @@ class _FileEditorPageState extends State<FileEditorPage> {
         });
       });
     }
+  }
+
+  CodeLineEditingController _createController({String? text}) {
+    final lines = text != null
+        ? CodeLines.of(text.split('\n').map((line) => CodeLine(line)).toList())
+        : CodeLines.of(const [CodeLine('')]);
+    return CodeLineEditingController(
+      codeLines: lines,
+      spanBuilder: _buildLineSpan,
+    );
+  }
+
+  TextSpan _buildLineSpan({
+    required BuildContext context,
+    required int index,
+    required CodeLine codeLine,
+    required TextSpan textSpan,
+    required TextStyle style,
+  }) {
+    if (_selectedLineIndex != null && index == _selectedLineIndex) {
+      final theme = Theme.of(context);
+      final highlightColor = theme.colorScheme.primary.withValues(alpha: 0.18);
+      return TextSpan(
+        text: textSpan.text,
+        children: textSpan.children,
+        style: (textSpan.style ?? style).copyWith(
+          backgroundColor: highlightColor,
+        ),
+      );
+    }
+    return textSpan;
+  }
+
+  @override
+  void didUpdateWidget(covariant FileEditorPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialLine != null && widget.initialLine != oldWidget.initialLine) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _jumpToLine(widget.initialLine!);
+      });
+    }
+  }
+
+  void _jumpToLine(int line) {
+    if (line <= 0) return;
+    final totalLines = _controller.lineCount;
+    final lineIndex = (line - 1).clamp(0, totalLines > 0 ? totalLines - 1 : 0);
+
+    // 将目标行平滑居中到可视区域
+    _scrollController.makeCenterIfInvisible(
+      CodeLinePosition(index: lineIndex, offset: 0),
+    );
+
+    // 光标定位在行首（不全选行，保证语法高亮完全清晰）
+    _controller.selection = CodeLineSelection.fromPosition(
+      position: CodeLinePosition(index: lineIndex, offset: 0),
+    );
+
+    // 为当前选中的目标行应用淡色高亮背景（持续保留该行高亮）
+    _selectedLineIndex = lineIndex;
+    _controller.codeLines = _controller.codeLines;
   }
 
   void _initFindController() {
@@ -157,13 +244,20 @@ class _FileEditorPageState extends State<FileEditorPage> {
           }
           final oldController = _controller;
           _findController.dispose();
-          _controller = CodeLineEditingController.fromText(content);
+          _controller = _createController(text: content);
           _initFindController();
           setState(() {
             _isLoading = false;
           });
           WidgetsBinding.instance.addPostFrameCallback((_) {
             oldController.dispose();
+            final line = widget.initialLine ??
+                (Get.isRegistered<TabletToolController>()
+                    ? Get.find<TabletToolController>().activeTargetLine.value
+                    : null);
+            if (line != null && mounted) {
+              _jumpToLine(line);
+            }
           });
         }
       } else {
@@ -186,7 +280,9 @@ class _FileEditorPageState extends State<FileEditorPage> {
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _wordWrapWorker?.dispose();
+    _lineWorker?.dispose();
     _reloadDebounce?.cancel();
     _fileChangeSub?.cancel();
     _fileChangeSub = null;
@@ -540,6 +636,7 @@ class _FileEditorPageState extends State<FileEditorPage> {
           : CodeEditorTapRegion(
               child: CodeEditor(
                 controller: _controller,
+                scrollController: _scrollController,
                 findController: _findController,
                 focusNode: _focusNode,
                 readOnly: true,

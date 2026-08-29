@@ -1112,6 +1112,17 @@ class LocaleKeys {
   static const voiceCancelDownload = "voice_cancel_download";
   static const selectFileFromSidebar = "select_file_from_sidebar";
   static const selectFileFromLeftMenu = "select_file_from_left_menu";
+  // ── Search ──
+  static const searchPlaceholder = "search_placeholder";
+  static const searchFiles = "search_files";
+  static const searchText = "search_text";
+  static const searchFilesPlaceholder = "search_files_placeholder";
+  static const searchTextPlaceholder = "search_text_placeholder";
+  static const searchNoResults = "search_no_results";
+  static const searchMatchesCount = "search_matches_count";
+  static const searchCaseSensitive = "search_case_sensitive";
+  static const searchError = "search_error";
+  static const searchLoading = "search_loading";
 }
 
 Map<String, String> languageMap = {"简体中文": "zh_CN", "English": "en_US"};
@@ -2235,6 +2246,17 @@ class Messages extends Translations {
     LocaleKeys.voiceCancelDownload: '取消下载',
     LocaleKeys.selectFileFromSidebar: '从侧边栏选择文件',
     LocaleKeys.selectFileFromLeftMenu: '从左侧菜单选择文件打开',
+    // ── Search ──
+    LocaleKeys.searchPlaceholder: '搜索文件名或代码内容...',
+    LocaleKeys.searchFiles: '文件',
+    LocaleKeys.searchText: '代码',
+    LocaleKeys.searchFilesPlaceholder: '搜索文件名...',
+    LocaleKeys.searchTextPlaceholder: '搜索代码内容...',
+    LocaleKeys.searchNoResults: '未找到匹配结果',
+    LocaleKeys.searchMatchesCount: '@count 处匹配',
+    LocaleKeys.searchCaseSensitive: '区分大小写',
+    LocaleKeys.searchError: '搜索失败',
+    LocaleKeys.searchLoading: '搜索中...',
   };
 
   // ──────────────────────────────────────────────────────
@@ -3447,5 +3469,16 @@ class Messages extends Translations {
     LocaleKeys.voiceCancelDownload: 'Cancel Download',
     LocaleKeys.selectFileFromSidebar: 'Select a file from sidebar',
     LocaleKeys.selectFileFromLeftMenu: 'Select a file from left menu',
+    // ── Search ──
+    LocaleKeys.searchPlaceholder: 'Search files or content...',
+    LocaleKeys.searchFiles: 'Files',
+    LocaleKeys.searchText: 'Code',
+    LocaleKeys.searchFilesPlaceholder: 'Search files...',
+    LocaleKeys.searchTextPlaceholder: 'Search code...',
+    LocaleKeys.searchNoResults: 'No matches found',
+    LocaleKeys.searchMatchesCount: '@count matches',
+    LocaleKeys.searchCaseSensitive: 'Match Case',
+    LocaleKeys.searchError: 'Search failed',
+    LocaleKeys.searchLoading: 'Searching...',
   };
 }

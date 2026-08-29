@@ -165,6 +165,7 @@ class _FilePageState extends State<FilePage> {
                         fileName: file.name,
                         worktree: file.worktree,
                         initialContent: file.initialContent,
+                        initialLine: file.targetLine,
                       );
                     },
                   );

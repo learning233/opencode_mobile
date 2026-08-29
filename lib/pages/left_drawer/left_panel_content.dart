@@ -4,7 +4,9 @@ import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:get/get.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../../api/models/project.dart';
+import '../../controllers/file_search_controller.dart';
 import '../../controllers/project_controller.dart';
+import '../../controllers/tablet_tool_controller.dart';
 import '../../init.dart';
 import '../../routes.dart';
 import '../../utils/translations.dart';
@@ -33,6 +35,7 @@ class LeftPanelContent extends StatefulWidget {
 class _LeftPanelContentState extends State<LeftPanelContent> {
   late final Rx<DrawerMode> drawerMode;
   final ScrollController _projectsScrollController = ScrollController();
+  final TextEditingController _searchController = TextEditingController();
   bool _hiddenProjectsExpanded = false;
   String _appVersion = 'v0.9.8';
 
@@ -46,6 +49,7 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
   @override
   void dispose() {
     _projectsScrollController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -379,6 +383,8 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
     ProjectController projectCtrl,
     ProjectModel activeProj,
   ) {
+    final searchCtrl = Get.find<FileSearchController>();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -416,14 +422,578 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
               : null,
         ),
         const Divider(height: 1),
-        // File Tree View taking full remaining space
+        // Search Bar with Mode Dropdown in Front
+        _buildSearchBar(context, theme, searchCtrl, activeProj),
+        const Divider(height: 1),
+        // Content Area: Search Results or File Tree
         Expanded(
-          child: FileTreeView(
-            key: ValueKey('tree_${activeProj.id}_${activeProj.worktree}'),
-          ),
+          child: Obx(() {
+            if (searchCtrl.hasQuery) {
+              return _buildSearchResults(context, theme, searchCtrl, activeProj);
+            }
+            return FileTreeView(
+              key: ValueKey('tree_${activeProj.id}_${activeProj.worktree}'),
+            );
+          }),
         ),
       ],
     );
+  }
+
+  Widget _buildSearchBar(
+    BuildContext context,
+    ThemeData theme,
+    FileSearchController searchCtrl,
+    ProjectModel activeProj,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+      child: Container(
+        height: 36,
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+            width: 0.5,
+          ),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Row(
+          children: [
+            // Dropdown menu in front: Code / File
+            _buildSearchModeDropdown(context, theme, searchCtrl, activeProj),
+            Container(
+              height: 18,
+              width: 1,
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+            ),
+            // Text Input
+            Expanded(
+              child: Obx(() {
+                final isFiles = searchCtrl.mode.value == SearchMode.files;
+                final hint = isFiles
+                    ? LocaleKeys.searchFilesPlaceholder.tr
+                    : LocaleKeys.searchTextPlaceholder.tr;
+
+                return TextField(
+                  controller: _searchController,
+                  style: const TextStyle(fontSize: 13),
+                  decoration: InputDecoration(
+                    hintText: hint,
+                    hintStyle: TextStyle(
+                      fontSize: 12.5,
+                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.65),
+                    ),
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                  ),
+                  onChanged: (val) {
+                    searchCtrl.onQueryChanged(val, worktree: activeProj.worktree);
+                  },
+                );
+              }),
+            ),
+            // Status Indicator / Match Count / Clear Button
+            Obx(() {
+              if (searchCtrl.isSearching.value) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 6),
+                  child: CupertinoActivityIndicator(radius: 7),
+                );
+              }
+              if (searchCtrl.hasQuery) {
+                final count = searchCtrl.totalMatchCount;
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (count > 0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        margin: const EdgeInsets.only(right: 2),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          '$count',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                    InkWell(
+                      onTap: () {
+                        _searchController.clear();
+                        searchCtrl.clear();
+                      },
+                      borderRadius: BorderRadius.circular(10),
+                      child: Padding(
+                        padding: const EdgeInsets.all(4),
+                        child: Icon(
+                          CupertinoIcons.clear_circled_solid,
+                          size: 15,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              }
+              return const SizedBox.shrink();
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchModeDropdown(
+    BuildContext context,
+    ThemeData theme,
+    FileSearchController searchCtrl,
+    ProjectModel activeProj,
+  ) {
+    return Obx(() {
+      final currentMode = searchCtrl.mode.value;
+      final isFiles = currentMode == SearchMode.files;
+      final icon = isFiles
+          ? Icons.insert_drive_file_outlined
+          : CupertinoIcons.chevron_left_slash_chevron_right;
+      final label = isFiles
+          ? LocaleKeys.searchFiles.tr
+          : LocaleKeys.searchText.tr;
+
+      return Theme(
+        data: theme.copyWith(
+          splashColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+        ),
+        child: PopupMenuButton<SearchMode>(
+          tooltip: '',
+          offset: const Offset(0, 34),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+            side: BorderSide(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+              width: 0.5,
+            ),
+          ),
+          color: theme.colorScheme.surface,
+          elevation: 3,
+          initialValue: currentMode,
+          onSelected: (mode) {
+            searchCtrl.setMode(mode, worktree: activeProj.worktree);
+          },
+          itemBuilder: (ctx) => [
+            PopupMenuItem(
+              value: SearchMode.text,
+              height: 36,
+              child: Row(
+                children: [
+                  Icon(
+                    CupertinoIcons.chevron_left_slash_chevron_right,
+                    size: 15,
+                    color: !isFiles ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    LocaleKeys.searchText.tr,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: !isFiles ? FontWeight.w600 : FontWeight.normal,
+                      color: !isFiles ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                    ),
+                  ),
+                  if (!isFiles) ...[
+                    const Spacer(),
+                    Icon(Icons.check, size: 14, color: theme.colorScheme.primary),
+                  ],
+                ],
+              ),
+            ),
+            PopupMenuItem(
+              value: SearchMode.files,
+              height: 36,
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.insert_drive_file_outlined,
+                    size: 15,
+                    color: isFiles ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    LocaleKeys.searchFiles.tr,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: isFiles ? FontWeight.w600 : FontWeight.normal,
+                      color: isFiles ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                    ),
+                  ),
+                  if (isFiles) ...[
+                    const Spacer(),
+                    Icon(Icons.check, size: 14, color: theme.colorScheme.primary),
+                  ],
+                ],
+              ),
+            ),
+          ],
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  icon,
+                  size: 13.5,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(width: 1),
+                Icon(
+                  Icons.arrow_drop_down,
+                  size: 16,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    });
+  }
+
+  Widget _buildSearchResults(
+    BuildContext context,
+    ThemeData theme,
+    FileSearchController searchCtrl,
+    ProjectModel activeProj,
+  ) {
+    return Obx(() {
+      if (searchCtrl.isSearching.value &&
+          searchCtrl.fileResults.isEmpty &&
+          searchCtrl.textResults.isEmpty) {
+        return Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CupertinoActivityIndicator(radius: 10),
+              const SizedBox(height: 8),
+              Text(
+                LocaleKeys.searchLoading.tr,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+
+      if (searchCtrl.errorMessage.value != null &&
+          searchCtrl.fileResults.isEmpty &&
+          searchCtrl.textResults.isEmpty) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  CupertinoIcons.exclamationmark_circle,
+                  size: 24,
+                  color: theme.colorScheme.error,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  searchCtrl.errorMessage.value!,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: theme.colorScheme.error,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                FilledButton.tonal(
+                  onPressed: () => searchCtrl.performSearch(worktree: activeProj.worktree),
+                  child: Text(LocaleKeys.retry.tr),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+
+      if (searchCtrl.mode.value == SearchMode.files) {
+        if (searchCtrl.fileResults.isEmpty) {
+          return Center(
+            child: Text(
+              LocaleKeys.searchNoResults.tr,
+              style: TextStyle(
+                fontSize: 13,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          );
+        }
+        return ListView.builder(
+          itemCount: searchCtrl.fileResults.length,
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          itemBuilder: (ctx, idx) {
+            final path = searchCtrl.fileResults[idx];
+            final fileName = path.contains('/') ? path.split('/').last : path;
+            final dirPath = path.contains('/') ? path.substring(0, path.lastIndexOf('/')) : '';
+
+            return ListTile(
+              dense: true,
+              visualDensity: VisualDensity.compact,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+              leading: Icon(
+                Icons.insert_drive_file_outlined,
+                size: 16,
+                color: theme.colorScheme.primary,
+              ),
+              title: _buildHighlightedText(
+                fileName,
+                searchCtrl.query.value.trim(),
+                normalStyle: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: theme.colorScheme.onSurface,
+                ),
+                matchStyle: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.primary,
+                  backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.15),
+                ),
+              ),
+              subtitle: dirPath.isNotEmpty
+                  ? Text(
+                      dirPath,
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    )
+                  : null,
+              onTap: () => _onSearchResultTap(path, null, activeProj.worktree),
+            );
+          },
+        );
+      } else {
+        if (searchCtrl.textResults.isEmpty) {
+          return Center(
+            child: Text(
+              LocaleKeys.searchNoResults.tr,
+              style: TextStyle(
+                fontSize: 13,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          );
+        }
+
+        return ListView.builder(
+          itemCount: searchCtrl.textResults.length,
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          itemBuilder: (ctx, groupIdx) {
+            final group = searchCtrl.textResults[groupIdx];
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Group Header
+                InkWell(
+                  onTap: () => searchCtrl.toggleGroupExpanded(groupIdx),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
+                    child: Row(
+                      children: [
+                        AnimatedRotation(
+                          turns: group.isExpanded ? 0.25 : 0,
+                          duration: const Duration(milliseconds: 150),
+                          child: Icon(
+                            Icons.chevron_right,
+                            size: 16,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.insert_drive_file_outlined,
+                          size: 14,
+                          color: theme.colorScheme.primary,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            group.fileName,
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${group.matches.length}',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: theme.colorScheme.primary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                // Group Matches
+                if (group.isExpanded)
+                  ...group.matches.map((match) {
+                    return InkWell(
+                      onTap: () => _onSearchResultTap(group.path, match.lineNumber, activeProj.worktree),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 5),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                              child: Text(
+                                'L${match.lineNumber}',
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w600,
+                                  fontFamily: 'monospace',
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildHighlightedText(
+                                match.lineText.trim(),
+                                searchCtrl.query.value.trim(),
+                                normalStyle: TextStyle(
+                                  fontSize: 11.5,
+                                  fontFamily: 'monospace',
+                                  color: theme.colorScheme.onSurface,
+                                ),
+                                matchStyle: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.bold,
+                                  fontFamily: 'monospace',
+                                  color: theme.colorScheme.primary,
+                                  backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.18),
+                                ),
+                                maxLines: 2,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                const Divider(height: 1),
+              ],
+            );
+          },
+        );
+      }
+    });
+  }
+
+  Widget _buildHighlightedText(
+    String text,
+    String query, {
+    required TextStyle normalStyle,
+    required TextStyle matchStyle,
+    int maxLines = 1,
+  }) {
+    if (query.isEmpty) {
+      return Text(text, style: normalStyle, maxLines: maxLines, overflow: TextOverflow.ellipsis);
+    }
+    final lowerText = text.toLowerCase();
+    final lowerQuery = query.toLowerCase();
+    final spans = <TextSpan>[];
+    int start = 0;
+    while (true) {
+      final index = lowerText.indexOf(lowerQuery, start);
+      if (index == -1) {
+        if (start < text.length) {
+          spans.add(TextSpan(text: text.substring(start), style: normalStyle));
+        }
+        break;
+      }
+      if (index > start) {
+        spans.add(TextSpan(text: text.substring(start, index), style: normalStyle));
+      }
+      spans.add(TextSpan(
+        text: text.substring(index, index + query.length),
+        style: matchStyle,
+      ));
+      start = index + query.length;
+    }
+    return RichText(
+      maxLines: maxLines,
+      overflow: TextOverflow.ellipsis,
+      text: TextSpan(children: spans),
+    );
+  }
+
+  void _onSearchResultTap(
+    String path,
+    int? lineNumber,
+    String worktree,
+  ) {
+    final fileName = path.contains('/') ? path.split('/').last : path;
+    final toolCtrl = Get.find<TabletToolController>();
+    toolCtrl.openFile(
+      path,
+      fileName,
+      worktree: worktree,
+      targetLine: lineNumber,
+    );
+
+    final isTablet = isTabletLayout(context);
+    if (!isTablet) {
+      final scaffoldState = Scaffold.maybeOf(context);
+      if (scaffoldState?.isDrawerOpen ?? false) {
+        scaffoldState?.closeDrawer();
+      }
+      if (Get.currentRoute != AppRoutes.fileList) {
+        Get.toNamed(AppRoutes.fileList);
+      }
+    }
   }
 
   Widget _buildModeSwitcherTile(

@@ -118,8 +118,14 @@ class ApiEndpoints {
   /// 注意：OpenCode 后端真实文件内容接口路径为 `/file/content`，而非原占位符 `/api/fs/read`。
   static String fsRead(String path) => '/file/content';
 
-  /// GET text search (ripgrep).
-  static const String findText = '/api/fs/find';
+  /// GET text search across project via ripgrep (`GET /find?pattern=...`).
+  static const String findText = '/find';
+
+  /// GET find files or directories by name pattern (`GET /find/file?query=...`).
+  static const String findFile = '/find/file';
+
+  /// GET find symbols via LSP (`GET /find/symbol?query=...`).
+  static const String findSymbol = '/find/symbol';
 
   /// GET server path info (home, cwd, etc.).
   static const String path = '/path';

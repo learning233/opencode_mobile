@@ -101,10 +101,12 @@ class OpenCodeClient {
     Map<String, dynamic>? queryParameters,
     String? directory,
     bool skipDirectory = false,
+    CancelToken? cancelToken,
   }) async {
     return dio.get(
       path,
       queryParameters: queryParameters,
+      cancelToken: cancelToken,
       options: Options(
         headers: directory != null ? {'x-opencode-directory': directory} : null,
         extra: skipDirectory ? {'noAutoDirectory': true} : null,

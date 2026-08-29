@@ -3,12 +3,14 @@ class OpenedFile {
   final String name;
   final String? worktree;
   final String? initialContent;
+  int? targetLine;
 
   OpenedFile({
     required this.path,
     required this.name,
     this.worktree,
     this.initialContent,
+    this.targetLine,
   });
 
   @override

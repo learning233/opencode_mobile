@@ -319,6 +319,7 @@ class _TabletToolPanelState extends State<TabletToolPanel>
                       fileName: file.name,
                       worktree: file.worktree,
                       initialContent: file.initialContent,
+                      initialLine: file.targetLine,
                     );
                   },
                 );

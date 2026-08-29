@@ -40,6 +40,9 @@ class TabletToolController extends GetxController {
   /// Worktree of the active tab, paired with [activeFilePath].
   final activeFileWorktree = Rxn<String>();
 
+  /// Target line number to scroll/jump to in the active tab (e.g. from search results).
+  final activeTargetLine = Rxn<int>();
+
   /// Stable identity of a file tab: worktree + path, so same-relative-path
   /// files from different projects are distinct tabs (never merged).
   static String fileKey(String path, String? worktree) =>
@@ -202,13 +205,22 @@ class TabletToolController extends GetxController {
   /// Open a file in the Code tab. If already open (same worktree+path), switch
   /// to its tab; a same-relative-path file from another worktree is a distinct
   /// tab.
-  void openFile(String path, String name, {String? worktree, String? content}) {
+  void openFile(
+    String path,
+    String name, {
+    String? worktree,
+    String? content,
+    int? targetLine,
+  }) {
     if (path.isEmpty) return;
 
     final existingIdx = openedFiles.indexWhere(
       (f) => f.path == path && f.worktree == worktree,
     );
     if (existingIdx != -1) {
+      if (targetLine != null) {
+        openedFiles[existingIdx].targetLine = targetLine;
+      }
       _activate(existingIdx);
     } else {
       openedFiles.add(
@@ -217,9 +229,14 @@ class TabletToolController extends GetxController {
           name: name,
           worktree: worktree,
           initialContent: content,
+          targetLine: targetLine,
         ),
       );
       _activate(openedFiles.length - 1);
+    }
+
+    if (targetLine != null) {
+      activeTargetLine.value = targetLine;
     }
 
     activeTabIndex.value = tabCode;

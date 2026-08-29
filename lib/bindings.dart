@@ -1,4 +1,5 @@
 import 'package:get/get.dart';
+import 'controllers/file_search_controller.dart';
 import 'controllers/project_controller.dart';
 import 'controllers/pty_controller.dart';
 import 'controllers/session_controller.dart';
@@ -14,6 +15,7 @@ class GlobalBinding extends Bindings {
     Get.put<SettingsController>(SettingsController(), permanent: true);
     Get.put<PtyController>(PtyController(), permanent: true);
     Get.put<TabletToolController>(TabletToolController(), permanent: true);
+    Get.put<FileSearchController>(FileSearchController(), permanent: true);
     Get.put<AppFeedbackService>(AppFeedbackService(), permanent: true);
   }
 }

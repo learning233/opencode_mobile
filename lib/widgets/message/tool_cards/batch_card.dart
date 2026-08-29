@@ -65,9 +65,7 @@ class _BatchCardState extends State<BatchCard> {
                 _buildFileLabel(ctx, diffs[i]),
                 const SizedBox(height: 4),
                 DiffCodeView(
-                  lines: [
-                    for (final l in diffs[i].lines) _toBatchDiffLine(l),
-                  ],
+                  lines: [for (final l in diffs[i].lines) _toBatchDiffLine(l)],
                   hideContextLines: false,
                   showLineNumbers: true,
                   maxHeight: 320,

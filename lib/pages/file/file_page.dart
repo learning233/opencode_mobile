@@ -131,7 +131,9 @@ class _FilePageState extends State<FilePage> {
                   }
 
                   final activeIdx = files.indexWhere(
-                    (f) => TabletToolController.fileKey(f.path, f.worktree) == activeKey,
+                    (f) =>
+                        TabletToolController.fileKey(f.path, f.worktree) ==
+                        activeKey,
                   );
                   final safeIdx = activeIdx != -1 ? activeIdx : 0;
                   final isWrap = toolCtrl.isWordWrap.value;
@@ -186,7 +188,9 @@ class _FilePageState extends State<FilePage> {
 
               final activeKey = toolCtrl.activeFileKey;
               final activeIdx = files.indexWhere(
-                (f) => TabletToolController.fileKey(f.path, f.worktree) == activeKey,
+                (f) =>
+                    TabletToolController.fileKey(f.path, f.worktree) ==
+                    activeKey,
               );
 
               final canPrev = activeIdx > 0;
@@ -201,9 +205,9 @@ class _FilePageState extends State<FilePage> {
                       heroTag: 'file_prev_tab_overlay',
                       onPressed: canPrev
                           ? () => toolCtrl.selectFile(
-                                files[activeIdx - 1].path,
-                                worktree: files[activeIdx - 1].worktree,
-                              )
+                              files[activeIdx - 1].path,
+                              worktree: files[activeIdx - 1].worktree,
+                            )
                           : null,
                       tooltip: LocaleKeys.edPreviousTab.tr,
                       backgroundColor: canPrev
@@ -222,9 +226,9 @@ class _FilePageState extends State<FilePage> {
                       heroTag: 'file_next_tab_overlay',
                       onPressed: canNext
                           ? () => toolCtrl.selectFile(
-                                files[activeIdx + 1].path,
-                                worktree: files[activeIdx + 1].worktree,
-                              )
+                              files[activeIdx + 1].path,
+                              worktree: files[activeIdx + 1].worktree,
+                            )
                           : null,
                       tooltip: LocaleKeys.edNextTab.tr,
                       backgroundColor: canNext
@@ -291,7 +295,10 @@ class _FilePageState extends State<FilePage> {
           itemCount: files.length,
           itemBuilder: (ctx, index) {
             final file = files[index];
-            final fileKey = TabletToolController.fileKey(file.path, file.worktree);
+            final fileKey = TabletToolController.fileKey(
+              file.path,
+              file.worktree,
+            );
             final isActive = fileKey == activeKey;
             final key = _tabKeys.putIfAbsent(fileKey, () => GlobalKey());
 
@@ -352,8 +359,10 @@ class _FilePageState extends State<FilePage> {
                       ),
                       const SizedBox(width: 6),
                       InkWell(
-                        onTap: () =>
-                            toolCtrl.closeFile(file.path, worktree: file.worktree),
+                        onTap: () => toolCtrl.closeFile(
+                          file.path,
+                          worktree: file.worktree,
+                        ),
                         borderRadius: BorderRadius.circular(10),
                         child: Padding(
                           padding: const EdgeInsets.all(2.0),

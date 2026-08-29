@@ -26,7 +26,11 @@ const String _kDesktopUserAgent =
 ///   (slides up; WebView state survives closing).
 /// - [reloadIfOpen]: when a tab already shows [url], reload it instead of
 ///   leaving it untouched (preview button refreshes the already-open page).
-void openUrlInApp(BuildContext context, String url, {bool reloadIfOpen = false}) {
+void openUrlInApp(
+  BuildContext context,
+  String url, {
+  bool reloadIfOpen = false,
+}) {
   Get.find<TabletToolController>().openUrl(url, reloadIfOpen: reloadIfOpen);
   if (!isTabletLayout(context)) {
     Get.find<TabletToolController>().openBrowserSheet();

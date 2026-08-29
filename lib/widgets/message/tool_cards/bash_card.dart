@@ -39,11 +39,8 @@ class BashCard extends StatelessWidget {
     showDetailBottomSheet(
       context: context,
       title: LocaleKeys.cardVisBash.tr,
-      bodyBuilder: (ctx) => _BashSheetBody(
-        controller: ctrl,
-        sessionId: sid,
-        fallback: part,
-      ),
+      bodyBuilder: (ctx) =>
+          _BashSheetBody(controller: ctrl, sessionId: sid, fallback: part),
     );
   }
 
@@ -73,9 +70,7 @@ class BashCard extends StatelessWidget {
         ),
       ),
       child: InkWell(
-        onTap: (hasContent || isRunning)
-            ? () => _openSheet(context)
-            : null,
+        onTap: (hasContent || isRunning) ? () => _openSheet(context) : null,
         borderRadius: BorderRadius.circular(6),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -203,14 +198,12 @@ class _BashSheetBodyState extends State<_BashSheetBody> {
     if (state == null) {
       return _content(theme, appColors: appColors, part: widget.fallback);
     }
-    return Obx(
-      () {
-        final part = _lookup();
-        // 只在 part 被流式替换后自动跟随底部；打开已完成卡时停在顶部。
-        if (part != widget.fallback) _scrollToBottom();
-        return _content(theme, appColors: appColors, part: part);
-      },
-    );
+    return Obx(() {
+      final part = _lookup();
+      // 只在 part 被流式替换后自动跟随底部；打开已完成卡时停在顶部。
+      if (part != widget.fallback) _scrollToBottom();
+      return _content(theme, appColors: appColors, part: part);
+    });
   }
 
   Widget _content(
@@ -285,9 +278,7 @@ class _BashSheetBodyState extends State<_BashSheetBody> {
         if (command.isEmpty && output.isEmpty && error.isEmpty)
           Text(
             'No output yet',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.hintColor,
-            ),
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
           ),
       ],
     );

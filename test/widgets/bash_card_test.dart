@@ -41,8 +41,9 @@ void main() {
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
     });
 
-    testWidgets('hides spinner for a stale running part in history',
-        (tester) async {
+    testWidgets('hides spinner for a stale running part in history', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         _wrap(BashCard(part: _bashPart(status: 'running'), isStreaming: false)),
       );
@@ -61,7 +62,9 @@ void main() {
       expect(find.byType(CircularProgressIndicator), findsNothing);
     });
 
-    testWidgets('hides spinner for pending parts not streaming', (tester) async {
+    testWidgets('hides spinner for pending parts not streaming', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         _wrap(BashCard(part: _bashPart(status: 'pending'), isStreaming: false)),
       );

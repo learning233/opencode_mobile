@@ -39,10 +39,7 @@ void main() {
 
   group('maskUrl', () {
     test('masks IPv4 host', () {
-      expect(
-        maskUrl('http://192.168.1.100:4096'),
-        'http://*92.*68.*.*00:4096',
-      );
+      expect(maskUrl('http://192.168.1.100:4096'), 'http://*92.*68.*.*00:4096');
     });
 
     test('keeps domain and localhost unchanged', () {

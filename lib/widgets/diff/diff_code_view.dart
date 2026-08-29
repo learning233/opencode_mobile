@@ -86,7 +86,13 @@ class DiffCodeViewState extends State<DiffCodeView> {
     var sig = 0;
     var maxDigits = 1;
     for (final l in newRender) {
-      sig = Object.hash(sig, l.type, l.displayText, l.numberText, l.sourceIndex);
+      sig = Object.hash(
+        sig,
+        l.type,
+        l.displayText,
+        l.numberText,
+        l.sourceIndex,
+      );
       final n = l.numberText.length;
       if (n > maxDigits) maxDigits = n;
     }
@@ -201,9 +207,8 @@ class DiffCodeViewState extends State<DiffCodeView> {
                       alpha: 0.45,
                     ),
                   ),
-                  customLineIndex2Text: (i) => i >= 0 && i < _render.length
-                      ? _render[i].numberText
-                      : '',
+                  customLineIndex2Text: (i) =>
+                      i >= 0 && i < _render.length ? _render[i].numberText : '',
                 ),
               );
             }

@@ -746,7 +746,10 @@ class SettingsController extends GetxController {
   Future<void> checkHealth() async {
     healthChecking.value = true;
     try {
-      final response = await _client.get(ApiEndpoints.health, skipDirectory: true);
+      final response = await _client.get(
+        ApiEndpoints.health,
+        skipDirectory: true,
+      );
       if (response.statusCode == 200) {
         healthOk.value = true;
         final data = response.data;

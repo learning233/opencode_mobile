@@ -55,8 +55,7 @@ class _ReviewPageState extends State<ReviewPage> {
   int _changeIndex = 0;
   bool _pendingJumpToFirstChange = false;
 
-  int get _changeBlockCount =>
-      _diffViewKey.currentState?.changeBlockCount ?? 0;
+  int get _changeBlockCount => _diffViewKey.currentState?.changeBlockCount ?? 0;
 
   @override
   void initState() {
@@ -218,10 +217,7 @@ class _ReviewPageState extends State<ReviewPage> {
   /// Scroll to the previous/next change block of the selected diff.
   void _goToChange(int delta) {
     if (_changeBlockCount == 0) return;
-    final newIndex = (_changeIndex + delta).clamp(
-      0,
-      _changeBlockCount - 1,
-    );
+    final newIndex = (_changeIndex + delta).clamp(0, _changeBlockCount - 1);
     if (newIndex == _changeIndex) return;
     setState(() => _changeIndex = newIndex);
     WidgetsBinding.instance.addPostFrameCallback(

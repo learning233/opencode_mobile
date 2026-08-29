@@ -30,10 +30,7 @@ void main() {
       expect(removed, contains('gone'));
       expect(added, contains('++added'));
       expect(added, contains('kept'));
-      expect(
-        lines.any((l) => l.text.contains('a/src/a.ts')),
-        isFalse,
-      );
+      expect(lines.any((l) => l.text.contains('a/src/a.ts')), isFalse);
     });
 
     test('loose patch fallback keeps +++x/---x content lines', () {

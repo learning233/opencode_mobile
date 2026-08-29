@@ -168,10 +168,7 @@ class TabletToolController extends GetxController {
     _saveChain = next.then((_) async {
       await prefs.setBool(_prefKeyVisible, isVisible.value);
       await prefs.setDouble(_prefKeyWidth, panelWidthFraction.value);
-      await prefs.setBool(
-        _prefKeyReviewShowChangesOnly,
-        showChangesOnly.value,
-      );
+      await prefs.setBool(_prefKeyReviewShowChangesOnly, showChangesOnly.value);
     });
     await _saveChain;
   }
@@ -186,8 +183,10 @@ class TabletToolController extends GetxController {
   void adjustWidth(double dx, double screenWidth) {
     if (screenWidth <= 0) return;
     // 保证左侧聊天面板最小固定留出 350px 宽度
-    final maxAllowedFraction =
-        (1.0 - 350.0 / screenWidth).clamp(minWidthFraction, maxWidthFraction);
+    final maxAllowedFraction = (1.0 - 350.0 / screenWidth).clamp(
+      minWidthFraction,
+      maxWidthFraction,
+    );
     final newFraction = (panelWidthFraction.value - dx / screenWidth).clamp(
       minWidthFraction,
       maxAllowedFraction,
@@ -203,10 +202,14 @@ class TabletToolController extends GetxController {
   /// Get the actual pixel width for a given screen width.
   double getPixelWidth(double screenWidth) {
     // 保证左侧聊天面板最小固定留出 350px 宽度
-    final maxAllowedFraction =
-        (1.0 - 350.0 / screenWidth).clamp(minWidthFraction, maxWidthFraction);
-    final clampedFraction =
-        panelWidthFraction.value.clamp(minWidthFraction, maxAllowedFraction);
+    final maxAllowedFraction = (1.0 - 350.0 / screenWidth).clamp(
+      minWidthFraction,
+      maxWidthFraction,
+    );
+    final clampedFraction = panelWidthFraction.value.clamp(
+      minWidthFraction,
+      maxAllowedFraction,
+    );
     return screenWidth * clampedFraction;
   }
 
@@ -363,9 +366,7 @@ class TabletToolController extends GetxController {
         activeBrowserTabIndex.value = existingIdx;
         if (reloadIfOpen) browserReloadTick.value++;
       } else {
-        browserTabs.add(
-          BrowserTab(id: nextBrowserTabId(), url: normalized),
-        );
+        browserTabs.add(BrowserTab(id: nextBrowserTabId(), url: normalized));
         activeBrowserTabIndex.value = browserTabs.length - 1;
       }
     }
@@ -490,7 +491,11 @@ class TabletToolController extends GetxController {
   /// Always refetches, even when the scope is unchanged.
   /// [switchTab] 为 false 时只刷新 Review 数据，不把当前 tab 切到 Review
   /// （切换 session 后台预热用）；其余调用保持默认的切 tab 行为。
-  void openReviewSession(String sessionId, {String? selectFile, bool switchTab = true}) {
+  void openReviewSession(
+    String sessionId, {
+    String? selectFile,
+    bool switchTab = true,
+  }) {
     reviewType.value = reviewTypeSession;
     reviewSessionId.value = sessionId;
     reviewMessageId.value = '';

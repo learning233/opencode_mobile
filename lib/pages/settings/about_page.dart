@@ -16,17 +16,20 @@ class _AboutPageState extends State<AboutPage> {
   String _version = '...';
   String _buildNumber = '';
 
-  static const String _releaseUrl = 'https://github.com/learning233/opencode_mobile/';
+  static const String _releaseUrl =
+      'https://github.com/learning233/opencode_mobile/';
 
   static const List<Map<String, String>> _packages = [
     {
       'name': 'get (GetX)',
-      'desc': 'High-performance state management & intelligent route management',
+      'desc':
+          'High-performance state management & intelligent route management',
       'url': 'https://pub.dev/packages/get',
     },
     {
       'name': 'dio',
-      'desc': 'Powerful HTTP client for Dart/Flutter supporting SSE & interceptors',
+      'desc':
+          'Powerful HTTP client for Dart/Flutter supporting SSE & interceptors',
       'url': 'https://pub.dev/packages/dio',
     },
     {
@@ -108,12 +111,12 @@ class _AboutPageState extends State<AboutPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final displayVersion = _buildNumber.isNotEmpty ? 'v$_version+$_buildNumber' : 'v$_version';
+    final displayVersion = _buildNumber.isNotEmpty
+        ? 'v$_version+$_buildNumber'
+        : 'v$_version';
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(LocaleKeys.aboutTitle.tr),
-      ),
+      appBar: AppBar(title: Text(LocaleKeys.aboutTitle.tr)),
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         children: [
@@ -121,7 +124,9 @@ class _AboutPageState extends State<AboutPage> {
           Card(
             elevation: 0,
             color: theme.colorScheme.surfaceContainerHigh,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
             child: Padding(
               padding: const EdgeInsets.all(20),
               child: Column(
@@ -148,7 +153,10 @@ class _AboutPageState extends State<AboutPage> {
                   ),
                   const SizedBox(height: 6),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: theme.colorScheme.secondaryContainer,
                       borderRadius: BorderRadius.circular(12),
@@ -179,18 +187,31 @@ class _AboutPageState extends State<AboutPage> {
               ),
             ),
             child: ListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 4,
+              ),
               leading: CircleAvatar(
                 backgroundColor: theme.colorScheme.primary,
-                child: const Icon(Icons.open_in_new, color: Colors.white, size: 20),
+                child: const Icon(
+                  Icons.open_in_new,
+                  color: Colors.white,
+                  size: 20,
+                ),
               ),
               title: Text(
                 LocaleKeys.releasePageTitle.tr,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
               ),
               subtitle: const Text(
                 _releaseUrl,
-                style: TextStyle(fontSize: 12, decoration: TextDecoration.underline),
+                style: TextStyle(
+                  fontSize: 12,
+                  decoration: TextDecoration.underline,
+                ),
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _openUrl(_releaseUrl),
@@ -225,7 +246,9 @@ class _AboutPageState extends State<AboutPage> {
           // Packages List
           Card(
             elevation: 0,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
             child: Column(
               children: [
                 for (int i = 0; i < _packages.length; i++) ...[
@@ -233,16 +256,23 @@ class _AboutPageState extends State<AboutPage> {
                     dense: true,
                     title: Text(
                       _packages[i]['name']!,
-                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
                     ),
                     subtitle: Text(
                       _packages[i]['desc']!,
-                      style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
                     trailing: const Icon(Icons.arrow_outward, size: 16),
                     onTap: () => _openUrl(_packages[i]['url']!),
                   ),
-                  if (i < _packages.length - 1) const Divider(height: 1, indent: 16, endIndent: 16),
+                  if (i < _packages.length - 1)
+                    const Divider(height: 1, indent: 16, endIndent: 16),
                 ],
               ],
             ),
@@ -253,7 +283,9 @@ class _AboutPageState extends State<AboutPage> {
           OutlinedButton.icon(
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
             onPressed: () {
               showLicensePage(

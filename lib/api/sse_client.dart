@@ -189,8 +189,8 @@ class SseClient {
     _reconnectTimer?.cancel();
     // 快速退避档位与 _maxReconnectAttempts 对齐（由 _fastDelays 派生，不会漂移），
     // 超出则转慢重试。
-    final seconds = _reconnectAttempts > 0 &&
-            _reconnectAttempts <= _maxReconnectAttempts
+    final seconds =
+        _reconnectAttempts > 0 && _reconnectAttempts <= _maxReconnectAttempts
         ? _fastDelays[_reconnectAttempts - 1]
         : _slowRetryIntervalSeconds;
     _reconnectTimer = Timer(Duration(seconds: seconds), () {

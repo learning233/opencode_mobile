@@ -24,7 +24,9 @@ class FileEntry {
         .toString();
     // Normalize backslashes to forward slashes, then strip a single trailing
     // separator added by the backend for directories (`src/` -> `src`).
-    final normalized = rawPath.replaceAll('\\', '/').replaceFirst(RegExp(r'/$'), '');
+    final normalized = rawPath
+        .replaceAll('\\', '/')
+        .replaceFirst(RegExp(r'/$'), '');
     var rawName = (json['name'] ?? json['filename'] ?? '').toString();
     if (rawName.isEmpty && normalized.isNotEmpty) {
       final parts = normalized.split('/');

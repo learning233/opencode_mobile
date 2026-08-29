@@ -131,14 +131,17 @@ class SidecarManager {
             return true;
           }
           if (response.statusCode == 401) {
-            _lastError = 'Authentication failed (401). Check username/password.';
+            _lastError =
+                'Authentication failed (401). Check username/password.';
             return false;
           }
           _lastError = 'Server returned status ${response.statusCode}.';
         } catch (e) {
           if (e is DioException && CancelToken.isCancel(e)) return false;
           final msg = e.toString();
-          AppLogger.w('Health check attempt $attempts failed: ${maskIpsInText(msg)}');
+          AppLogger.w(
+            'Health check attempt $attempts failed: ${maskIpsInText(msg)}',
+          );
           _lastError = maskIpsInText(msg);
         }
         attempts++;

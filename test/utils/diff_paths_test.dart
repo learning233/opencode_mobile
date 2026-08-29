@@ -25,10 +25,9 @@ void main() {
 
     test('strips an absolute worktree prefix', () {
       expect(
-        normalizeDiffPath(
-          'D:/project/opencode_app/lib/foo.dart',
-          ['D:/project/opencode_app'],
-        ),
+        normalizeDiffPath('D:/project/opencode_app/lib/foo.dart', [
+          'D:/project/opencode_app',
+        ]),
         'lib/foo.dart',
       );
     });
@@ -49,11 +48,9 @@ void main() {
 
     test('matches absolute vs repo-relative with known worktree', () {
       expect(
-        diffPathsEqual(
-          'D:/project/opencode_app/lib/foo.dart',
-          'lib/foo.dart',
-          ['D:/project/opencode_app'],
-        ),
+        diffPathsEqual('D:/project/opencode_app/lib/foo.dart', 'lib/foo.dart', [
+          'D:/project/opencode_app',
+        ]),
         isTrue,
       );
     });

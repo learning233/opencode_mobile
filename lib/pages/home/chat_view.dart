@@ -198,18 +198,18 @@ class _ChatViewState extends State<ChatView> {
                 // Detect new user message → center jump
                 if (lastUserIdx >= 0) {
                   final curId = msgs[lastUserIdx].id;
-                if (curId != _lastUserMsgId) {
-                  final isFirst = _lastUserMsgId == null;
-                  _lastUserMsgId = curId;
-                  if (!isFirst) {
-                    _pendingCenterJump = true;
-                    _shouldFollowStreaming = true;
-                    _userDisabledFollow = false;
-                    _syncFollowPosition();
-                    // 不在 build 期同步 jumpTo：统一由下方 post-frame 回调
-                    // （_pendingCenterJump）执行居中跳转，避免重复跳转/布局竞态。
+                  if (curId != _lastUserMsgId) {
+                    final isFirst = _lastUserMsgId == null;
+                    _lastUserMsgId = curId;
+                    if (!isFirst) {
+                      _pendingCenterJump = true;
+                      _shouldFollowStreaming = true;
+                      _userDisabledFollow = false;
+                      _syncFollowPosition();
+                      // 不在 build 期同步 jumpTo：统一由下方 post-frame 回调
+                      // （_pendingCenterJump）执行居中跳转，避免重复跳转/布局竞态。
+                    }
                   }
-                }
                 }
 
                 final bool showThinking;

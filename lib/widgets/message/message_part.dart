@@ -184,12 +184,13 @@ class _FileAttachmentState extends State<_FileAttachment> {
   void _detectAndLoad() {
     final part = widget.part;
     final mime = part.fileMime.toLowerCase();
-    final name = (part.fileName.isNotEmpty
-            ? part.fileName
-            : (part.raw['name']?.toString() ??
-                  part.raw['path']?.toString() ??
-                  ''))
-        .toLowerCase();
+    final name =
+        (part.fileName.isNotEmpty
+                ? part.fileName
+                : (part.raw['name']?.toString() ??
+                      part.raw['path']?.toString() ??
+                      ''))
+            .toLowerCase();
     _isImage =
         mime.startsWith('image/') ||
         _imageExtensions.any((ext) => name.endsWith(ext));

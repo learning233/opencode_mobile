@@ -6,32 +6,32 @@ MessageModel _assistantMsg(List<Part> parts) =>
     MessageModel(id: 'm1', role: MessageRole.assistant, parts: parts);
 
 Part _textPart(String id) => Part(
-      id: id,
-      sessionID: 's',
-      messageID: 'm1',
-      type: PartType.text,
-      raw: {'id': id, 'type': 'text', 'text': 'hi'},
-    );
+  id: id,
+  sessionID: 's',
+  messageID: 'm1',
+  type: PartType.text,
+  raw: {'id': id, 'type': 'text', 'text': 'hi'},
+);
 
 Part _stepFinish(String id) => Part(
-      id: id,
-      sessionID: 's',
-      messageID: 'm1',
-      type: PartType.stepFinish,
-      raw: {'id': id, 'type': 'step-finish'},
-    );
+  id: id,
+  sessionID: 's',
+  messageID: 'm1',
+  type: PartType.stepFinish,
+  raw: {'id': id, 'type': 'step-finish'},
+);
 
 Part _tool(String id, String status) => Part(
-      id: id,
-      sessionID: 's',
-      messageID: 'm1',
-      type: PartType.tool,
-      raw: {
-        'id': id,
-        'type': 'tool',
-        'state': {'status': status},
-      },
-    );
+  id: id,
+  sessionID: 's',
+  messageID: 'm1',
+  type: PartType.tool,
+  raw: {
+    'id': id,
+    'type': 'tool',
+    'state': {'status': status},
+  },
+);
 
 void main() {
   group('turnAppearsFinished', () {
@@ -45,7 +45,9 @@ void main() {
       );
       expect(
         SessionController.turnAppearsFinished(
-          messages: [_assistantMsg([_textPart('p1')])],
+          messages: [
+            _assistantMsg([_textPart('p1')]),
+          ],
           wasAborted: true,
         ),
         isTrue,
@@ -93,7 +95,9 @@ void main() {
     });
 
     test('completed tool followed by stepFinish is finished', () {
-      final msgs = [_assistantMsg([_tool('p1', 'completed'), _stepFinish('p2')])];
+      final msgs = [
+        _assistantMsg([_tool('p1', 'completed'), _stepFinish('p2')]),
+      ];
       expect(
         SessionController.turnAppearsFinished(
           messages: msgs,
@@ -104,7 +108,9 @@ void main() {
     });
 
     test('running tool means still generating', () {
-      final msgs = [_assistantMsg([_tool('p1', 'running')])];
+      final msgs = [
+        _assistantMsg([_tool('p1', 'running')]),
+      ];
       expect(
         SessionController.turnAppearsFinished(
           messages: msgs,
@@ -115,7 +121,9 @@ void main() {
     });
 
     test('pending tool means still generating', () {
-      final msgs = [_assistantMsg([_tool('p1', 'pending')])];
+      final msgs = [
+        _assistantMsg([_tool('p1', 'pending')]),
+      ];
       expect(
         SessionController.turnAppearsFinished(
           messages: msgs,
@@ -126,7 +134,9 @@ void main() {
     });
 
     test('mid-stream text without stepFinish is not finished', () {
-      final msgs = [_assistantMsg([_textPart('p1')])];
+      final msgs = [
+        _assistantMsg([_textPart('p1')]),
+      ];
       expect(
         SessionController.turnAppearsFinished(
           messages: msgs,
@@ -138,7 +148,11 @@ void main() {
 
     test('finished text plus a later running tool is not finished', () {
       final msgs = [
-        _assistantMsg([_textPart('p1'), _stepFinish('p2'), _tool('p3', 'running')]),
+        _assistantMsg([
+          _textPart('p1'),
+          _stepFinish('p2'),
+          _tool('p3', 'running'),
+        ]),
       ];
       expect(
         SessionController.turnAppearsFinished(

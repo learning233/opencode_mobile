@@ -25,21 +25,15 @@ class ReasoningPartWidget extends StatelessWidget {
     showDetailBottomSheet(
       context: context,
       title: LocaleKeys.cardVisThinking.tr,
-      bodyBuilder: (ctx) => _ReasoningSheetBody(
-        controller: ctrl,
-        sessionId: sid,
-        fallback: part,
-      ),
+      bodyBuilder: (ctx) =>
+          _ReasoningSheetBody(controller: ctrl, sessionId: sid, fallback: part),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final text = part.reasoningText;
-    final show =
-        text.isNotEmpty ||
-        isStreaming ||
-        !part.reasoningCompleted;
+    final show = text.isNotEmpty || isStreaming || !part.reasoningCompleted;
     if (!show && text.isEmpty && !isStreaming) {
       return const SizedBox.shrink();
     }
@@ -183,13 +177,11 @@ class _ReasoningSheetBodyState extends State<_ReasoningSheetBody> {
     if (state == null) {
       return _content(theme, text: widget.fallback.reasoningText);
     }
-    return Obx(
-      () {
-        final part = _lookup();
-        _scrollToBottom();
-        return _content(theme, text: part.reasoningText);
-      },
-    );
+    return Obx(() {
+      final part = _lookup();
+      _scrollToBottom();
+      return _content(theme, text: part.reasoningText);
+    });
   }
 
   Widget _content(ThemeData theme, {required String text}) {

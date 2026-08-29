@@ -26,8 +26,9 @@ void main() {
   }
 
   group('InAppBrowserView empty-tab rendering', () {
-    testWidgets('renders the empty placeholder when no tabs are open',
-        (tester) async {
+    testWidgets('renders the empty placeholder when no tabs are open', (
+      tester,
+    ) async {
       // Regression guard: an empty tab list must not crash the browser
       // (0.clamp(0, -1) throws ArgumentError). No WebViewController is created
       // in this state, so no webview_flutter platform mock is required.
@@ -37,8 +38,9 @@ void main() {
       expect(find.byType(InAppBrowserView), findsOneWidget);
     });
 
-    testWidgets('screenshot button is disabled when no tabs are open',
-        (tester) async {
+    testWidgets('screenshot button is disabled when no tabs are open', (
+      tester,
+    ) async {
       await tester.pumpWidget(wrap());
       await tester.pumpAndSettle();
 

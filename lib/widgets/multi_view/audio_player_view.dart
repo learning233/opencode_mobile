@@ -140,7 +140,10 @@ class _AudioPlayerViewState extends State<AudioPlayerView> {
   Future<void> _loadAudio() async {
     if (_bytes == null) return;
     try {
-      await _player.setSourceBytes(_bytes!, mimeType: _mimeFor(widget.filePath));
+      await _player.setSourceBytes(
+        _bytes!,
+        mimeType: _mimeFor(widget.filePath),
+      );
     } catch (e) {
       AppLogger.e('Failed to load audio source: $e');
       if (mounted) {

@@ -31,7 +31,8 @@ class TodoCard extends StatelessWidget {
         final items = <String>[];
         for (final t in todosRaw) {
           if (t is Map) {
-            final c = t['content'] ?? t['description'] ?? t['task'] ?? t['title'];
+            final c =
+                t['content'] ?? t['description'] ?? t['task'] ?? t['title'];
             if (c != null && c.toString().trim().isNotEmpty) {
               items.add(c.toString().trim());
             }

@@ -99,7 +99,11 @@ class SessionController extends GetxController with WidgetsBindingObserver {
   /// fall back to `GET /question`. Mirrors the server-side
   /// `tool.callID == part.callID` match without a network round trip.
   String? questionIDForCallID(String callId, {String? sessionId}) =>
-      questionRequestIDForCallID(_questionRequests, callId, sessionId: sessionId);
+      questionRequestIDForCallID(
+        _questionRequests,
+        callId,
+        sessionId: sessionId,
+      );
 
   /// Pure reverse lookup: first `que_...` requestID whose ref's [callId]
   /// matches, preferring the entry for [sessionId] when provided. callID is
@@ -779,9 +783,9 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       sid = activeSessionId.value;
     }
     if (sid.isEmpty) return false;
-    stateOf(sid).attachedImages.add(
-      (bytes: bytes, mime: 'image/png', ext: 'png'),
-    );
+    stateOf(
+      sid,
+    ).attachedImages.add((bytes: bytes, mime: 'image/png', ext: 'png'));
     return true;
   }
 
@@ -810,8 +814,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
   String? get visionModelKey => Global.visionModelKey;
 
   /// 设置识图模型（key 为 `providerId:id`）。
-  Future<void> setVisionModel(String key) =>
-      Global.setVisionModelKey(key);
+  Future<void> setVisionModel(String key) => Global.setVisionModelKey(key);
 
   /// 是否存在可用的识图模型（已配置的，或输入框模型列表里第一个支持识图的）。
   bool get hasVisionModel => _findVisionModel() != null;
@@ -835,13 +838,17 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     if (images.isEmpty) return null;
     final visionModel = _findVisionModel();
     if (visionModel == null) {
-      AppLogger.w('describeImagesToText: no vision-capable model found '
-          '(availableModels=${availableModels.length}, total=${_allModels.length})');
+      AppLogger.w(
+        'describeImagesToText: no vision-capable model found '
+        '(availableModels=${availableModels.length}, total=${_allModels.length})',
+      );
       return null;
     }
-    AppLogger.i('describeImagesToText: using vision model '
-        '${visionModel.providerId}/${visionModel.id} (name=${visionModel.name}, '
-        'availableModels=${availableModels.length}, total=${_allModels.length})');
+    AppLogger.i(
+      'describeImagesToText: using vision model '
+      '${visionModel.providerId}/${visionModel.id} (name=${visionModel.name}, '
+      'availableModels=${availableModels.length}, total=${_allModels.length})',
+    );
 
     String? tempId;
     try {
@@ -904,14 +911,12 @@ class SessionController extends GetxController with WidgetsBindingObserver {
           'modelID': visionModel.id,
         },
       };
-      await _client.post(
-        ApiEndpoints.sessionPromptAsync(tempId),
-        data: body,
-      );
+      await _client.post(ApiEndpoints.sessionPromptAsync(tempId), data: body);
 
       // SSE 已连接时等待 idle/error 事件驱动完成；否则或超时则回退到轮询。
       final sse = _sseClient;
-      final sseAlive = sse != null &&
+      final sseAlive =
+          sse != null &&
           sse.isConnected &&
           !sse.isCredentialFailed &&
           sse.queryParams['directory'] == _client.activeDirectory;
@@ -923,7 +928,9 @@ class SessionController extends GetxController with WidgetsBindingObserver {
           AppLogger.w('describeImagesToText: SSE timed out, polling fallback');
         }
       } else {
-        AppLogger.w('describeImagesToText: SSE not connected, polling fallback');
+        AppLogger.w(
+          'describeImagesToText: SSE not connected, polling fallback',
+        );
       }
       return await _pollVisionReply(tempId);
     } catch (e) {
@@ -1325,14 +1332,12 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     final text = state.pendingPromptText.value;
     final images = state.pendingPromptImages.toList();
     final files = state.pendingPromptAttachedFiles.toList();
-    final overrideAgent =
-        state.pendingPromptAgent.value.isNotEmpty
-            ? state.pendingPromptAgent.value
-            : null;
-    final overrideModel =
-        state.pendingPromptModel.value.isNotEmpty
-            ? state.pendingPromptModel.value
-            : null;
+    final overrideAgent = state.pendingPromptAgent.value.isNotEmpty
+        ? state.pendingPromptAgent.value
+        : null;
+    final overrideModel = state.pendingPromptModel.value.isNotEmpty
+        ? state.pendingPromptModel.value
+        : null;
     state.clearPendingPrompt();
     unawaited(
       sendPrompt(
@@ -1724,13 +1729,15 @@ class SessionController extends GetxController with WidgetsBindingObserver {
   /// event (same terminal shape) simply replaces the local mark.
   void _markRunningToolPartsAborted(SessionRuntimeState state) {
     if (state.messages.isEmpty) return;
-    final idx = state.messages
-        .lastIndexWhere((m) => m.role == MessageRole.assistant);
+    final idx = state.messages.lastIndexWhere(
+      (m) => m.role == MessageRole.assistant,
+    );
     if (idx == -1) return;
     final msg = state.messages[idx];
     final isZh = Get.locale?.languageCode.startsWith('zh') ?? true;
-    final abortText =
-        isZh ? '消息已被用户或系统中断。' : 'Message was aborted by user or system.';
+    final abortText = isZh
+        ? '消息已被用户或系统中断。'
+        : 'Message was aborted by user or system.';
     final now = DateTime.now().millisecondsSinceEpoch;
     var changed = false;
     final newParts = <Part>[];
@@ -2110,10 +2117,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
   /// 是否已有一个指向相同服务器+目录、且连接中/已连接、非凭据失效的 SSE 客户端。
   /// `initializeAfterConnect` 与 `_connectSse` 共用此判定：目标相同且 SSE 健康时，
   /// 模型/会话数据正由实时事件保持同步，重复拉取与重复连接都无意义。
-  bool _hasLiveSseFor({
-    required String serverUrl,
-    required String? directory,
-  }) {
+  bool _hasLiveSseFor({required String serverUrl, required String? directory}) {
     final sse = _sseClient;
     return sse != null &&
         !sse.isCredentialFailed &&
@@ -2217,12 +2221,10 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     required bool wasAborted,
   }) {
     if (wasAborted) return true;
-    final idx = messages
-        .lastIndexWhere((m) => m.role == MessageRole.assistant);
+    final idx = messages.lastIndexWhere((m) => m.role == MessageRole.assistant);
     if (idx == -1) return false;
     final last = messages[idx];
-    final hasStepFinish =
-        last.parts.any((p) => p.type == PartType.stepFinish);
+    final hasStepFinish = last.parts.any((p) => p.type == PartType.stepFinish);
     final hasActiveTool = last.parts.any(
       (p) =>
           p.type == PartType.tool &&
@@ -2783,7 +2785,8 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       }
       // A late delta flush must not re-arm isGenerating once the server has
       // told us the turn ended (idle/error), or the UI would stick spinning.
-      final turnEnded = state.sessionStatus.value == 'idle' ||
+      final turnEnded =
+          state.sessionStatus.value == 'idle' ||
           state.sessionStatus.value == 'error';
       if (changed &&
           !state.isGenerating.value &&
@@ -2807,7 +2810,9 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       return;
     }
     if (sessionIds.isEmpty) return;
-    _pendingPartDeltas.removeWhere((key, v) => sessionIds.contains(v.sessionId));
+    _pendingPartDeltas.removeWhere(
+      (key, v) => sessionIds.contains(v.sessionId),
+    );
     if (_pendingPartDeltas.isEmpty) {
       _partDeltaFlushTimer?.cancel();
       _partDeltaFlushTimer = null;

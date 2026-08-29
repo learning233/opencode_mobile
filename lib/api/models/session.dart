@@ -98,9 +98,7 @@ class SessionModel {
     final info = _asStringMap(json['info']) ?? json;
     final location = _asStringMap(info['location']);
     final dir =
-        _asString(info['directory']) ??
-        _asString(location?['directory']) ??
-        '';
+        _asString(info['directory']) ?? _asString(location?['directory']) ?? '';
     final summaryMap = _asStringMap(info['summary']);
     final shareMap = _asStringMap(info['share']);
     final revertMap = _asStringMap(info['revert']);
@@ -116,12 +114,8 @@ class SessionModel {
       parentID: _asString(info['parentID']),
       title: _asString(info['title']) ?? '',
       version: _asString(info['version']) ?? '',
-      time: SessionTimeInfo.fromJson(
-        _asStringMap(info['time']) ?? const {},
-      ),
-      summary: summaryMap != null
-          ? SessionSummary.fromJson(summaryMap)
-          : null,
+      time: SessionTimeInfo.fromJson(_asStringMap(info['time']) ?? const {}),
+      summary: summaryMap != null ? SessionSummary.fromJson(summaryMap) : null,
       share: shareMap != null ? SessionShare.fromJson(shareMap) : null,
       revert: revertMap != null ? SessionRevert.fromJson(revertMap) : null,
       agent: _asString(info['agent']),
@@ -129,7 +123,9 @@ class SessionModel {
       cost: _asDouble(info['cost']),
       tokens: tokensMap != null ? SessionTokens.fromJson(tokensMap) : null,
       metadata: _asStringMap(info['metadata']),
-      permission: info['permission'] is List ? info['permission'] as List : null,
+      permission: info['permission'] is List
+          ? info['permission'] as List
+          : null,
     );
   }
 

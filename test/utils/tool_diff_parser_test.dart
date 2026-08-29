@@ -12,11 +12,7 @@ Part _toolPart(Map<String, dynamic> input, Map<String, dynamic> metadata) {
       'id': 'p1',
       'type': 'tool',
       'tool': 'apply_patch',
-      'state': {
-        'status': 'completed',
-        'input': input,
-        'metadata': metadata,
-      },
+      'state': {'status': 'completed', 'input': input, 'metadata': metadata},
     },
   );
 }
@@ -24,21 +20,18 @@ Part _toolPart(Map<String, dynamic> input, Map<String, dynamic> metadata) {
 void main() {
   group('ToolDiffParser', () {
     test('apply_patch prefers absolute filePath over relativePath', () {
-      final part = _toolPart(
-        const {},
-        const {
-          'files': [
-            {
-              'filePath': '/project/src/a.ts',
-              'relativePath': 'src/a.ts',
-              'type': 'update',
-              'additions': 2,
-              'deletions': 1,
-              'patch': '',
-            },
-          ],
-        },
-      );
+      final part = _toolPart(const {}, const {
+        'files': [
+          {
+            'filePath': '/project/src/a.ts',
+            'relativePath': 'src/a.ts',
+            'type': 'update',
+            'additions': 2,
+            'deletions': 1,
+            'patch': '',
+          },
+        ],
+      });
       final diffs = ToolDiffParser.parse(part);
       expect(diffs, hasLength(1));
       expect(diffs.single.file, '/project/src/a.ts');
@@ -47,20 +40,17 @@ void main() {
     });
 
     test('fallback to relativePath when filePath is absent', () {
-      final part = _toolPart(
-        const {},
-        const {
-          'files': [
-            {
-              'relativePath': 'src/b.ts',
-              'type': 'update',
-              'additions': 0,
-              'deletions': 0,
-              'patch': '',
-            },
-          ],
-        },
-      );
+      final part = _toolPart(const {}, const {
+        'files': [
+          {
+            'relativePath': 'src/b.ts',
+            'type': 'update',
+            'additions': 0,
+            'deletions': 0,
+            'patch': '',
+          },
+        ],
+      });
       final diffs = ToolDiffParser.parse(part);
       expect(diffs, hasLength(1));
       expect(diffs.single.file, 'src/b.ts');
@@ -77,21 +67,18 @@ void main() {
         '-gone',
         '+kept',
       ].join('\n');
-      final part = _toolPart(
-        const {},
-        {
-          'files': [
-            {
-              'filePath': '/project/src/c.ts',
-              'relativePath': 'src/c.ts',
-              'type': 'update',
-              'additions': 0,
-              'deletions': 0,
-              'patch': patch,
-            },
-          ],
-        },
-      );
+      final part = _toolPart(const {}, {
+        'files': [
+          {
+            'filePath': '/project/src/c.ts',
+            'relativePath': 'src/c.ts',
+            'type': 'update',
+            'additions': 0,
+            'deletions': 0,
+            'patch': patch,
+          },
+        ],
+      });
       final diffs = ToolDiffParser.parse(part);
       expect(diffs, hasLength(1));
       // +++added + +kept = 2; ---removed + -gone = 2 (headers excluded).

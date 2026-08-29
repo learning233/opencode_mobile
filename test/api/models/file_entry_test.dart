@@ -74,7 +74,10 @@ void main() {
     });
 
     test('fallback name derivation still works from raw path', () {
-      final entry = FileEntry.fromJson({'path': r'a\b\file.txt', 'type': 'file'});
+      final entry = FileEntry.fromJson({
+        'path': r'a\b\file.txt',
+        'type': 'file',
+      });
       expect(entry.name, 'file.txt');
       expect(entry.path, 'a/b/file.txt');
     });

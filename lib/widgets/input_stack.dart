@@ -54,8 +54,8 @@ class _SessionStatusStackState extends State<SessionStatusStack> {
                 onToggle: () {
                   state.expandedSection.value =
                       expanded == SessionExpandedSection.todo
-                          ? SessionExpandedSection.none
-                          : SessionExpandedSection.todo;
+                      ? SessionExpandedSection.none
+                      : SessionExpandedSection.todo;
                 },
               ),
               SessionDiffPanel(
@@ -273,9 +273,7 @@ class _SessionDiffListState extends State<_SessionDiffList> {
 
     return Column(
       mainAxisSize: MainAxisSize.min,
-      children: [
-        for (final d in widget.diffs) _buildRow(theme, d, onFileTap),
-      ],
+      children: [for (final d in widget.diffs) _buildRow(theme, d, onFileTap)],
     );
   }
 
@@ -290,9 +288,7 @@ class _SessionDiffListState extends State<_SessionDiffList> {
         Icon(
           _statusIcon(d.status),
           size: 12,
-          color: theme.textTheme.bodySmall?.color?.withValues(
-            alpha: 0.45,
-          ),
+          color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.45),
         ),
         const SizedBox(width: 6),
         Expanded(
@@ -331,10 +327,7 @@ class _SessionDiffListState extends State<_SessionDiffList> {
         },
         borderRadius: BorderRadius.circular(6),
         child: Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 6,
-            vertical: 3,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
           decoration: BoxDecoration(
             color: active
                 ? theme.colorScheme.primary.withValues(alpha: 0.1)
@@ -687,18 +680,13 @@ class StartExecutionButton extends StatelessWidget {
           );
         },
         style: OutlinedButton.styleFrom(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(3),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(3)),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           minimumSize: const Size(100, 30),
         ),
         child: Text(
           LocaleKeys.makePlan.tr,
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-          ),
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
         ),
       );
 
@@ -714,26 +702,22 @@ class StartExecutionButton extends StatelessWidget {
           );
         },
         style: FilledButton.styleFrom(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(3),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(3)),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           minimumSize: const Size(100, 30),
         ),
         child: Text(
           LocaleKeys.startExecution.tr,
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-          ),
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
         ),
       );
 
       return Padding(
         padding: const EdgeInsets.only(bottom: 4),
         child: Row(
-          mainAxisAlignment:
-              isTablet ? MainAxisAlignment.start : MainAxisAlignment.end,
+          mainAxisAlignment: isTablet
+              ? MainAxisAlignment.start
+              : MainAxisAlignment.end,
           children: isTablet
               ? [execBtn, const SizedBox(width: 8), planBtn]
               : [planBtn, const SizedBox(width: 8), execBtn],

@@ -2,8 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:opencode_app/utils/diff_render.dart';
 import 'package:opencode_app/widgets/diff/diff_view.dart';
 
-DiffLine _line(DiffLineType type, String text,
-        {int? oldNum, int? newNum}) =>
+DiffLine _line(DiffLineType type, String text, {int? oldNum, int? newNum}) =>
     DiffLine(type, text, oldLineNum: oldNum, newLineNum: newNum);
 
 void main() {
@@ -56,22 +55,29 @@ void main() {
     });
 
     test('empty line numbers render as empty gutter text', () {
-      final r = buildDiffRenderLines(
-        [_line(DiffLineType.added, 'x')],
-        hideContextLines: false,
-      );
+      final r = buildDiffRenderLines([
+        _line(DiffLineType.added, 'x'),
+      ], hideContextLines: false);
       expect(r.single.numberText, isEmpty);
     });
   });
 
   group('estimateDiffHeight', () {
-    test('scales with line count, font size and line height, plus safety margin', () {
-      expect(estimateDiffHeight(10), closeTo(10 * 12 * 1.3 + 8 + 2, 0.01));
-    });
+    test(
+      'scales with line count, font size and line height, plus safety margin',
+      () {
+        expect(estimateDiffHeight(10), closeTo(10 * 12 * 1.3 + 8 + 2, 0.01));
+      },
+    );
 
     test('allows custom font metrics', () {
       expect(
-        estimateDiffHeight(5, fontSize: 14, fontHeight: 1.5, verticalPadding: 10),
+        estimateDiffHeight(
+          5,
+          fontSize: 14,
+          fontHeight: 1.5,
+          verticalPadding: 10,
+        ),
         closeTo(5 * 14 * 1.5 + 10 + 2, 0.01),
       );
     });

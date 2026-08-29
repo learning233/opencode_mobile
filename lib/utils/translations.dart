@@ -1077,7 +1077,8 @@ class LocaleKeys {
   static const browserScreenshot = "browser_screenshot";
   static const browserScreenshotAdded = "browser_screenshot_added";
   static const browserScreenshotFailed = "browser_screenshot_failed";
-  static const browserScreenshotFailedReason = "browser_screenshot_failed_reason";
+  static const browserScreenshotFailedReason =
+      "browser_screenshot_failed_reason";
   static const browserScreenshotNoSession = "browser_screenshot_no_session";
 
   // ── Preview Port ──
@@ -3176,8 +3177,7 @@ class Messages extends Translations {
     LocaleKeys.voiceListening: 'Listening...',
     LocaleKeys.voiceReleaseCancel: 'Release to cancel',
     LocaleKeys.voiceReleaseInsert: 'Release to insert into input',
-    LocaleKeys.voiceReleaseHint:
-        'Release: Send | ↑ Cancel | ↓ Insert',
+    LocaleKeys.voiceReleaseHint: 'Release: Send | ↑ Cancel | ↓ Insert',
     LocaleKeys.voiceMicPermissionDeniedPermanent:
         'Microphone permission denied. Opening system settings.',
     LocaleKeys.voiceMicPermissionDenied:
@@ -3228,7 +3228,8 @@ class Messages extends Translations {
     LocaleKeys.mobileImageUnsupportedFormat: 'Unsupported image format (.@ext)',
     LocaleKeys.mobileImageHeicUnsupported:
         'HEIC/HEIF cannot be parsed, convert to JPG/PNG first',
-    LocaleKeys.mobileImageDescribePrompt: 'Please describe the images I sent you in detail.',
+    LocaleKeys.mobileImageDescribePrompt:
+        'Please describe the images I sent you in detail.',
     LocaleKeys.mobileImageDescribing: 'Describing images…',
     LocaleKeys.mobileImageDescribeFailed: 'Failed to describe image',
     LocaleKeys.mobileImageToText: 'To text',
@@ -3237,7 +3238,8 @@ class Messages extends Translations {
     LocaleKeys.releasePageTitle: 'Release Page',
     LocaleKeys.releasePageSubtitle: 'View latest updates on GitHub',
     LocaleKeys.openSourceLibrariesTitle: 'Open Source Libraries',
-    LocaleKeys.openSourceLibrariesDesc: 'Built with the following Flutter & Dart open-source packages:',
+    LocaleKeys.openSourceLibrariesDesc:
+        'Built with the following Flutter & Dart open-source packages:',
     LocaleKeys.viewFullLicenses: 'View All Open Source Licenses',
     LocaleKeys.mobileSelectVisionModel: 'Select vision model',
     LocaleKeys.mobileNoVisionModelsHint: 'No models available',
@@ -3462,11 +3464,13 @@ class Messages extends Translations {
     LocaleKeys.browserScreenshotAdded: 'Screenshot added to current session',
     LocaleKeys.browserScreenshotFailed: 'Screenshot failed. Please retry',
     LocaleKeys.browserScreenshotFailedReason: 'Screenshot failed: {reason}',
-    LocaleKeys.browserScreenshotNoSession: 'Failed to create a session. Please retry later',
+    LocaleKeys.browserScreenshotNoSession:
+        'Failed to create a session. Please retry later',
     // ── Preview Port ──
     LocaleKeys.previewBindTitle: 'Bind preview port',
     LocaleKeys.previewPortHint: 'Port (1-65535)',
-    LocaleKeys.previewPortInvalid: 'Invalid port. Enter a number between 1 and 65535',
+    LocaleKeys.previewPortInvalid:
+        'Invalid port. Enter a number between 1 and 65535',
     LocaleKeys.previewPortClear: 'Clear binding',
     LocaleKeys.previewBindPreview: 'Preview URL:',
     // ── Terminal Extra ──

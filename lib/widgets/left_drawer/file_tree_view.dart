@@ -48,10 +48,9 @@ class _FileTreeViewState extends State<FileTreeView> {
     // 订阅文件变更事件：agent 编辑/新建文件后失效缓存并重载根目录。
     // 用防抖合并连续事件（file.watcher.updated 可能高频触发）。
     if (Get.isRegistered<TabletToolController>()) {
-      _fileChangeSub = Get
-          .find<TabletToolController>()
-          .fileChangeTick
-          .listen((_) => _scheduleRefresh());
+      _fileChangeSub = Get.find<TabletToolController>().fileChangeTick.listen(
+        (_) => _scheduleRefresh(),
+      );
     }
   }
 

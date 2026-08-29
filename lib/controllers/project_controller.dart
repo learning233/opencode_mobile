@@ -27,9 +27,7 @@ class ProjectController extends GetxController {
     super.onInit();
     hiddenProjectKeys
       ..clear()
-      ..addAll(
-        Global.settings.hiddenProjects.map(normalizeDirectory).toSet(),
-      );
+      ..addAll(Global.settings.hiddenProjects.map(normalizeDirectory).toSet());
   }
 
   bool isProjectHidden(ProjectModel project) =>
@@ -194,10 +192,7 @@ class ProjectController extends GetxController {
       // a real project id. /instance/dispose releases the instance *after* the
       // response, so we must re-nudge afterwards rather than before.
       try {
-        await _client.post(
-          ApiEndpoints.instanceDispose,
-          directory: normalized,
-        );
+        await _client.post(ApiEndpoints.instanceDispose, directory: normalized);
         await _client.get(ApiEndpoints.sessions, directory: normalized);
       } catch (_) {
         // Best-effort — if the endpoint is unavailable, fall through to the

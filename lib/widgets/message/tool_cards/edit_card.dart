@@ -148,9 +148,7 @@ class _EditCardState extends State<EditCard> {
           ),
           const Divider(height: 1, thickness: 0.5),
           DiffCodeView(
-            lines: [
-              for (final l in fileDiff.lines) _toDiffLine(l),
-            ],
+            lines: [for (final l in fileDiff.lines) _toDiffLine(l)],
             hideContextLines: false,
             showLineNumbers: true,
             maxHeight: maxHeight,

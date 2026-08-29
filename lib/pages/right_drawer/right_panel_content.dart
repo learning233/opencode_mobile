@@ -206,9 +206,7 @@ class RightPanelContent extends StatelessWidget {
                             '${m.providerId}/${m.id}',
                             style: TextStyle(
                               fontSize: 11,
-                              color: Theme.of(ctx)
-                                  .colorScheme
-                                  .onSurfaceVariant,
+                              color: Theme.of(ctx).colorScheme.onSurfaceVariant,
                             ),
                           ),
                           trailing: selected

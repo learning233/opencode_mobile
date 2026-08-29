@@ -67,17 +67,19 @@ void main() {
       );
     });
 
-    test('falls back to a callId match when the session is not in the index',
-        () {
-      expect(
-        SessionController.questionRequestIDForCallID(
-          requests,
-          'call_1',
-          sessionId: 's9',
-        ),
-        'que_1',
-      );
-    });
+    test(
+      'falls back to a callId match when the session is not in the index',
+      () {
+        expect(
+          SessionController.questionRequestIDForCallID(
+            requests,
+            'call_1',
+            sessionId: 's9',
+          ),
+          'que_1',
+        );
+      },
+    );
 
     test('ignores refs with an empty callId', () {
       const withEmpty = {

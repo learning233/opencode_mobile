@@ -44,12 +44,10 @@ class _SessionListPageState extends State<SessionListPage> {
     // sort in place instead of copying again.
     all.sort((a, b) => b.time.updated.compareTo(a.time.updated));
     if (q.isEmpty) return all;
-    return all
-        .where((s) {
-          final name = s.displayName.toLowerCase();
-          return name.contains(q) || s.id.toLowerCase().contains(q);
-        })
-        .toList();
+    return all.where((s) {
+      final name = s.displayName.toLowerCase();
+      return name.contains(q) || s.id.toLowerCase().contains(q);
+    }).toList();
   }
 
   String _formatTime(int ms) {
@@ -166,8 +164,7 @@ class _SessionListPageState extends State<SessionListPage> {
               if (_loading.value && _ctrl.sessions.isEmpty) {
                 return const Center(child: CircularProgressIndicator());
               }
-              if (_ctrl.sessionsError.value != null &&
-                  _ctrl.sessions.isEmpty) {
+              if (_ctrl.sessionsError.value != null && _ctrl.sessions.isEmpty) {
                 return Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,

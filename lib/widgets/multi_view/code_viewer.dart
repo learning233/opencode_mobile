@@ -89,7 +89,9 @@ class _FileEditorPageState extends State<FileEditorPage> {
       _lineWorker = ever(toolCtrl.fileLineJumpRequest, (req) {
         if (req != null &&
             req.path == widget.filePath &&
-            (req.worktree == null || widget.worktree == null || req.worktree == widget.worktree) &&
+            (req.worktree == null ||
+                widget.worktree == null ||
+                req.worktree == widget.worktree) &&
             mounted) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) _jumpToLine(req.line);
@@ -142,7 +144,9 @@ class _FileEditorPageState extends State<FileEditorPage> {
   CodeLineEditingController _createController({String? text}) {
     final normalized = text != null ? _normalizeNewlines(text) : null;
     final lines = normalized != null
-        ? CodeLines.of(normalized.split('\n').map((line) => CodeLine(line)).toList())
+        ? CodeLines.of(
+            normalized.split('\n').map((line) => CodeLine(line)).toList(),
+          )
         : CodeLines.of(const [CodeLine('')]);
     return CodeLineEditingController(
       codeLines: lines,
@@ -174,7 +178,8 @@ class _FileEditorPageState extends State<FileEditorPage> {
   @override
   void didUpdateWidget(covariant FileEditorPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.initialLine != null && widget.initialLine != oldWidget.initialLine) {
+    if (widget.initialLine != null &&
+        widget.initialLine != oldWidget.initialLine) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _jumpToLine(widget.initialLine!);
       });
@@ -625,8 +630,7 @@ class _FileEditorPageState extends State<FileEditorPage> {
                   p: TextStyle(fontSize: _fontSize, height: 1.6),
                   code: TextStyle(
                     fontSize: _fontSize,
-                    backgroundColor:
-                        theme.colorScheme.surfaceContainerHighest,
+                    backgroundColor: theme.colorScheme.surfaceContainerHighest,
                     fontFamily: 'monospace',
                   ),
                   codeblockDecoration: BoxDecoration(
@@ -899,10 +903,7 @@ class _FontSizeMenuItem extends PopupMenuEntry<String> {
   final double fontSize;
   final ValueChanged<double> onChanged;
 
-  const _FontSizeMenuItem({
-    required this.fontSize,
-    required this.onChanged,
-  });
+  const _FontSizeMenuItem({required this.fontSize, required this.onChanged});
 
   @override
   double get height => 44;
@@ -957,8 +958,9 @@ class _FontSizeMenuItemState extends State<_FontSizeMenuItem> {
           Container(
             height: 30,
             decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest
-                  .withValues(alpha: 0.6),
+              color: theme.colorScheme.surfaceContainerHighest.withValues(
+                alpha: 0.6,
+              ),
               borderRadius: BorderRadius.circular(6),
               border: Border.all(
                 color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),

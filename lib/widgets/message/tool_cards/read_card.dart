@@ -35,8 +35,9 @@ class ReadCard extends StatelessWidget {
         input['start_line'] ??
         input['startLine'];
     final limitVal = input['limit'] ?? input['Limit'] ?? input['count'];
-    final offset =
-        offsetVal != null ? int.tryParse(offsetVal.toString()) : null;
+    final offset = offsetVal != null
+        ? int.tryParse(offsetVal.toString())
+        : null;
     final limit = limitVal != null ? int.tryParse(limitVal.toString()) : null;
     if (offset != null && offset > 0) {
       if (limit != null && limit > 0) return ':$offset-${offset + limit - 1}';

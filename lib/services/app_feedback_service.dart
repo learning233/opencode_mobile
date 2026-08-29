@@ -125,8 +125,7 @@ class AppFeedbackService extends GetxService {
       // 录音进行中时把音量降为 0.1，避免提示音过响干扰识别。
       // 仅基于运行时录音状态判断；Global.continuousVoiceInput 是持久化设置项，
       // 开启后恒 true，即便当前完全没录音也会误压音量。
-      _feedbackVolume =
-          VoiceInputService.instance.isListening ? 0.1 : 1.0;
+      _feedbackVolume = VoiceInputService.instance.isListening ? 0.1 : 1.0;
       await player.setVolume(_feedbackVolume);
       await player.stop();
       await player.play(AssetSource(_soundFor(type)));
@@ -154,9 +153,7 @@ class AppFeedbackService extends GetxService {
           audioFocus: AndroidAudioFocus.none,
           usageType: AndroidUsageType.notificationRingtone,
         ),
-        iOS: AudioContextIOS(
-          category: AVAudioSessionCategory.ambient,
-        ),
+        iOS: AudioContextIOS(category: AVAudioSessionCategory.ambient),
       ),
     );
     // SoundPool 加载完成后才真正开播，状态流转到 playing 时重设音量，

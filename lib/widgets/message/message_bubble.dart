@@ -138,8 +138,7 @@ class MessageBubble extends StatelessWidget {
       messages,
       startIdx,
       currentIdx,
-      subtaskDiffs:
-          (userMessageId != null && userMessageId.isNotEmpty)
+      subtaskDiffs: (userMessageId != null && userMessageId.isNotEmpty)
           ? state?.messageSubtaskDiffs[userMessageId]
           : null,
     );

@@ -6,10 +6,7 @@ import '../api/models/search_result.dart';
 import '../api/opencode_client.dart';
 import '../utils/app_logger.dart';
 
-enum SearchMode {
-  text,
-  files,
-}
+enum SearchMode { text, files }
 
 class FileSearchController extends GetxController {
   final OpenCodeClient _client = OpenCodeClient();
@@ -82,11 +79,7 @@ class FileSearchController extends GetxController {
       if (mode.value == SearchMode.files) {
         final response = await _client.get(
           ApiEndpoints.findFile,
-          queryParameters: {
-            'query': trimmed,
-            'limit': 60,
-            'type': 'file',
-          },
+          queryParameters: {'query': trimmed, 'limit': 60, 'type': 'file'},
           directory: worktree,
           cancelToken: token,
         );
@@ -108,9 +101,7 @@ class FileSearchController extends GetxController {
       } else {
         final response = await _client.get(
           ApiEndpoints.findText,
-          queryParameters: {
-            'pattern': trimmed,
-          },
+          queryParameters: {'pattern': trimmed},
           directory: worktree,
           cancelToken: token,
         );

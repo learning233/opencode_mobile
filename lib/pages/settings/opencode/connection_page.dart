@@ -81,7 +81,9 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
       }
     } catch (e) {
       if (mounted) {
-        Snack.error('${LocaleKeys.connectionReconnectFailed.tr}: ${maskIpsInText('$e')}');
+        Snack.error(
+          '${LocaleKeys.connectionReconnectFailed.tr}: ${maskIpsInText('$e')}',
+        );
       }
     } finally {
       if (mounted && !_navigatedAway) setState(() => _saving = false);

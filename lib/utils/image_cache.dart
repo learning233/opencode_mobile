@@ -28,8 +28,9 @@ class ImageCache {
   Future<void> write(String messageId, String partId, List<int> bytes) async {
     try {
       final dir = await _dir();
-      await File(p.join(dir.path, '${messageId}_$partId.img'))
-          .writeAsBytes(bytes, flush: true);
+      await File(
+        p.join(dir.path, '${messageId}_$partId.img'),
+      ).writeAsBytes(bytes, flush: true);
     } catch (e) {
       AppLogger.e('ImageCache.write failed: $e');
     }

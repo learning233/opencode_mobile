@@ -26,7 +26,10 @@ class VcsInfo {
 
     return VcsInfo(
       branch: json['branch']?.toString() ?? '',
-      defaultBranch: json['defaultBranch']?.toString() ?? json['default_branch']?.toString() ?? '',
+      defaultBranch:
+          json['defaultBranch']?.toString() ??
+          json['default_branch']?.toString() ??
+          '',
       isClean: json['isClean'] as bool? ?? json['is_clean'] as bool? ?? true,
       branches: branchList,
     );
@@ -76,10 +79,15 @@ class VcsStatusFile {
   };
 
   /// Returns true if status indicates addition / untracked file.
-  bool get isAdded => status == 'added' || status == 'untracked' || status == 'new' || status == '?';
+  bool get isAdded =>
+      status == 'added' ||
+      status == 'untracked' ||
+      status == 'new' ||
+      status == '?';
 
   /// Returns true if status indicates deleted file.
-  bool get isDeleted => status == 'deleted' || status == 'removed' || status == 'd';
+  bool get isDeleted =>
+      status == 'deleted' || status == 'removed' || status == 'd';
 
   /// Returns true if status indicates modified file.
   bool get isModified => !isAdded && !isDeleted;

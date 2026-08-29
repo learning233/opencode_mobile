@@ -203,9 +203,11 @@ class PtyController extends GetxController with WidgetsBindingObserver {
         // 同目录的会话，避免误删其它目录的终端。
         if (directory.isNotEmpty) {
           final stale = sessions
-              .where((s) =>
-                  normalizeDirectory(s.directory) == directory &&
-                  !liveIds.contains(s.id))
+              .where(
+                (s) =>
+                    normalizeDirectory(s.directory) == directory &&
+                    !liveIds.contains(s.id),
+              )
               .toList();
           for (final s in stale) {
             s.dispose();
@@ -358,20 +360,23 @@ class PtyController extends GetxController with WidgetsBindingObserver {
       },
       onResize: (w, h, pw, ph) {
         session?.resizeTimer?.cancel();
-        session?.resizeTimer = Timer(const Duration(milliseconds: 150), () async {
-          if (!connected.value) return;
-          try {
-            await _client.put(
-              ApiEndpoints.ptyDetailV2(ptyId),
-              data: {
-                'size': {'rows': h, 'cols': w},
-              },
-              directory: directory,
-            );
-          } catch (e) {
-            AppLogger.w('PTY resize error ($ptyId): $e');
-          }
-        });
+        session?.resizeTimer = Timer(
+          const Duration(milliseconds: 150),
+          () async {
+            if (!connected.value) return;
+            try {
+              await _client.put(
+                ApiEndpoints.ptyDetailV2(ptyId),
+                data: {
+                  'size': {'rows': h, 'cols': w},
+                },
+                directory: directory,
+              );
+            } catch (e) {
+              AppLogger.w('PTY resize error ($ptyId): $e');
+            }
+          },
+        );
       },
     );
 
@@ -422,16 +427,19 @@ class PtyController extends GetxController with WidgetsBindingObserver {
     // 握手超时兜底：服务端一直不响应 upgrade 时停留在连接中，UI 会无限转圈，
     // 超时后进入错误视图（带重试入口）。
     channel.ready
-        .timeout(const Duration(seconds: 10), onTimeout: () {
-          AppLogger.w('PTY WebSocket ready timeout ($ptyId)');
-          connected.value = false;
-          final s = session;
-          if (s != null) {
-            s.error.value = true;
-            s.errorMsg.value = 'Connection timeout';
-            _scheduleAutoReconnect(s);
-          }
-        })
+        .timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            AppLogger.w('PTY WebSocket ready timeout ($ptyId)');
+            connected.value = false;
+            final s = session;
+            if (s != null) {
+              s.error.value = true;
+              s.errorMsg.value = 'Connection timeout';
+              _scheduleAutoReconnect(s);
+            }
+          },
+        )
         .then((_) {
           // onTimeout 之后才完成的情况忽略，避免把已置错的会话翻回连接态。
           final s = session;
@@ -442,7 +450,9 @@ class PtyController extends GetxController with WidgetsBindingObserver {
           }
         })
         .catchError((e) {
-          AppLogger.w('PTY WebSocket ready error ($ptyId): ${maskIpsInText('$e')}');
+          AppLogger.w(
+            'PTY WebSocket ready error ($ptyId): ${maskIpsInText('$e')}',
+          );
           connected.value = false;
           final s = session;
           if (s != null) {
@@ -549,7 +559,9 @@ class PtyController extends GetxController with WidgetsBindingObserver {
           directory: directory,
         );
       } catch (e) {
-        AppLogger.e('POST ${ApiEndpoints.ptyV2} failed: ${maskIpsInText('$e')}');
+        AppLogger.e(
+          'POST ${ApiEndpoints.ptyV2} failed: ${maskIpsInText('$e')}',
+        );
         return;
       }
 
@@ -586,8 +598,7 @@ class PtyController extends GetxController with WidgetsBindingObserver {
     final session = sessions[idx];
     // 计算在过滤列表中的位置，作为下一个激活项的依据（过滤开启时
     // filteredSessions 与 sessions 的索引/顺序不一致）。
-    final filteredIdx =
-        filteredSessions.indexWhere((s) => s.id == ptyId);
+    final filteredIdx = filteredSessions.indexWhere((s) => s.id == ptyId);
     session.dispose();
     sessions.removeAt(idx);
 

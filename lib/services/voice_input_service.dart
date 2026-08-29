@@ -262,8 +262,9 @@ class VoiceInputService {
                   final progress = total > 0
                       ? (received / total).clamp(0.0, 1.0)
                       : null;
-                  final receivedMb =
-                      (received / (1024 * 1024)).toStringAsFixed(1);
+                  final receivedMb = (received / (1024 * 1024)).toStringAsFixed(
+                    1,
+                  );
                   final totalMb = total > 0
                       ? (total / (1024 * 1024)).toStringAsFixed(1)
                       : '?';

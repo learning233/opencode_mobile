@@ -442,7 +442,12 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
         Expanded(
           child: Obx(() {
             if (searchCtrl.hasQuery) {
-              return _buildSearchResults(context, theme, searchCtrl, activeProj);
+              return _buildSearchResults(
+                context,
+                theme,
+                searchCtrl,
+                activeProj,
+              );
             }
             return FileTreeView(
               key: ValueKey('tree_${activeProj.id}_${activeProj.worktree}'),
@@ -464,7 +469,9 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
       child: Container(
         height: 36,
         decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
+          color: theme.colorScheme.surfaceContainerHighest.withValues(
+            alpha: 0.45,
+          ),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
@@ -497,14 +504,19 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
                     hintText: hint,
                     hintStyle: TextStyle(
                       fontSize: 12.5,
-                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.65),
+                      color: theme.colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.65,
+                      ),
                     ),
                     border: InputBorder.none,
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(vertical: 8),
                   ),
                   onChanged: (val) {
-                    searchCtrl.onQueryChanged(val, worktree: activeProj.worktree);
+                    searchCtrl.onQueryChanged(
+                      val,
+                      worktree: activeProj.worktree,
+                    );
                   },
                 );
               }),
@@ -524,10 +536,15 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
                   children: [
                     if (count > 0)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 1,
+                        ),
                         margin: const EdgeInsets.only(right: 2),
                         decoration: BoxDecoration(
-                          color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                          color: theme.colorScheme.primary.withValues(
+                            alpha: 0.12,
+                          ),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
@@ -611,20 +628,30 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
                   Icon(
                     CupertinoIcons.chevron_left_slash_chevron_right,
                     size: 15,
-                    color: !isFiles ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                    color: !isFiles
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurface,
                   ),
                   const SizedBox(width: 8),
                   Text(
                     LocaleKeys.searchText.tr,
                     style: TextStyle(
                       fontSize: 12.5,
-                      fontWeight: !isFiles ? FontWeight.w600 : FontWeight.normal,
-                      color: !isFiles ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                      fontWeight: !isFiles
+                          ? FontWeight.w600
+                          : FontWeight.normal,
+                      color: !isFiles
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurface,
                     ),
                   ),
                   if (!isFiles) ...[
                     const Spacer(),
-                    Icon(Icons.check, size: 14, color: theme.colorScheme.primary),
+                    Icon(
+                      Icons.check,
+                      size: 14,
+                      color: theme.colorScheme.primary,
+                    ),
                   ],
                 ],
               ),
@@ -637,7 +664,9 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
                   Icon(
                     Icons.insert_drive_file_outlined,
                     size: 15,
-                    color: isFiles ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                    color: isFiles
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurface,
                   ),
                   const SizedBox(width: 8),
                   Text(
@@ -645,12 +674,18 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
                     style: TextStyle(
                       fontSize: 12.5,
                       fontWeight: isFiles ? FontWeight.w600 : FontWeight.normal,
-                      color: isFiles ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                      color: isFiles
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurface,
                     ),
                   ),
                   if (isFiles) ...[
                     const Spacer(),
-                    Icon(Icons.check, size: 14, color: theme.colorScheme.primary),
+                    Icon(
+                      Icons.check,
+                      size: 14,
+                      color: theme.colorScheme.primary,
+                    ),
                   ],
                 ],
               ),
@@ -661,11 +696,7 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  icon,
-                  size: 13.5,
-                  color: theme.colorScheme.primary,
-                ),
+                Icon(icon, size: 13.5, color: theme.colorScheme.primary),
                 const SizedBox(width: 4),
                 Text(
                   label,
@@ -742,7 +773,8 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
                 ),
                 const SizedBox(height: 12),
                 FilledButton.tonal(
-                  onPressed: () => searchCtrl.performSearch(worktree: activeProj.worktree),
+                  onPressed: () =>
+                      searchCtrl.performSearch(worktree: activeProj.worktree),
                   child: Text(LocaleKeys.retry.tr),
                 ),
               ],
@@ -769,7 +801,9 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
           itemBuilder: (ctx, idx) {
             final path = searchCtrl.fileResults[idx];
             final fileName = path.contains('/') ? path.split('/').last : path;
-            final dirPath = path.contains('/') ? path.substring(0, path.lastIndexOf('/')) : '';
+            final dirPath = path.contains('/')
+                ? path.substring(0, path.lastIndexOf('/'))
+                : '';
 
             return ListTile(
               dense: true,
@@ -792,7 +826,9 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
                   fontSize: 13,
                   fontWeight: FontWeight.bold,
                   color: theme.colorScheme.primary,
-                  backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.15),
+                  backgroundColor: theme.colorScheme.primary.withValues(
+                    alpha: 0.15,
+                  ),
                 ),
               ),
               subtitle: dirPath.isNotEmpty
@@ -835,8 +871,13 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
                 InkWell(
                   onTap: () => searchCtrl.toggleGroupExpanded(groupIdx),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                    color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 6,
+                    ),
+                    color: theme.colorScheme.surfaceContainerHighest.withValues(
+                      alpha: 0.25,
+                    ),
                     child: Row(
                       children: [
                         AnimatedRotation(
@@ -867,9 +908,14 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
                           ),
                         ),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 1,
+                          ),
                           decoration: BoxDecoration(
-                            color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                            color: theme.colorScheme.primary.withValues(
+                              alpha: 0.12,
+                            ),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
@@ -889,16 +935,27 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
                 if (group.isExpanded)
                   ...group.matches.map((match) {
                     return InkWell(
-                      onTap: () => _onSearchResultTap(group.path, match.lineNumber, activeProj.worktree),
+                      onTap: () => _onSearchResultTap(
+                        group.path,
+                        match.lineNumber,
+                        activeProj.worktree,
+                      ),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 5),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 5,
+                        ),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 1,
+                              ),
                               decoration: BoxDecoration(
-                                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+                                color: theme.colorScheme.surfaceContainerHighest
+                                    .withValues(alpha: 0.6),
                                 borderRadius: BorderRadius.circular(3),
                               ),
                               child: Text(
@@ -926,7 +983,8 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
                                   fontWeight: FontWeight.bold,
                                   fontFamily: 'monospace',
                                   color: theme.colorScheme.primary,
-                                  backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.18),
+                                  backgroundColor: theme.colorScheme.primary
+                                      .withValues(alpha: 0.18),
                                 ),
                               ),
                             ),
@@ -944,7 +1002,11 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
     });
   }
 
-  static int _byteOffsetToCharIndex(List<int> bytes, int byteOffset, int textLength) {
+  static int _byteOffsetToCharIndex(
+    List<int> bytes,
+    int byteOffset,
+    int textLength,
+  ) {
     if (byteOffset <= 0) return 0;
     if (byteOffset >= bytes.length) return textLength;
     try {
@@ -976,27 +1038,28 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
         final endChar = _byteOffsetToCharIndex(bytes, sub.end, text.length);
 
         if (startChar > curChar && startChar <= text.length) {
-          spans.add(TextSpan(
-            text: text.substring(curChar, startChar),
-            style: normalStyle,
-          ));
+          spans.add(
+            TextSpan(
+              text: text.substring(curChar, startChar),
+              style: normalStyle,
+            ),
+          );
         }
 
         final safeEnd = endChar.clamp(startChar, text.length);
         if (safeEnd > startChar) {
-          spans.add(TextSpan(
-            text: text.substring(startChar, safeEnd),
-            style: matchStyle,
-          ));
+          spans.add(
+            TextSpan(
+              text: text.substring(startChar, safeEnd),
+              style: matchStyle,
+            ),
+          );
           curChar = safeEnd;
         }
       }
 
       if (curChar < text.length) {
-        spans.add(TextSpan(
-          text: text.substring(curChar),
-          style: normalStyle,
-        ));
+        spans.add(TextSpan(text: text.substring(curChar), style: normalStyle));
       }
 
       return RichText(
@@ -1023,7 +1086,12 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
     int maxLines = 1,
   }) {
     if (query.isEmpty) {
-      return Text(text, style: normalStyle, maxLines: maxLines, overflow: TextOverflow.ellipsis);
+      return Text(
+        text,
+        style: normalStyle,
+        maxLines: maxLines,
+        overflow: TextOverflow.ellipsis,
+      );
     }
     final lowerText = text.toLowerCase();
     final lowerQuery = query.toLowerCase();
@@ -1038,12 +1106,16 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
         break;
       }
       if (index > start) {
-        spans.add(TextSpan(text: text.substring(start, index), style: normalStyle));
+        spans.add(
+          TextSpan(text: text.substring(start, index), style: normalStyle),
+        );
       }
-      spans.add(TextSpan(
-        text: text.substring(index, index + query.length),
-        style: matchStyle,
-      ));
+      spans.add(
+        TextSpan(
+          text: text.substring(index, index + query.length),
+          style: matchStyle,
+        ),
+      );
       start = index + query.length;
     }
     return RichText(
@@ -1053,11 +1125,7 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
     );
   }
 
-  void _onSearchResultTap(
-    String path,
-    int? lineNumber,
-    String worktree,
-  ) {
+  void _onSearchResultTap(String path, int? lineNumber, String worktree) {
     final fileName = path.contains('/') ? path.split('/').last : path;
     final toolCtrl = Get.find<TabletToolController>();
     toolCtrl.openFile(
@@ -1103,8 +1171,9 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
             minLeadingWidth: 24,
             contentPadding: const EdgeInsets.symmetric(horizontal: 16),
             onTap: () {
-              drawerMode.value =
-                  isFiles ? DrawerMode.projects : DrawerMode.files;
+              drawerMode.value = isFiles
+                  ? DrawerMode.projects
+                  : DrawerMode.files;
             },
             leading: Icon(
               isFiles
@@ -1254,7 +1323,8 @@ class _AddProjectDialogState extends State<_AddProjectDialog> {
     }
     Navigator.pop(context);
     final added = widget.ctrl.projects.firstWhereOrNull(
-      (p) => ProjectController.normalizeDirectory(p.worktree) ==
+      (p) =>
+          ProjectController.normalizeDirectory(p.worktree) ==
           ProjectController.normalizeDirectory(path),
     );
     if (added != null) {

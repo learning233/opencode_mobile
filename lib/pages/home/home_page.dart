@@ -427,9 +427,7 @@ class _HomePageState extends State<HomePage> {
                       showToolPanelToggle: true,
                       isTablet: true,
                     ),
-                    drawer: const LeftDrawer(
-                      initialMode: DrawerMode.projects,
-                    ),
+                    drawer: const LeftDrawer(initialMode: DrawerMode.projects),
                     endDrawer: const RightDrawer(),
                     body: _buildChatBody(context, projectCtrl, sessionCtrl),
                   );
@@ -456,10 +454,7 @@ class _HomePageState extends State<HomePage> {
                     onDrag: (dx) => toolCtrl.adjustWidth(dx, width),
                     onDragEnd: () => toolCtrl.commitWidth(),
                   ),
-                  SizedBox(
-                    width: toolWidth,
-                    child: const TabletToolPanel(),
-                  ),
+                  SizedBox(width: toolWidth, child: const TabletToolPanel()),
                 ],
               ),
             );
@@ -480,10 +475,7 @@ class _PhoneBrowserLayer extends StatelessWidget {
   final TabletToolController controller;
   final VoidCallback onClose;
 
-  const _PhoneBrowserLayer({
-    required this.controller,
-    required this.onClose,
-  });
+  const _PhoneBrowserLayer({required this.controller, required this.onClose});
 
   @override
   Widget build(BuildContext context) {
@@ -522,9 +514,7 @@ class _PhoneBrowserLayer extends StatelessWidget {
                   curve: Curves.easeOutCubic,
                   child: Material(
                     color: Theme.of(context).colorScheme.surface,
-                    child: SafeArea(
-                      child: InAppBrowserView(onClose: onClose),
-                    ),
+                    child: SafeArea(child: InAppBrowserView(onClose: onClose)),
                   ),
                 ),
               ),

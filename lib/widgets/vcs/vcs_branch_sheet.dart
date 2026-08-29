@@ -31,7 +31,9 @@ class _VcsBranchSheetState extends State<VcsBranchSheet> {
 
   void _openChangedFile(String path) {
     if (path.isEmpty) return;
-    final fileName = path.contains('/') ? path.split('/').last : (path.contains('\\') ? path.split('\\').last : path);
+    final fileName = path.contains('/')
+        ? path.split('/').last
+        : (path.contains('\\') ? path.split('\\').last : path);
     final activeProject = Get.find<ProjectController>().activeProject.value;
     final worktree = activeProject?.worktree;
 
@@ -58,12 +60,12 @@ class _VcsBranchSheetState extends State<VcsBranchSheet> {
     Navigator.of(context).pop();
 
     if (!isTablet) {
-      Get.to(() => Scaffold(
-        appBar: AppBar(
-          title: Text(LocaleKeys.csTabReview.tr),
+      Get.to(
+        () => Scaffold(
+          appBar: AppBar(title: Text(LocaleKeys.csTabReview.tr)),
+          body: const ReviewPage(),
         ),
-        body: const ReviewPage(),
-      ));
+      );
     }
   }
 
@@ -131,7 +133,9 @@ class _VcsBranchSheetState extends State<VcsBranchSheet> {
                 Expanded(
                   child: Obx(() {
                     final branch = _vcsCtrl.branch.value;
-                    final isDefault = branch.isNotEmpty && branch == _vcsCtrl.defaultBranch.value;
+                    final isDefault =
+                        branch.isNotEmpty &&
+                        branch == _vcsCtrl.defaultBranch.value;
 
                     if (branch.isEmpty) {
                       return Text(
@@ -148,11 +152,16 @@ class _VcsBranchSheetState extends State<VcsBranchSheet> {
                           child: InkWell(
                             onTap: () {
                               Clipboard.setData(ClipboardData(text: branch));
-                              Snack.success('${LocaleKeys.vcsBranchCopied.tr}: $branch');
+                              Snack.success(
+                                '${LocaleKeys.vcsBranchCopied.tr}: $branch',
+                              );
                             },
                             borderRadius: BorderRadius.circular(4),
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 2,
+                              ),
                               child: Text(
                                 branch,
                                 style: theme.textTheme.titleMedium?.copyWith(
@@ -168,9 +177,14 @@ class _VcsBranchSheetState extends State<VcsBranchSheet> {
                         if (isDefault) ...[
                           const SizedBox(width: 6),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 1.5,
+                            ),
                             decoration: BoxDecoration(
-                              color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                              color: theme.colorScheme.primary.withValues(
+                                alpha: 0.12,
+                              ),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
@@ -191,7 +205,10 @@ class _VcsBranchSheetState extends State<VcsBranchSheet> {
                 FilledButton.tonalIcon(
                   style: FilledButton.styleFrom(
                     visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
                   ),
                   icon: const Icon(Icons.difference_outlined, size: 15),
                   label: Text(
@@ -229,13 +246,19 @@ class _VcsBranchSheetState extends State<VcsBranchSheet> {
                   child: Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
                         decoration: BoxDecoration(
-                          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                          color: theme.colorScheme.surfaceContainerHighest
+                              .withValues(alpha: 0.5),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
-                          LocaleKeys.vcsChangedFiles.trParams({'count': files.length.toString()}),
+                          LocaleKeys.vcsChangedFiles.trParams({
+                            'count': files.length.toString(),
+                          }),
                           style: TextStyle(
                             fontSize: 11.5,
                             fontWeight: FontWeight.w600,
@@ -246,7 +269,10 @@ class _VcsBranchSheetState extends State<VcsBranchSheet> {
                       if (modCount > 0) ...[
                         const SizedBox(width: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 3,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.amber.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(6),
@@ -264,7 +290,10 @@ class _VcsBranchSheetState extends State<VcsBranchSheet> {
                       if (addCount > 0) ...[
                         const SizedBox(width: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 3,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.green.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(6),
@@ -282,7 +311,10 @@ class _VcsBranchSheetState extends State<VcsBranchSheet> {
                       if (delCount > 0) ...[
                         const SizedBox(width: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 3,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.red.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(6),
@@ -311,7 +343,9 @@ class _VcsBranchSheetState extends State<VcsBranchSheet> {
                 child: isLoading
                     ? LinearProgressIndicator(
                         minHeight: 2,
-                        backgroundColor: theme.dividerColor.withValues(alpha: 0.15),
+                        backgroundColor: theme.dividerColor.withValues(
+                          alpha: 0.15,
+                        ),
                         color: theme.colorScheme.primary,
                       )
                     : Divider(
@@ -395,21 +429,29 @@ class _VcsBranchSheetState extends State<VcsBranchSheet> {
                 return ListView.separated(
                   itemCount: files.length,
                   padding: const EdgeInsets.symmetric(vertical: 6),
-                  separatorBuilder: (context, index) => const Divider(height: 1),
+                  separatorBuilder: (context, index) =>
+                      const Divider(height: 1),
                   itemBuilder: (ctx, idx) {
                     final file = files[idx];
                     final rawPath = file.file;
                     final fileName = rawPath.contains('/')
                         ? rawPath.split('/').last
-                        : (rawPath.contains('\\') ? rawPath.split('\\').last : rawPath);
+                        : (rawPath.contains('\\')
+                              ? rawPath.split('\\').last
+                              : rawPath);
                     final dirPath = rawPath.contains('/')
                         ? rawPath.substring(0, rawPath.lastIndexOf('/'))
-                        : (rawPath.contains('\\') ? rawPath.substring(0, rawPath.lastIndexOf('\\')) : '');
+                        : (rawPath.contains('\\')
+                              ? rawPath.substring(0, rawPath.lastIndexOf('\\'))
+                              : '');
 
                     return ListTile(
                       dense: true,
                       visualDensity: VisualDensity.compact,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 2,
+                      ),
                       leading: _buildStatusBadge(theme, file),
                       title: Text(
                         fileName,
@@ -417,9 +459,13 @@ class _VcsBranchSheetState extends State<VcsBranchSheet> {
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
                           color: file.isDeleted
-                              ? theme.colorScheme.onSurface.withValues(alpha: 0.5)
+                              ? theme.colorScheme.onSurface.withValues(
+                                  alpha: 0.5,
+                                )
                               : theme.colorScheme.onSurface,
-                          decoration: file.isDeleted ? TextDecoration.lineThrough : null,
+                          decoration: file.isDeleted
+                              ? TextDecoration.lineThrough
+                              : null,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -429,7 +475,8 @@ class _VcsBranchSheetState extends State<VcsBranchSheet> {
                               dirPath,
                               style: TextStyle(
                                 fontSize: 11,
-                                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                                color: theme.colorScheme.onSurfaceVariant
+                                    .withValues(alpha: 0.7),
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -464,11 +511,14 @@ class _VcsBranchSheetState extends State<VcsBranchSheet> {
                           Icon(
                             Icons.chevron_right_rounded,
                             size: 16,
-                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                            color: theme.colorScheme.onSurfaceVariant
+                                .withValues(alpha: 0.5),
                           ),
                         ],
                       ),
-                      onTap: file.isDeleted ? null : () => _openChangedFile(rawPath),
+                      onTap: file.isDeleted
+                          ? null
+                          : () => _openChangedFile(rawPath),
                     );
                   },
                 );

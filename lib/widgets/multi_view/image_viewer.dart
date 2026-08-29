@@ -150,14 +150,18 @@ class _ImageViewerState extends State<ImageViewer> {
   }
 
   void _zoomIn() {
-    final newScale =
-        (_scaleNotifier.value + _scaleStep).clamp(_minScale, _maxScale);
+    final newScale = (_scaleNotifier.value + _scaleStep).clamp(
+      _minScale,
+      _maxScale,
+    );
     _applyScale(newScale);
   }
 
   void _zoomOut() {
-    final newScale =
-        (_scaleNotifier.value - _scaleStep).clamp(_minScale, _maxScale);
+    final newScale = (_scaleNotifier.value - _scaleStep).clamp(
+      _minScale,
+      _maxScale,
+    );
     _applyScale(newScale);
   }
 

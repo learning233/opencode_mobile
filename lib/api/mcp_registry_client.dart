@@ -45,10 +45,7 @@ class McpRegistryClient {
     }
 
     try {
-      final response = await _dio.get(
-        '/v0.1/servers',
-        queryParameters: params,
-      );
+      final response = await _dio.get('/v0.1/servers', queryParameters: params);
 
       if (response.statusCode != 200) {
         throw McpRegistryException(
@@ -125,9 +122,7 @@ class McpRegistryClient {
         final serverRaw = item['server'];
         if (serverRaw is Map) {
           servers.add(
-            RegistryServerInfo.fromJson(
-              Map<String, dynamic>.from(serverRaw),
-            ),
+            RegistryServerInfo.fromJson(Map<String, dynamic>.from(serverRaw)),
           );
         }
       }

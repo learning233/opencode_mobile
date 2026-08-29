@@ -7,18 +7,18 @@ Part _questionPart({
   String callID = 'call_1',
   String sessionID = 's1',
 }) => Part(
-      id: id,
-      sessionID: sessionID,
-      messageID: 'm1',
-      type: PartType.tool,
-      raw: {
-        'id': id,
-        'sessionID': sessionID,
-        'messageID': 'm1',
-        'type': 'tool',
-        if (callID.isNotEmpty) 'callID': callID,
-      },
-    );
+  id: id,
+  sessionID: sessionID,
+  messageID: 'm1',
+  type: PartType.tool,
+  raw: {
+    'id': id,
+    'sessionID': sessionID,
+    'messageID': 'm1',
+    'type': 'tool',
+    if (callID.isNotEmpty) 'callID': callID,
+  },
+);
 
 void main() {
   group('resolveQuestionIDLocal', () {

@@ -47,7 +47,8 @@ class VcsController extends GetxController {
     isLoading.value = true;
     error.value = null;
 
-    final targetWorktree = worktree ??
+    final targetWorktree =
+        worktree ??
         (Get.isRegistered<ProjectController>()
             ? Get.find<ProjectController>().activeProject.value?.worktree
             : null);

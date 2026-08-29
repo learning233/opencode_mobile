@@ -163,11 +163,7 @@ class _MessageDiffCardState extends State<MessageDiffCard> {
                   ),
               ],
             )
-          : Column(
-              children: [
-                for (final d in diffs) _FileRow(diff: d),
-              ],
-            ),
+          : Column(children: [for (final d in diffs) _FileRow(diff: d)]),
     );
 
     return Container(
@@ -226,11 +222,7 @@ class _FileRow extends StatelessWidget {
   /// Obx supplies this so rows don't each subscribe to the selection Rx.
   final String? selectedFile;
 
-  const _FileRow({
-    required this.diff,
-    this.onTap,
-    this.selectedFile,
-  });
+  const _FileRow({required this.diff, this.onTap, this.selectedFile});
 
   @override
   Widget build(BuildContext context) {

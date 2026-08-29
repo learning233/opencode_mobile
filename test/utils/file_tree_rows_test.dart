@@ -156,7 +156,9 @@ void main() {
         errors: {},
       );
 
-      final deepestFolder = rows.where((r) => r.kind == FileTreeRowKind.folder).last;
+      final deepestFolder = rows
+          .where((r) => r.kind == FileTreeRowKind.folder)
+          .last;
       expect(deepestFolder.depth, lessThanOrEqualTo(kFileTreeMaxDepth));
       final hasDeepChildren = rows.any(
         (r) => r.kind == FileTreeRowKind.file && r.depth > kFileTreeMaxDepth,

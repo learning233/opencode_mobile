@@ -29,6 +29,7 @@ class SessionRuntimeState {
   final showStartExecutionButton = false.obs;
   final selectedModel = ''.obs;
   final selectedAgent = 'plan'.obs;
+
   /// Last known server status type. Empty string = "no status received yet in
   /// this runtime" (e.g. freshly restored session after app restart), so the
   /// controller can still re-arm [isGenerating] on the first streaming deltas
@@ -40,11 +41,13 @@ class SessionRuntimeState {
   final thinkingLevels = <String>[].obs;
   final attachedFiles = <String>[].obs;
   final attachedImages = <PickedImage>[].obs;
+
   /// True while the attached images are being converted to text by a vision
   /// model (frontend-only fallback for models that don't support image input).
   final isDescribingImages = false.obs;
   final todos = <Map<String, dynamic>>[].obs;
   bool hasFetchedTodos = false;
+
   /// True once [SessionController.loadMessages] has fetched the server history
   /// for this session. Guards the lazy re-fetch separately from [messages]
   /// being non-empty, because SSE can pre-populate messages for a not-yet-opened

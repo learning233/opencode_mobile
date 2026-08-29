@@ -3338,6 +3338,57 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     state.sessionDiffs.assignAll(list);
   }
 
+  /// 获取指定消息的文件变动 Diff（带内存缓存）。
+  /// 当 [force] 为 false 时，优先从 [SessionRuntimeState.fetchedMessageDiffs] 返回已缓存数据。
+  /// 对于已完成的历史回合，消息 Diff 确定不可变，无需重复发起网络请求。
+  Future<List<SnapshotFileDiff>> fetchMessageDiff(
+    String sessionId,
+    String messageId, {
+    bool force = false,
+  }) async {
+    if (sessionId.isEmpty || messageId.isEmpty) return const [];
+    final state = stateOf(sessionId);
+
+    // 非强制刷新且已有缓存：
+    // 若当前会话正在生成，且该消息是正在处理的回合，则跳过缓存以获取最新进展；
+    // 否则直接返回缓存。
+    final isGeneratingThisTurn =
+        state.isGenerating.value &&
+        state.messages.isNotEmpty &&
+        state.messages.last.id == messageId;
+    if (!force &&
+        !isGeneratingThisTurn &&
+        state.fetchedMessageDiffs.containsKey(messageId)) {
+      return state.fetchedMessageDiffs[messageId]!;
+    }
+
+    try {
+      final response = await _client.get(
+        ApiEndpoints.sessionDiff(sessionId),
+        queryParameters: {'messageID': messageId},
+      );
+
+      if (response.statusCode == 200) {
+        final data = response.data;
+        final rawList = (data is Map && data['data'] is List)
+            ? data['data'] as List
+            : (data is List ? data : const []);
+        final parsed = rawList
+            .whereType<Map>()
+            .map((e) => SnapshotFileDiff.fromJson(Map<String, dynamic>.from(e)))
+            .where((d) => d.file.isNotEmpty)
+            .toList();
+
+        state.fetchedMessageDiffs[messageId] = parsed;
+        return parsed;
+      }
+    } catch (e) {
+      AppLogger.e('fetchMessageDiff failed: $e');
+    }
+
+    return state.fetchedMessageDiffs[messageId] ?? const [];
+  }
+
   /// 根据滑动手势方向（[isForward] 为 true 表示在 PageView 中向后/向右切至下一个 Card），
   /// 寻找后续 opened 卡片中是否有需要用户优先响应的待办事件（如待审批权限、待回答提问）。
   /// 若存在待办卡片，返回智能跳跃的目标索引；若不存在，退回降级为相邻切页。

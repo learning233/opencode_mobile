@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -72,6 +73,9 @@ class TabletToolController extends GetxController {
   /// trigger an Obx rebuild of every tab). Read by `FileEditorPage.initState`
   /// when the tab is (re)created lazily so it can skip re-downloading.
   final Map<String, String> _contentCache = {};
+
+  /// Per-path cache of binary file contents (images, audio) loaded by viewers.
+  final Map<String, Uint8List> _binaryCache = {};
 
   /// Bumped by `SessionController` when a `file.edited` / `file.watcher.updated`
   /// SSE event arrives for the current worktree. Consumers (file tree cache,
@@ -271,6 +275,10 @@ class TabletToolController extends GetxController {
   String? cachedContent(String path, {String? worktree}) =>
       _contentCache[fileKey(path, worktree)];
 
+  /// Return the cached binary content (image/audio) for [path], or null when never loaded.
+  Uint8List? cachedBinaryContent(String path, {String? worktree}) =>
+      _binaryCache[fileKey(path, worktree)];
+
   /// Write loaded file content into the cache so a later editor State
   /// re-creation (IndexedStack lazy build / word-wrap toggle / tab switch)
   /// renders from cache instead of re-downloading. Does not touch [openedFiles].
@@ -278,11 +286,22 @@ class TabletToolController extends GetxController {
     _contentCache[fileKey(path, worktree)] = content;
   }
 
+  /// Write loaded binary file content into the cache.
+  void cacheBinaryContent(String path, Uint8List bytes, {String? worktree}) {
+    _binaryCache[fileKey(path, worktree)] = bytes;
+  }
+
   /// Drop the cached content of a path so the next time its tab is (re)created
   /// it re-downloads instead of showing stale cached text. Called on file-change
   /// SSE events so a lazily-built tab never displays out-of-date content.
   void invalidateFileContent(String path, {String? worktree}) {
     _contentCache.remove(fileKey(path, worktree));
+    _binaryCache.remove(fileKey(path, worktree));
+  }
+
+  /// Drop the cached binary content for a path.
+  void invalidateBinaryContent(String path, {String? worktree}) {
+    _binaryCache.remove(fileKey(path, worktree));
   }
 
   /// Select an already opened file tab. When [worktree] is null, matches the
@@ -309,6 +328,7 @@ class TabletToolController extends GetxController {
     final tab = openedFiles[idx];
     openedFiles.removeAt(idx);
     _contentCache.remove(fileKey(tab.path, tab.worktree));
+    _binaryCache.remove(fileKey(tab.path, tab.worktree));
 
     if (activeFileKey == fileKey(tab.path, tab.worktree)) {
       if (openedFiles.isEmpty) {
@@ -326,6 +346,7 @@ class TabletToolController extends GetxController {
     fileLineJumpRequest.value = null;
     openedFiles.clear();
     _contentCache.clear();
+    _binaryCache.clear();
     activeFilePath.value = '';
     activeFileWorktree.value = null;
   }
@@ -337,6 +358,7 @@ class TabletToolController extends GetxController {
       (f) => f.path != path || (worktree != null && f.worktree != worktree),
     );
     _contentCache.removeWhere((key, _) => key != fileKey(path, worktree));
+    _binaryCache.removeWhere((key, _) => key != fileKey(path, worktree));
     if (openedFiles.isNotEmpty) {
       _activate(0);
     } else {

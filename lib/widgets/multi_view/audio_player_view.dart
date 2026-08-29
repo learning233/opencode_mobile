@@ -8,6 +8,7 @@ import 'package:get/get.dart';
 import '../../api/endpoints.dart';
 import '../../api/opencode_client.dart';
 import '../../controllers/project_controller.dart';
+import '../../controllers/tablet_tool_controller.dart';
 import '../../utils/app_logger.dart';
 import '../../utils/translations.dart';
 
@@ -56,6 +57,17 @@ class _AudioPlayerViewState extends State<AudioPlayerView> {
       _bytes = widget.bytes;
       _loadAudio();
     } else {
+      if (Get.isRegistered<TabletToolController>()) {
+        final cached = Get.find<TabletToolController>().cachedBinaryContent(
+          widget.filePath,
+          worktree: widget.worktree,
+        );
+        if (cached != null) {
+          _bytes = cached;
+          _loadAudio();
+          return;
+        }
+      }
       _isLoading = true;
       _fetchAudioBytes();
     }
@@ -99,6 +111,14 @@ class _AudioPlayerViewState extends State<AudioPlayerView> {
         final Uint8List bytes = base64Decode(
           base64Content.replaceAll(RegExp(r'\s+'), ''),
         );
+
+        if (Get.isRegistered<TabletToolController>()) {
+          Get.find<TabletToolController>().cacheBinaryContent(
+            widget.filePath,
+            bytes,
+            worktree: widget.worktree,
+          );
+        }
 
         if (mounted) {
           setState(() {

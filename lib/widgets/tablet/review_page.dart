@@ -240,12 +240,7 @@ class _ReviewPageState extends State<ReviewPage> {
     final messageId = _toolCtrl.reviewMessageId.value;
     if (sessionId.isEmpty || messageId.isEmpty) return const [];
 
-    final response = await OpenCodeClient().get(
-      ApiEndpoints.sessionDiff(sessionId),
-      queryParameters: {'messageID': messageId},
-    );
-    if (response.statusCode != 200) return const [];
-    return _parseList(response.data);
+    return Get.find<SessionController>().fetchMessageDiff(sessionId, messageId);
   }
 
   Future<List<SnapshotFileDiff>> _fetchVcsDiff() async {

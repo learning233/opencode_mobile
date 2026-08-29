@@ -2,9 +2,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
-import '../../../api/endpoints.dart';
 import '../../../api/models/snapshot_file_diff.dart';
-import '../../../api/opencode_client.dart';
+import '../../../controllers/session_controller.dart';
 import '../../../controllers/tablet_tool_controller.dart';
 import '../../../utils/app_logger.dart';
 import '../../../utils/diff_paths.dart';
@@ -355,28 +354,17 @@ class _DiffSheetContentState extends State<_DiffSheetContent> {
     }
 
     try {
-      final response = await OpenCodeClient().dio.get(
-        ApiEndpoints.sessionDiff(widget.sessionId),
-        queryParameters: {'messageID': widget.userMessageId},
+      final sessionCtrl = Get.find<SessionController>();
+      final parsed = await sessionCtrl.fetchMessageDiff(
+        widget.sessionId,
+        widget.userMessageId,
       );
 
-      if (response.statusCode == 200) {
-        final data = response.data;
-        final rawList = data is Map && data['data'] is List
-            ? data['data'] as List
-            : (data is List ? data : const []);
-        final parsed = rawList
-            .whereType<Map>()
-            .map((e) => SnapshotFileDiff.fromJson(Map<String, dynamic>.from(e)))
-            .where((d) => d.file.isNotEmpty)
-            .toList();
-
-        if (mounted) {
-          setState(() {
-            _diffs = parsed.isNotEmpty ? parsed : widget.fallbackDiffs;
-            _loading = false;
-          });
-        }
+      if (mounted) {
+        setState(() {
+          _diffs = parsed.isNotEmpty ? parsed : widget.fallbackDiffs;
+          _loading = false;
+        });
         return;
       }
     } catch (e) {

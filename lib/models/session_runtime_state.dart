@@ -74,6 +74,10 @@ class SessionRuntimeState {
   /// part statuses (see MessageBubble._turnDiffSignature).
   final turnDiffCache = <String, TurnDiffCacheEntry>{};
 
+  /// Cache of fetched server message diffs keyed by userMessageId.
+  /// Used by message diff sheets and ReviewPage to avoid redundant network calls.
+  final fetchedMessageDiffs = <String, List<SnapshotFileDiff>>{};
+
   final pendingPromptText = ''.obs;
   final pendingPromptImages = <PickedImage>[].obs;
   final pendingPromptAttachedFiles = <String>[].obs;

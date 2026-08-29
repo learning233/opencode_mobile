@@ -1,5 +1,6 @@
 import 'package:get/get.dart';
 import '../api/endpoints.dart';
+import '../api/models/file_entry.dart';
 import '../api/models/project.dart';
 import '../api/opencode_client.dart';
 import '../init.dart';
@@ -238,6 +239,71 @@ class ProjectController extends GetxController {
     // Refresh sessions and re-scope SSE for the new project
     final sessionCtrl = Get.find<SessionController>();
     sessionCtrl.onProjectChanged(project.worktree);
+  }
+
+  // ── 目录树缓存 (Directory Cache) ──
+
+  /// 全局目录列表缓存，key 格式为 "$worktree\u0000$path"。
+  /// 避免侧边栏抽屉关闭/切 Tab 导致 State 销毁重建后重复发起网络请求。
+  final Map<String, List<FileEntry>> directoryCache = {};
+
+  static String dirKey(String path, String? worktree) =>
+      worktree == null ? path : '$worktree\u0000$path';
+
+  /// 获取目录下的文件列表（带内存缓存与排序）。
+  /// [force] 为 true 时忽略缓存强制走网络拉取。
+  Future<List<FileEntry>> loadDirectory(
+    String path, {
+    String? worktree,
+    bool force = false,
+  }) async {
+    final effectiveWorktree = worktree ?? activeProject.value?.worktree ?? '';
+    final key = dirKey(path, effectiveWorktree);
+
+    if (!force && directoryCache.containsKey(key)) {
+      return directoryCache[key]!;
+    }
+
+    final response = await _client.get(
+      ApiEndpoints.fsList,
+      queryParameters: {'path': path},
+      directory: effectiveWorktree.isNotEmpty ? effectiveWorktree : null,
+    );
+
+    if (response.statusCode == 200) {
+      final data = response.data;
+      final rawList = (data is Map && data['data'] is List)
+          ? data['data'] as List
+          : (data is List ? data : const []);
+      final list = rawList
+          .map((json) => FileEntry.fromJson(json as Map<String, dynamic>))
+          .toList();
+
+      // Sort: directories first, then files alphabetically
+      list.sort((a, b) {
+        if (a.isDirectory && !b.isDirectory) return -1;
+        if (!a.isDirectory && b.isDirectory) return 1;
+        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      });
+
+      directoryCache[key] = list;
+      return list;
+    } else {
+      throw Exception('Server error: ${response.statusCode}');
+    }
+  }
+
+  /// 失效目录缓存。若指定 [path]，只失效对应目录；若未指定，失效对应 [worktree]（或全部）的目录缓存。
+  void invalidateDirectoryCache({String? path, String? worktree}) {
+    if (path != null) {
+      final effectiveWorktree = worktree ?? activeProject.value?.worktree ?? '';
+      directoryCache.remove(dirKey(path, effectiveWorktree));
+    } else if (worktree != null) {
+      final prefix = '$worktree\u0000';
+      directoryCache.removeWhere((k, _) => k.startsWith(prefix));
+    } else {
+      directoryCache.clear();
+    }
   }
 
   /// Mirrors the directory normalization in `OpenCodeClient`'s interceptor:

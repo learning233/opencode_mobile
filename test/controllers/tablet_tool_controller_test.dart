@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:opencode_app/controllers/tablet_tool_controller.dart';
 
@@ -39,17 +40,36 @@ void main() {
       },
     );
 
-    test('invalidateFileContent drops the cached content', () {
+    test('invalidateFileContent drops both text and binary cached content', () {
       ctrl.cacheFileContent('lib/a.dart', 'hello');
+      ctrl.cacheBinaryContent('lib/a.dart', Uint8List.fromList([1, 2, 3]));
       ctrl.invalidateFileContent('lib/a.dart');
       expect(ctrl.cachedContent('lib/a.dart'), isNull);
+      expect(ctrl.cachedBinaryContent('lib/a.dart'), isNull);
     });
 
-    test('closeFile clears the cache entry for that path', () {
-      ctrl.cacheFileContent('lib/a.dart', 'hello');
-      ctrl.closeFile('lib/a.dart');
-      expect(ctrl.cachedContent('lib/a.dart'), isNull);
-      expect(ctrl.openedFiles, isEmpty);
+    test(
+      'closeFile clears both text and binary cache entries for that path',
+      () {
+        ctrl.cacheFileContent('lib/a.dart', 'hello');
+        ctrl.cacheBinaryContent('lib/a.dart', Uint8List.fromList([1, 2, 3]));
+        ctrl.closeFile('lib/a.dart');
+        expect(ctrl.cachedContent('lib/a.dart'), isNull);
+        expect(ctrl.cachedBinaryContent('lib/a.dart'), isNull);
+        expect(ctrl.openedFiles, isEmpty);
+      },
+    );
+
+    test('cachedBinaryContent returns null before any cache write', () {
+      expect(ctrl.cachedBinaryContent('lib/a.dart'), isNull);
+    });
+
+    test('cacheBinaryContent stores binary content for a path', () {
+      ctrl.cacheBinaryContent('lib/img.png', Uint8List.fromList([10, 20, 30]));
+      expect(
+        ctrl.cachedBinaryContent('lib/img.png'),
+        Uint8List.fromList([10, 20, 30]),
+      );
     });
   });
 

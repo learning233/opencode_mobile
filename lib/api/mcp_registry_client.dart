@@ -11,6 +11,15 @@ class McpRegistryClient {
 
   final Dio _dio;
 
+  /// 短期内存缓存：列表缓存 3 分钟，详情缓存 10 分钟。
+  final Map<String, ({RegistrySearchResult data, DateTime timestamp})>
+  _listCache = {};
+  final Map<String, ({RegistryServerInfo data, DateTime timestamp})>
+  _detailCache = {};
+
+  static const Duration _listCacheTtl = Duration(minutes: 3);
+  static const Duration _detailCacheTtl = Duration(minutes: 10);
+
   /// Creates an [McpRegistryClient] with an optional custom [Dio] instance.
   McpRegistryClient({Dio? dio}) : _dio = dio ?? _createBaseDio();
 
@@ -24,6 +33,8 @@ class McpRegistryClient {
   );
 
   void dispose() {
+    _listCache.clear();
+    _detailCache.clear();
     _dio.close(force: true);
   }
 
@@ -35,7 +46,17 @@ class McpRegistryClient {
     String? search,
     int limit = 30,
     String? cursor,
+    bool force = false,
   }) async {
+    final cacheKey = '${search ?? ''}\u0000$limit\u0000${cursor ?? ''}';
+    final cached = _listCache[cacheKey];
+    final now = DateTime.now();
+    if (!force &&
+        cached != null &&
+        now.difference(cached.timestamp) < _listCacheTtl) {
+      return cached.data;
+    }
+
     final params = <String, dynamic>{'limit': limit, 'version': 'latest'};
     if (search != null && search.isNotEmpty) {
       params['search'] = search;
@@ -58,7 +79,9 @@ class McpRegistryClient {
       if (body is! Map<String, dynamic>) {
         throw McpRegistryException('Invalid server list response format');
       }
-      return _parseServerList(body);
+      final result = _parseServerList(body);
+      _listCache[cacheKey] = (data: result, timestamp: now);
+      return result;
     } on DioException catch (e) {
       throw McpRegistryException(
         'Failed to list servers: HTTP ${e.response?.statusCode ?? e.message}'
@@ -73,7 +96,17 @@ class McpRegistryClient {
   Future<RegistryServerInfo> getServerDetail(
     String name, {
     String version = 'latest',
+    bool force = false,
   }) async {
+    final cacheKey = '$name\u0000$version';
+    final cached = _detailCache[cacheKey];
+    final now = DateTime.now();
+    if (!force &&
+        cached != null &&
+        now.difference(cached.timestamp) < _detailCacheTtl) {
+      return cached.data;
+    }
+
     final encodedName = Uri.encodeComponent(name);
     final encodedVersion = Uri.encodeComponent(version);
 
@@ -90,7 +123,9 @@ class McpRegistryClient {
       if (serverJson is! Map<String, dynamic>) {
         throw McpRegistryException('Invalid server detail payload format');
       }
-      return RegistryServerInfo.fromJson(serverJson);
+      final result = RegistryServerInfo.fromJson(serverJson);
+      _detailCache[cacheKey] = (data: result, timestamp: now);
+      return result;
     } on DioException catch (e) {
       if (e.response?.statusCode == 404) {
         throw McpRegistryException('Server "$name" not found in registry');

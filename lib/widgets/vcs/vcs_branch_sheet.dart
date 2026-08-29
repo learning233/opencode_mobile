@@ -223,7 +223,7 @@ class _VcsBranchSheetState extends State<VcsBranchSheet> {
                   visualDensity: VisualDensity.compact,
                   tooltip: LocaleKeys.retry.tr,
                   icon: const Icon(Icons.refresh_rounded, size: 19),
-                  onPressed: () => _vcsCtrl.refreshAll(),
+                  onPressed: () => _vcsCtrl.refreshAll(force: true),
                 ),
               ],
             ),
@@ -385,7 +385,7 @@ class _VcsBranchSheetState extends State<VcsBranchSheet> {
                           ),
                           const SizedBox(height: 12),
                           FilledButton.tonal(
-                            onPressed: () => _vcsCtrl.refreshAll(),
+                            onPressed: () => _vcsCtrl.refreshAll(force: true),
                             child: Text(LocaleKeys.retry.tr),
                           ),
                         ],

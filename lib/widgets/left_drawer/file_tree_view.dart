@@ -102,61 +102,92 @@ class _FileTreeViewState extends State<FileTreeView> {
     _refreshDebounce?.cancel();
     _refreshDebounce = Timer(const Duration(milliseconds: 300), () {
       if (!mounted) return;
+      if (Get.isRegistered<ProjectController>()) {
+        Get.find<ProjectController>().invalidateDirectoryCache();
+      }
       _dirCache.clear();
       // 记录当前已展开的目录，清缓存后一并重载，避免展开子树渲染空白。
       final expandedDirs = _expanded.entries
           .where((e) => e.value && e.key != _currentRoot)
           .map((e) => e.key)
           .toList();
-      _loadDirectory(_currentRoot);
+      _loadDirectory(_currentRoot, force: true);
       for (final dir in expandedDirs) {
-        _loadDirectory(dir);
+        _loadDirectory(dir, force: true);
       }
     });
   }
 
-  Future<void> _loadDirectory(String path) async {
+  Future<void> _loadDirectory(String path, {bool force = false}) async {
+    final projectCtrl = Get.isRegistered<ProjectController>()
+        ? Get.find<ProjectController>()
+        : null;
+    final worktree = projectCtrl?.activeProject.value?.worktree ?? '';
+
+    // 若 ProjectController 中已有缓存且非强制刷新，直接秒级恢复显示
+    if (!force && projectCtrl != null) {
+      final key = ProjectController.dirKey(path, worktree);
+      if (projectCtrl.directoryCache.containsKey(key)) {
+        setState(() {
+          _dirCache[path] = projectCtrl.directoryCache[key]!;
+          _loading[path] = false;
+          _errors[path] = null;
+        });
+        return;
+      }
+    }
+
     setState(() {
       _loading[path] = true;
       _errors[path] = null;
     });
 
     try {
-      final worktree =
-          Get.find<ProjectController>().activeProject.value?.worktree ?? '';
-      final response = await _client.get(
-        ApiEndpoints.fsList,
-        queryParameters: {'path': path},
-        directory: worktree.isNotEmpty ? worktree : null,
-      );
-
-      if (!mounted) return;
-
-      if (response.statusCode == 200) {
-        final data = response.data;
-        final rawList = (data is Map && data['data'] is List)
-            ? data['data'] as List
-            : data is List
-            ? data
-            : [];
-        final list = rawList
-            .map((json) => FileEntry.fromJson(json as Map<String, dynamic>))
-            .toList();
-
-        // Sort: directories first, then files alphabetically
-        list.sort((a, b) {
-          if (a.isDirectory && !b.isDirectory) return -1;
-          if (!a.isDirectory && b.isDirectory) return 1;
-          return a.name.toLowerCase().compareTo(b.name.toLowerCase());
-        });
-
+      if (projectCtrl != null) {
+        final list = await projectCtrl.loadDirectory(
+          path,
+          worktree: worktree.isNotEmpty ? worktree : null,
+          force: force,
+        );
+        if (!mounted) return;
         setState(() {
           _dirCache[path] = list;
         });
       } else {
-        setState(() {
-          _errors[path] = 'Server error: ${response.statusCode}';
-        });
+        final response = await _client.get(
+          ApiEndpoints.fsList,
+          queryParameters: {'path': path},
+          directory: worktree.isNotEmpty ? worktree : null,
+        );
+
+        if (!mounted) return;
+
+        if (response.statusCode == 200) {
+          final data = response.data;
+          final rawList = (data is Map && data['data'] is List)
+              ? data['data'] as List
+              : data is List
+              ? data
+              : [];
+          final list = rawList
+              .map((json) => FileEntry.fromJson(json as Map<String, dynamic>))
+              .toList();
+
+          // Sort: directories first, then files alphabetically
+          list.sort((a, b) {
+            if (a.isDirectory && !b.isDirectory) return -1;
+            if (!a.isDirectory && b.isDirectory) return 1;
+            return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+          });
+
+          setState(() {
+            _dirCache[path] = list;
+          });
+        } else {
+          setState(() {
+            _errors[path] = 'Server error: ${response.statusCode}';
+          });
+        }
       }
     } catch (e) {
       AppLogger.e('Failed to load directory "$path": $e');

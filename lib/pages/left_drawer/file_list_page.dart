@@ -2,9 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../utils/translations.dart';
-import '../../api/endpoints.dart';
 import '../../api/models/file_entry.dart';
-import '../../api/opencode_client.dart';
 import '../../controllers/project_controller.dart';
 import '../../controllers/tablet_tool_controller.dart';
 import '../../routes.dart';
@@ -22,7 +20,6 @@ class FileListPage extends StatefulWidget {
 }
 
 class _FileListPageState extends State<FileListPage> {
-  final _client = OpenCodeClient();
   final _entries = <FileEntry>[].obs;
   final _isLoading = false.obs;
   final _error = Rxn<String>();
@@ -40,31 +37,13 @@ class _FileListPageState extends State<FileListPage> {
     _loadDirectory();
   }
 
-  Future<void> _loadDirectory() async {
+  Future<void> _loadDirectory({bool force = false}) async {
     _isLoading.value = true;
     _error.value = null;
     try {
-      final directory =
-          Get.find<ProjectController>().activeProject.value?.worktree ?? '';
-      final response = await _client.get(
-        ApiEndpoints.fsList,
-        queryParameters: {'path': _currentPath},
-        directory: directory.isNotEmpty ? directory : null,
-      );
-      if (response.statusCode == 200) {
-        final data = response.data;
-        final rawList = (data is Map && data['data'] is List)
-            ? data['data'] as List
-            : data is List
-            ? data
-            : [];
-        final list = rawList
-            .map((json) => FileEntry.fromJson(json as Map<String, dynamic>))
-            .toList();
-        _entries.assignAll(list);
-      } else {
-        _error.value = 'Server returned ${response.statusCode}';
-      }
+      final projectCtrl = Get.find<ProjectController>();
+      final list = await projectCtrl.loadDirectory(_currentPath, force: force);
+      _entries.assignAll(list);
     } catch (e) {
       AppLogger.e('Failed to load directory: $e');
       _error.value = e.toString();
@@ -207,7 +186,7 @@ class _FileListPageState extends State<FileListPage> {
           return Center(child: Text(LocaleKeys.mobileEmptyDirectory.tr));
         }
         return RefreshIndicator(
-          onRefresh: _loadDirectory,
+          onRefresh: () => _loadDirectory(force: true),
           child: ListView.builder(
             itemCount: _entries.length,
             itemBuilder: (_, i) {

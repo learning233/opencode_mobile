@@ -43,15 +43,31 @@ class VcsController extends GetxController {
   int get addedCount => statusFiles.where((f) => f.isAdded).length;
   int get deletedCount => statusFiles.where((f) => f.isDeleted).length;
 
-  Future<void> refreshAll({String? worktree}) async {
-    isLoading.value = true;
-    error.value = null;
+  DateTime? _lastRefreshTime;
+  String? _lastRefreshWorktree;
 
+  /// 刷新 VCS 状态与分支信息。
+  /// [force] 为 false 时，若距离上次刷新不足 3 秒且处于同一 worktree，则直接跳过避免重复请求。
+  Future<void> refreshAll({String? worktree, bool force = false}) async {
     final targetWorktree =
         worktree ??
         (Get.isRegistered<ProjectController>()
             ? Get.find<ProjectController>().activeProject.value?.worktree
             : null);
+
+    final now = DateTime.now();
+    if (!force &&
+        _lastRefreshTime != null &&
+        _lastRefreshWorktree == targetWorktree &&
+        now.difference(_lastRefreshTime!) < const Duration(seconds: 3)) {
+      return;
+    }
+
+    _lastRefreshTime = now;
+    _lastRefreshWorktree = targetWorktree;
+
+    isLoading.value = true;
+    error.value = null;
 
     try {
       await Future.wait([

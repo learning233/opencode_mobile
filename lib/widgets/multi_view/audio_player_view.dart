@@ -57,7 +57,8 @@ class _AudioPlayerViewState extends State<AudioPlayerView> {
       _bytes = widget.bytes;
       _loadAudio();
     } else {
-      if (Get.isRegistered<TabletToolController>()) {
+      if (widget.filePath.isNotEmpty &&
+          Get.isRegistered<TabletToolController>()) {
         final cached = Get.find<TabletToolController>().cachedBinaryContent(
           widget.filePath,
           worktree: widget.worktree,
@@ -112,7 +113,8 @@ class _AudioPlayerViewState extends State<AudioPlayerView> {
           base64Content.replaceAll(RegExp(r'\s+'), ''),
         );
 
-        if (Get.isRegistered<TabletToolController>()) {
+        if (widget.filePath.isNotEmpty &&
+            Get.isRegistered<TabletToolController>()) {
           Get.find<TabletToolController>().cacheBinaryContent(
             widget.filePath,
             bytes,

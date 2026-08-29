@@ -236,6 +236,10 @@ class ProjectController extends GetxController {
     Global.lastProjectId = project.id;
     AppLogger.i('Selected project: ${project.displayName} (${project.id})');
 
+    // 目录缓存按 worktree 隔离但无 TTL，且非激活项目的文件变更不会触发
+    // SSE 失效；切项目时整体清空，避免切回旧项目时命中过期列表。
+    invalidateDirectoryCache();
+
     // Refresh sessions and re-scope SSE for the new project
     final sessionCtrl = Get.find<SessionController>();
     sessionCtrl.onProjectChanged(project.worktree);
@@ -245,10 +249,14 @@ class ProjectController extends GetxController {
 
   /// 全局目录列表缓存，key 格式为 "$worktree\u0000$path"。
   /// 避免侧边栏抽屉关闭/切 Tab 导致 State 销毁重建后重复发起网络请求。
+  /// 注意：[loadDirectory] 返回的是缓存中的共享 List 实例，调用方只读，
+  /// 不得原地修改（增删排序都会污染缓存）。
   final Map<String, List<FileEntry>> directoryCache = {};
 
+  /// 始终带 worktree 前缀（null 与空串同为空前缀），保证同一目录
+  /// 只会产生一种 key 形态。
   static String dirKey(String path, String? worktree) =>
-      worktree == null ? path : '$worktree\u0000$path';
+      '${worktree ?? ''}\u0000$path';
 
   /// 获取目录下的文件列表（带内存缓存与排序）。
   /// [force] 为 true 时忽略缓存强制走网络拉取。

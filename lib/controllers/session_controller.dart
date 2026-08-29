@@ -3349,15 +3349,12 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     if (sessionId.isEmpty || messageId.isEmpty) return const [];
     final state = stateOf(sessionId);
 
-    // 非强制刷新且已有缓存：
-    // 若当前会话正在生成，且该消息是正在处理的回合，则跳过缓存以获取最新进展；
-    // 否则直接返回缓存。
-    final isGeneratingThisTurn =
-        state.isGenerating.value &&
-        state.messages.isNotEmpty &&
-        state.messages.last.id == messageId;
+    // 生成期间不读写缓存：assistant 消息入列后无法可靠判断 messageId 是否
+    // 属于进行中的回合，而中途拉到的部分 diff 缓存后会因缺乏失效机制
+    // 在回合结束后仍被命中。生成中每次直拉网络，回合结束后的第一次
+    // 拉取结果才是最终值，可安全缓存。
     if (!force &&
-        !isGeneratingThisTurn &&
+        !state.isGenerating.value &&
         state.fetchedMessageDiffs.containsKey(messageId)) {
       return state.fetchedMessageDiffs[messageId]!;
     }
@@ -3379,7 +3376,9 @@ class SessionController extends GetxController with WidgetsBindingObserver {
             .where((d) => d.file.isNotEmpty)
             .toList();
 
-        state.fetchedMessageDiffs[messageId] = parsed;
+        if (!state.isGenerating.value) {
+          state.fetchedMessageDiffs[messageId] = parsed;
+        }
         return parsed;
       }
     } catch (e) {

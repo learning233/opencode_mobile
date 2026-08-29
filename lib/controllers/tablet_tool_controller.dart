@@ -25,11 +25,19 @@ class FileLineJumpRequest {
 /// Controls the tool panel state in tablet/desktop and code editor mode.
 /// Manages opened file tabs, active tab index, visibility, and panel width.
 class TabletToolController extends GetxController {
+  /// Total byte budget for the binary viewer cache; injectable for tests.
+  final int binaryCacheMaxBytes;
+
+  TabletToolController({this.binaryCacheMaxBytes = defaultBinaryCacheMaxBytes});
+
   // ── Tab indices ──
   static const int tabCode = 0;
   static const int tabTerminal = 1;
   static const int tabWeb = 2;
   static const int tabReview = 3;
+
+  /// Default byte budget for [_binaryCache] (64 MB of raw image/audio bytes).
+  static const int defaultBinaryCacheMaxBytes = 64 * 1024 * 1024;
 
   // ── Review scope types ──
   static const String reviewTypeMessage = 'message';
@@ -75,7 +83,10 @@ class TabletToolController extends GetxController {
   final Map<String, String> _contentCache = {};
 
   /// Per-path cache of binary file contents (images, audio) loaded by viewers.
+  /// Capped at [binaryCacheMaxBytes] total bytes: overwrite refreshes recency,
+  /// and insertion-order FIFO eviction runs on every write.
   final Map<String, Uint8List> _binaryCache = {};
+  int _binaryCacheBytes = 0;
 
   /// Bumped by `SessionController` when a `file.edited` / `file.watcher.updated`
   /// SSE event arrives for the current worktree. Consumers (file tree cache,
@@ -286,9 +297,24 @@ class TabletToolController extends GetxController {
     _contentCache[fileKey(path, worktree)] = content;
   }
 
-  /// Write loaded binary file content into the cache.
+  /// Write loaded binary file content into the cache. Evicts
+  /// insertion-order-FIFO entries while the total byte budget is exceeded.
   void cacheBinaryContent(String path, Uint8List bytes, {String? worktree}) {
-    _binaryCache[fileKey(path, worktree)] = bytes;
+    final key = fileKey(path, worktree);
+    _removeBinaryCacheKey(key);
+    _binaryCache[key] = bytes;
+    _binaryCacheBytes += bytes.length;
+    // 淘汰到只剩刚写入的这条为止：单条超大文件保留最新者，不清空整个缓存。
+    while (_binaryCacheBytes > binaryCacheMaxBytes && _binaryCache.length > 1) {
+      _removeBinaryCacheKey(_binaryCache.keys.first);
+    }
+  }
+
+  void _removeBinaryCacheKey(String key) {
+    final removed = _binaryCache.remove(key);
+    if (removed != null) {
+      _binaryCacheBytes -= removed.length;
+    }
   }
 
   /// Drop the cached content of a path so the next time its tab is (re)created
@@ -296,12 +322,12 @@ class TabletToolController extends GetxController {
   /// SSE events so a lazily-built tab never displays out-of-date content.
   void invalidateFileContent(String path, {String? worktree}) {
     _contentCache.remove(fileKey(path, worktree));
-    _binaryCache.remove(fileKey(path, worktree));
+    _removeBinaryCacheKey(fileKey(path, worktree));
   }
 
   /// Drop the cached binary content for a path.
   void invalidateBinaryContent(String path, {String? worktree}) {
-    _binaryCache.remove(fileKey(path, worktree));
+    _removeBinaryCacheKey(fileKey(path, worktree));
   }
 
   /// Select an already opened file tab. When [worktree] is null, matches the
@@ -328,7 +354,7 @@ class TabletToolController extends GetxController {
     final tab = openedFiles[idx];
     openedFiles.removeAt(idx);
     _contentCache.remove(fileKey(tab.path, tab.worktree));
-    _binaryCache.remove(fileKey(tab.path, tab.worktree));
+    _removeBinaryCacheKey(fileKey(tab.path, tab.worktree));
 
     if (activeFileKey == fileKey(tab.path, tab.worktree)) {
       if (openedFiles.isEmpty) {
@@ -347,6 +373,7 @@ class TabletToolController extends GetxController {
     openedFiles.clear();
     _contentCache.clear();
     _binaryCache.clear();
+    _binaryCacheBytes = 0;
     activeFilePath.value = '';
     activeFileWorktree.value = null;
   }
@@ -359,6 +386,10 @@ class TabletToolController extends GetxController {
     );
     _contentCache.removeWhere((key, _) => key != fileKey(path, worktree));
     _binaryCache.removeWhere((key, _) => key != fileKey(path, worktree));
+    _binaryCacheBytes = _binaryCache.values.fold(
+      0,
+      (sum, bytes) => sum + bytes.length,
+    );
     if (openedFiles.isNotEmpty) {
       _activate(0);
     } else {

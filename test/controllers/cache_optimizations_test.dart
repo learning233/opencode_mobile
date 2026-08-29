@@ -19,7 +19,9 @@ void main() {
         ProjectController.dirKey('src', '/work/proj'),
         '/work/proj\u0000src',
       );
-      expect(ProjectController.dirKey('src', null), 'src');
+      // null 与空 worktree 同为空前缀，保持单一 key 形态。
+      expect(ProjectController.dirKey('src', null), '\u0000src');
+      expect(ProjectController.dirKey('src', ''), '\u0000src');
     });
 
     test('directoryCache can store and retrieve entries', () {
@@ -107,6 +109,41 @@ void main() {
         ctrl.cachedBinaryContent('assets/logo.png', worktree: '/proj'),
         isNull,
       );
+    });
+
+    test('cacheBinaryContent evicts oldest entries beyond the byte budget', () {
+      final ctrl = TabletToolController(binaryCacheMaxBytes: 8);
+      ctrl.cacheBinaryContent('a.png', Uint8List.fromList(List.filled(4, 1)));
+      ctrl.cacheBinaryContent('b.png', Uint8List.fromList(List.filled(4, 2)));
+      expect(ctrl.cachedBinaryContent('a.png'), isNotNull);
+      expect(ctrl.cachedBinaryContent('b.png'), isNotNull);
+
+      // 超出 8 字节预算，最旧的 a.png 被淘汰。
+      ctrl.cacheBinaryContent('c.png', Uint8List.fromList(List.filled(4, 3)));
+      expect(ctrl.cachedBinaryContent('a.png'), isNull);
+      expect(ctrl.cachedBinaryContent('b.png'), isNotNull);
+      expect(ctrl.cachedBinaryContent('c.png'), isNotNull);
+
+      // 单条超出预算的写入只保留自身，不清空整个缓存。
+      ctrl.cacheBinaryContent(
+        'big.png',
+        Uint8List.fromList(List.filled(10, 4)),
+      );
+      expect(ctrl.cachedBinaryContent('big.png'), isNotNull);
+      expect(ctrl.cachedBinaryContent('b.png'), isNull);
+      expect(ctrl.cachedBinaryContent('c.png'), isNull);
+    });
+
+    test('cacheBinaryContent overwrite refreshes recency', () {
+      final ctrl = TabletToolController(binaryCacheMaxBytes: 8);
+      ctrl.cacheBinaryContent('a.png', Uint8List.fromList(List.filled(4, 1)));
+      ctrl.cacheBinaryContent('b.png', Uint8List.fromList(List.filled(4, 2)));
+      // 重写 a.png 使其变为最新，之后超预算时淘汰的是 b.png。
+      ctrl.cacheBinaryContent('a.png', Uint8List.fromList(List.filled(4, 5)));
+      ctrl.cacheBinaryContent('c.png', Uint8List.fromList(List.filled(4, 3)));
+      expect(ctrl.cachedBinaryContent('a.png'), isNotNull);
+      expect(ctrl.cachedBinaryContent('b.png'), isNull);
+      expect(ctrl.cachedBinaryContent('c.png'), isNotNull);
     });
   });
 }

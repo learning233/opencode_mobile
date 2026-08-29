@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -25,6 +27,9 @@ class _FileListPageState extends State<FileListPage> {
   final _error = Rxn<String>();
   final _pathHistory = <String>['.'];
 
+  Worker? _fileChangeWorker;
+  Timer? _fileChangeDebounce;
+
   String get _currentPath => _pathHistory.last;
 
   @override
@@ -35,20 +40,46 @@ class _FileListPageState extends State<FileListPage> {
       _pathHistory.add(widget.initialPath!);
     }
     _loadDirectory();
+    // 目录列表缓存在 ProjectController 中常驻，本页需跟随 SSE 文件变更
+    // 失效刷新，否则只能靠手动下拉才能看到文件增删改。
+    if (Get.isRegistered<TabletToolController>()) {
+      _fileChangeWorker = ever(
+        Get.find<TabletToolController>().fileChangeTick,
+        (_) => _onFileChanged(),
+      );
+    }
   }
 
-  Future<void> _loadDirectory({bool force = false}) async {
-    _isLoading.value = true;
-    _error.value = null;
+  @override
+  void dispose() {
+    _fileChangeWorker?.dispose();
+    _fileChangeDebounce?.cancel();
+    super.dispose();
+  }
+
+  void _onFileChanged() {
+    _fileChangeDebounce?.cancel();
+    _fileChangeDebounce = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      _loadDirectory(force: true, silent: _entries.isNotEmpty);
+    });
+  }
+
+  Future<void> _loadDirectory({bool force = false, bool silent = false}) async {
+    if (!silent) {
+      _isLoading.value = true;
+      _error.value = null;
+    }
     try {
       final projectCtrl = Get.find<ProjectController>();
       final list = await projectCtrl.loadDirectory(_currentPath, force: force);
       _entries.assignAll(list);
+      if (silent) _error.value = null;
     } catch (e) {
       AppLogger.e('Failed to load directory: $e');
-      _error.value = e.toString();
+      if (!silent) _error.value = e.toString();
     } finally {
-      _isLoading.value = false;
+      if (!silent) _isLoading.value = false;
     }
   }
 

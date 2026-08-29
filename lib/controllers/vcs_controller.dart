@@ -75,6 +75,9 @@ class VcsController extends GetxController {
         fetchVcsStatus(worktree: targetWorktree),
       ]);
     } catch (e) {
+      // 回滚节流时间戳，失败后允许立即重试；时间戳前置写入是为了
+      // 防止并发的 force=false 调用同时穿过节流检查。
+      _lastRefreshTime = null;
       AppLogger.w('Failed to refresh VCS: $e');
     } finally {
       isLoading.value = false;

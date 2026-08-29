@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:get/get.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../../api/models/project.dart';
@@ -31,6 +32,8 @@ class LeftPanelContent extends StatefulWidget {
 
 class _LeftPanelContentState extends State<LeftPanelContent> {
   late final Rx<DrawerMode> drawerMode;
+  final ScrollController _projectsScrollController = ScrollController();
+  bool _hiddenProjectsExpanded = false;
   String _appVersion = 'v0.9.8';
 
   @override
@@ -38,6 +41,12 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
     super.initState();
     drawerMode = (widget.initialMode ?? DrawerMode.projects).obs;
     _loadVersion();
+  }
+
+  @override
+  void dispose() {
+    _projectsScrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadVersion() async {
@@ -167,7 +176,12 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
         const Divider(height: 1),
         Expanded(
           child: Obx(() {
-            if (projectCtrl.projects.isEmpty) {
+            final hasHidden = projectCtrl.hiddenProjectKeys.isNotEmpty;
+            final visibleProjects = projectCtrl.projects
+                .where((p) => !projectCtrl.isProjectHidden(p))
+                .toList(growable: false);
+
+            if (visibleProjects.isEmpty && !hasHidden) {
               final error = projectCtrl.projectsError.value;
               if (error != null) {
                 return Center(
@@ -207,27 +221,47 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
                 ),
               );
             }
+
             return RefreshIndicator(
               onRefresh: () => projectCtrl.fetchProjects(),
               child: ListView.builder(
-                itemCount: projectCtrl.projects.length,
+                controller: _projectsScrollController,
+                itemCount: visibleProjects.length + (hasHidden ? 1 : 0),
                 padding: const EdgeInsets.symmetric(vertical: 3),
                 itemBuilder: (context, index) {
-                  final project = projectCtrl.projects[index];
+                  if (index == visibleProjects.length) {
+                    return _buildHiddenProjectsSection(projectCtrl, theme);
+                  }
+                  final project = visibleProjects[index];
                   final isActive =
                       projectCtrl.activeProject.value?.id == project.id;
-                  return ProjectTile(
-                    project: project,
-                    isActive: isActive,
-                    onTap: () {
-                      projectCtrl.selectProject(project);
-                      if (widget.isDrawer) Navigator.pop(context);
-                    },
-                    onBrowseFiles: () {
-                      projectCtrl.selectProject(project);
-                      if (widget.isDrawer) Navigator.pop(context);
-                      Get.toNamed(AppRoutes.fileList);
-                    },
+                  return Slidable(
+                    key: ValueKey('project_slide_${project.worktree}'),
+                    endActionPane: ActionPane(
+                      motion: const BehindMotion(),
+                      children: [
+                        SlidableAction(
+                          onPressed: (_) => projectCtrl.hideProject(project),
+                          backgroundColor: theme.colorScheme.errorContainer,
+                          foregroundColor: theme.colorScheme.onErrorContainer,
+                          icon: Icons.visibility_off_outlined,
+                          label: LocaleKeys.mobileHideProject.tr,
+                        ),
+                      ],
+                    ),
+                    child: ProjectTile(
+                      project: project,
+                      isActive: isActive,
+                      onTap: () {
+                        projectCtrl.selectProject(project);
+                        if (widget.isDrawer) Navigator.pop(context);
+                      },
+                      onBrowseFiles: () {
+                        projectCtrl.selectProject(project);
+                        if (widget.isDrawer) Navigator.pop(context);
+                        Get.toNamed(AppRoutes.fileList);
+                      },
+                    ),
                   );
                 },
               ),
@@ -235,6 +269,107 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
           }),
         ),
       ],
+    );
+  }
+
+  void _toggleHiddenProjects() {
+    final nextExpanded = !_hiddenProjectsExpanded;
+    setState(() {
+      _hiddenProjectsExpanded = nextExpanded;
+    });
+    if (nextExpanded) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_projectsScrollController.hasClients) return;
+        final currentOffset = _projectsScrollController.offset;
+        final maxOffset = _projectsScrollController.position.maxScrollExtent;
+        final targetOffset = (currentOffset + 120.0).clamp(0.0, maxOffset);
+        if (targetOffset > currentOffset) {
+          _projectsScrollController.animateTo(
+            targetOffset,
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    }
+  }
+
+  Widget _buildHiddenProjectsSection(
+    ProjectController projectCtrl,
+    ThemeData theme,
+  ) {
+    final keys = projectCtrl.hiddenProjectKeys.toList();
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ListTile(
+          dense: true,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+          onTap: _toggleHiddenProjects,
+          title: Text(
+            '${LocaleKeys.mobileHiddenProjects.tr} (${keys.length})',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          trailing: AnimatedRotation(
+            turns: _hiddenProjectsExpanded ? 0.25 : 0,
+            duration: const Duration(milliseconds: 150),
+            child: Icon(
+              Icons.chevron_right,
+              size: 18,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        if (_hiddenProjectsExpanded) ...[
+          for (final key in keys)
+            _buildHiddenProjectRow(projectCtrl, theme, key),
+          const SizedBox(height: 4),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildHiddenProjectRow(
+    ProjectController projectCtrl,
+    ThemeData theme,
+    String key,
+  ) {
+    // 服务器列表里已不存在的项目（localOnly 或仅存于隐藏记录）也要能展示并
+    // 恢复，所以显示名在匹配不到 ProjectModel 时兜底取路径末段。
+    final project = projectCtrl.projects.firstWhereOrNull(
+      (p) => ProjectController.hiddenKeyFor(p) == key,
+    );
+    final fallbackName = key.split('/').where((s) => s.isNotEmpty).lastOrNull;
+    final name = project?.displayName ?? (fallbackName ?? key);
+    final worktree = project?.worktree ?? key;
+    return ListTile(
+      dense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+      title: Text(
+        name,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontSize: 14),
+      ),
+      subtitle: Text(
+        worktree,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 11,
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+      trailing: IconButton(
+        icon: const Icon(Icons.visibility_outlined, size: 20),
+        padding: EdgeInsets.zero,
+        onPressed: () => projectCtrl.unhideProjectByKey(key),
+        tooltip: LocaleKeys.mobileUnhideProject.tr,
+      ),
     );
   }
 

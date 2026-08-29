@@ -838,6 +838,9 @@ class LocaleKeys {
   static const mobileNoProjects = "mobile_no_projects";
   static const mobileProjectsLoadFailed = "mobile_projects_load_failed";
   static const mobileProjects = "mobile_projects";
+  static const mobileHiddenProjects = "mobile_hidden_projects";
+  static const mobileHideProject = "mobile_hide_project";
+  static const mobileUnhideProject = "mobile_unhide_project";
   static const mobileNoKeywordsYet = "mobile_no_keywords_yet";
   static const mobileNoSessions = "mobile_no_sessions";
   static const mobileNoMatchingSessions = "mobile_no_matching_sessions";
@@ -1964,6 +1967,9 @@ class Messages extends Translations {
     LocaleKeys.mobileNoProjects: '暂无项目',
     LocaleKeys.mobileProjectsLoadFailed: '项目列表加载失败',
     LocaleKeys.mobileProjects: '项目',
+    LocaleKeys.mobileHiddenProjects: '已隐藏项目',
+    LocaleKeys.mobileHideProject: '隐藏项目',
+    LocaleKeys.mobileUnhideProject: '取消隐藏',
     LocaleKeys.mobileNoKeywordsYet: '暂无关键词',
     LocaleKeys.mobileNoSessions: '暂无会话',
     LocaleKeys.mobileNoMatchingSessions: '无匹配会话',
@@ -3155,6 +3161,9 @@ class Messages extends Translations {
     LocaleKeys.mobileNoProjects: 'No projects',
     LocaleKeys.mobileProjectsLoadFailed: 'Failed to load projects',
     LocaleKeys.mobileProjects: 'Projects',
+    LocaleKeys.mobileHiddenProjects: 'Hidden projects',
+    LocaleKeys.mobileHideProject: 'Hide project',
+    LocaleKeys.mobileUnhideProject: 'Unhide',
     LocaleKeys.mobileNoKeywordsYet: 'No keywords yet',
     LocaleKeys.mobileNoSessions: 'No sessions',
     LocaleKeys.mobileNoMatchingSessions: 'No matching sessions',

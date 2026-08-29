@@ -31,6 +31,7 @@ class AppSettingsStore {
   static const _cardVisibility = 'card_visibility';
   static const _shownModels = 'shown_models';
   static const _hiddenModels = 'hidden_models';
+  static const _hiddenProjects = 'hidden_projects';
   static const _disabledModels = 'disabled_models';
   static const _filterCurrentProjectOnly = 'pty_filter_current_project_only';
   static const _vadThreshold = 'vad_threshold';
@@ -285,6 +286,12 @@ class AppSettingsStore {
       _prefs.getStringList(_hiddenModels) ?? const [];
   Future<void> setHiddenModels(List<String> models) =>
       _prefs.setStringList(_hiddenModels, models);
+
+  /// Client-side hidden projects (normalized worktree paths, drawer-only).
+  List<String> get hiddenProjects =>
+      _prefs.getStringList(_hiddenProjects) ?? const [];
+  Future<void> setHiddenProjects(List<String> keys) =>
+      _prefs.setStringList(_hiddenProjects, keys);
 
   List<String> get disabledModels =>
       _prefs.getStringList(_disabledModels) ?? const [];

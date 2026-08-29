@@ -18,6 +18,40 @@ class ProjectController extends GetxController {
   /// 供项目列表在空结果时给出重试入口。
   final projectsError = RxnString();
 
+  /// 已隐藏项目的归一化 worktree 路径。纯本地显示偏好：仅用于 drawer
+  /// 列表过滤，不影响激活项目与会话（后端没有删除项目的接口）。
+  final hiddenProjectKeys = <String>[].obs;
+
+  @override
+  void onInit() {
+    super.onInit();
+    hiddenProjectKeys
+      ..clear()
+      ..addAll(
+        Global.settings.hiddenProjects.map(normalizeDirectory).toSet(),
+      );
+  }
+
+  bool isProjectHidden(ProjectModel project) =>
+      hiddenProjectKeys.contains(hiddenKeyFor(project));
+
+  static String hiddenKeyFor(ProjectModel project) =>
+      normalizeDirectory(project.worktree);
+
+  /// 用户主动隐藏：仅从 drawer 列表过滤，激活状态与会话不动。
+  Future<void> hideProject(ProjectModel project) async {
+    final key = hiddenKeyFor(project);
+    if (hiddenProjectKeys.contains(key)) return;
+    hiddenProjectKeys.add(key);
+    await Global.settings.setHiddenProjects(hiddenProjectKeys.toList());
+  }
+
+  Future<void> unhideProjectByKey(String key) async {
+    if (!hiddenProjectKeys.contains(key)) return;
+    hiddenProjectKeys.remove(key);
+    await Global.settings.setHiddenProjects(hiddenProjectKeys.toList());
+  }
+
   Future<void> refreshAfterConnect() async {
     await fetchProjects();
     _restoreLastProject();

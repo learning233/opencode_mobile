@@ -23,6 +23,7 @@ class FileSearchController extends GetxController {
 
   Timer? _debounceTimer;
   CancelToken? _cancelToken;
+  int _requestSeq = 0;
 
   @override
   void onClose() {
@@ -31,23 +32,24 @@ class FileSearchController extends GetxController {
     super.onClose();
   }
 
-  bool get hasQuery => query.value.trim().isNotEmpty;
-
   int get totalMatchCount {
     if (mode.value == SearchMode.files) {
       return fileResults.length;
-    } else {
-      return textResults.fold(0, (sum, g) => sum + g.matches.length);
     }
+    return textResults.fold<int>(0, (sum, g) => sum + g.matches.length);
   }
+
+  bool get hasQuery => query.value.trim().isNotEmpty;
 
   void onQueryChanged(String val, {String? worktree}) {
     query.value = val;
     _debounceTimer?.cancel();
+
     if (val.trim().isEmpty) {
       clear();
       return;
     }
+
     _debounceTimer = Timer(const Duration(milliseconds: 300), () {
       performSearch(worktree: worktree);
     });
@@ -68,8 +70,10 @@ class FileSearchController extends GetxController {
       return;
     }
 
+    final seq = ++_requestSeq;
     _cancelToken?.cancel('new_search_started');
-    _cancelToken = CancelToken();
+    final token = CancelToken();
+    _cancelToken = token;
 
     isSearching.value = true;
     errorMessage.value = null;
@@ -84,8 +88,10 @@ class FileSearchController extends GetxController {
             'type': 'file',
           },
           directory: worktree,
-          cancelToken: _cancelToken,
+          cancelToken: token,
         );
+
+        if (seq != _requestSeq) return;
 
         if (response.statusCode == 200) {
           final data = response.data;
@@ -106,8 +112,10 @@ class FileSearchController extends GetxController {
             'pattern': trimmed,
           },
           directory: worktree,
-          cancelToken: _cancelToken,
+          cancelToken: token,
         );
+
+        if (seq != _requestSeq) return;
 
         if (response.statusCode == 200) {
           final data = response.data;
@@ -138,14 +146,17 @@ class FileSearchController extends GetxController {
         }
       }
     } on DioException catch (e) {
-      if (CancelToken.isCancel(e)) return;
+      if (CancelToken.isCancel(e) || seq != _requestSeq) return;
       AppLogger.w('Search failed: $e');
       errorMessage.value = e.message ?? 'Search error';
     } catch (e) {
+      if (seq != _requestSeq) return;
       AppLogger.e('Unexpected search error: $e');
       errorMessage.value = e.toString();
     } finally {
-      isSearching.value = false;
+      if (seq == _requestSeq) {
+        isSearching.value = false;
+      }
     }
   }
 
@@ -157,6 +168,7 @@ class FileSearchController extends GetxController {
   }
 
   void clear() {
+    _requestSeq++;
     _debounceTimer?.cancel();
     _cancelToken?.cancel('cleared');
     query.value = '';

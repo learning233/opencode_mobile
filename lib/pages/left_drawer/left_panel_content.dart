@@ -1,9 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:get/get.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../../api/models/project.dart';
+import '../../api/models/search_result.dart';
 import '../../controllers/file_search_controller.dart';
 import '../../controllers/project_controller.dart';
 import '../../controllers/tablet_tool_controller.dart';
@@ -36,6 +38,7 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
   late final Rx<DrawerMode> drawerMode;
   final ScrollController _projectsScrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
+  Worker? _projectWorker;
   bool _hiddenProjectsExpanded = false;
   String _appVersion = 'v0.9.8';
 
@@ -44,10 +47,20 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
     super.initState();
     drawerMode = (widget.initialMode ?? DrawerMode.projects).obs;
     _loadVersion();
+
+    if (Get.isRegistered<ProjectController>()) {
+      _projectWorker = ever(Get.find<ProjectController>().activeProject, (_) {
+        _searchController.clear();
+        if (Get.isRegistered<FileSearchController>()) {
+          Get.find<FileSearchController>().clear();
+        }
+      });
+    }
   }
 
   @override
   void dispose() {
+    _projectWorker?.dispose();
     _projectsScrollController.dispose();
     _searchController.dispose();
     super.dispose();
@@ -900,8 +913,8 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
                             ),
                             const SizedBox(width: 8),
                             Expanded(
-                              child: _buildHighlightedText(
-                                match.lineText.trim(),
+                              child: _buildHighlightedCodeMatch(
+                                match,
                                 searchCtrl.query.value.trim(),
                                 normalStyle: TextStyle(
                                   fontSize: 11.5,
@@ -915,7 +928,6 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
                                   color: theme.colorScheme.primary,
                                   backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.18),
                                 ),
-                                maxLines: 2,
                               ),
                             ),
                           ],
@@ -930,6 +942,77 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
         );
       }
     });
+  }
+
+  static int _byteOffsetToCharIndex(List<int> bytes, int byteOffset, int textLength) {
+    if (byteOffset <= 0) return 0;
+    if (byteOffset >= bytes.length) return textLength;
+    try {
+      return utf8.decode(bytes.sublist(0, byteOffset)).length;
+    } catch (_) {
+      return byteOffset.clamp(0, textLength);
+    }
+  }
+
+  Widget _buildHighlightedCodeMatch(
+    TextSearchMatch match,
+    String query, {
+    required TextStyle normalStyle,
+    required TextStyle matchStyle,
+  }) {
+    final text = match.lineText;
+    if (text.isEmpty) return const SizedBox.shrink();
+
+    if (match.submatches.isNotEmpty) {
+      final bytes = utf8.encode(text);
+      final sorted = List<TextSubmatch>.from(match.submatches)
+        ..sort((a, b) => a.start.compareTo(b.start));
+
+      final spans = <TextSpan>[];
+      int curChar = 0;
+
+      for (final sub in sorted) {
+        final startChar = _byteOffsetToCharIndex(bytes, sub.start, text.length);
+        final endChar = _byteOffsetToCharIndex(bytes, sub.end, text.length);
+
+        if (startChar > curChar && startChar <= text.length) {
+          spans.add(TextSpan(
+            text: text.substring(curChar, startChar),
+            style: normalStyle,
+          ));
+        }
+
+        final safeEnd = endChar.clamp(startChar, text.length);
+        if (safeEnd > startChar) {
+          spans.add(TextSpan(
+            text: text.substring(startChar, safeEnd),
+            style: matchStyle,
+          ));
+          curChar = safeEnd;
+        }
+      }
+
+      if (curChar < text.length) {
+        spans.add(TextSpan(
+          text: text.substring(curChar),
+          style: normalStyle,
+        ));
+      }
+
+      return RichText(
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        text: TextSpan(children: spans),
+      );
+    }
+
+    return _buildHighlightedText(
+      text.trim(),
+      query,
+      normalStyle: normalStyle,
+      matchStyle: matchStyle,
+      maxLines: 2,
+    );
   }
 
   Widget _buildHighlightedText(

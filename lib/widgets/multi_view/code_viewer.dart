@@ -86,10 +86,13 @@ class _FileEditorPageState extends State<FileEditorPage> {
         }
       });
       // 监听外部跳转行号请求（如搜索结果点击）
-      _lineWorker = ever(toolCtrl.activeTargetLine, (line) {
-        if (line != null && toolCtrl.activeFilePath.value == widget.filePath && mounted) {
+      _lineWorker = ever(toolCtrl.fileLineJumpRequest, (req) {
+        if (req != null &&
+            req.path == widget.filePath &&
+            (req.worktree == null || widget.worktree == null || req.worktree == widget.worktree) &&
+            mounted) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _jumpToLine(line);
+            if (mounted) _jumpToLine(req.line);
           });
         }
       });
@@ -104,13 +107,9 @@ class _FileEditorPageState extends State<FileEditorPage> {
     if (initial != null) {
       _controller = _createController(text: initial);
       _initFindController();
-      final line = widget.initialLine ??
-          (Get.isRegistered<TabletToolController>()
-              ? Get.find<TabletToolController>().activeTargetLine.value
-              : null);
-      if (line != null) {
+      if (widget.initialLine != null) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _jumpToLine(line);
+          if (mounted) _jumpToLine(widget.initialLine!);
         });
       }
     } else {
@@ -136,9 +135,14 @@ class _FileEditorPageState extends State<FileEditorPage> {
     }
   }
 
+  static String _normalizeNewlines(String text) {
+    return text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+  }
+
   CodeLineEditingController _createController({String? text}) {
-    final lines = text != null
-        ? CodeLines.of(text.split('\n').map((line) => CodeLine(line)).toList())
+    final normalized = text != null ? _normalizeNewlines(text) : null;
+    final lines = normalized != null
+        ? CodeLines.of(normalized.split('\n').map((line) => CodeLine(line)).toList())
         : CodeLines.of(const [CodeLine('')]);
     return CodeLineEditingController(
       codeLines: lines,
@@ -195,6 +199,17 @@ class _FileEditorPageState extends State<FileEditorPage> {
     // 为当前选中的目标行应用淡色高亮背景（持续保留该行高亮）
     _selectedLineIndex = lineIndex;
     _controller.codeLines = _controller.codeLines;
+
+    // 立即消费目标行状态，避免 PageView 回收重建时重复触发陈旧跳转
+    if (Get.isRegistered<TabletToolController>()) {
+      final toolCtrl = Get.find<TabletToolController>();
+      final idx = toolCtrl.openedFiles.indexWhere(
+        (f) => f.path == widget.filePath && f.worktree == widget.worktree,
+      );
+      if (idx != -1) {
+        toolCtrl.openedFiles[idx].targetLine = null;
+      }
+    }
   }
 
   void _initFindController() {
@@ -251,12 +266,8 @@ class _FileEditorPageState extends State<FileEditorPage> {
           });
           WidgetsBinding.instance.addPostFrameCallback((_) {
             oldController.dispose();
-            final line = widget.initialLine ??
-                (Get.isRegistered<TabletToolController>()
-                    ? Get.find<TabletToolController>().activeTargetLine.value
-                    : null);
-            if (line != null && mounted) {
-              _jumpToLine(line);
+            if (widget.initialLine != null && mounted) {
+              _jumpToLine(widget.initialLine!);
             }
           });
         }

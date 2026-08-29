@@ -7,6 +7,20 @@ import '../models/browser_tab.dart';
 import '../models/opened_file.dart';
 import '../utils/url_utils.dart';
 
+class FileLineJumpRequest {
+  final String path;
+  final String? worktree;
+  final int line;
+  final int timestamp;
+
+  const FileLineJumpRequest({
+    required this.path,
+    this.worktree,
+    required this.line,
+    required this.timestamp,
+  });
+}
+
 /// Controls the tool panel state in tablet/desktop and code editor mode.
 /// Manages opened file tabs, active tab index, visibility, and panel width.
 class TabletToolController extends GetxController {
@@ -40,8 +54,9 @@ class TabletToolController extends GetxController {
   /// Worktree of the active tab, paired with [activeFilePath].
   final activeFileWorktree = Rxn<String>();
 
-  /// Target line number to scroll/jump to in the active tab (e.g. from search results).
-  final activeTargetLine = Rxn<int>();
+  /// Request signal for jumping to a specific line in a file tab.
+  /// Uses a distinct timestamp so duplicate line requests trigger reactively.
+  final fileLineJumpRequest = Rxn<FileLineJumpRequest>();
 
   /// Stable identity of a file tab: worktree + path, so same-relative-path
   /// files from different projects are distinct tabs (never merged).
@@ -218,9 +233,7 @@ class TabletToolController extends GetxController {
       (f) => f.path == path && f.worktree == worktree,
     );
     if (existingIdx != -1) {
-      if (targetLine != null) {
-        openedFiles[existingIdx].targetLine = targetLine;
-      }
+      openedFiles[existingIdx].targetLine = targetLine;
       _activate(existingIdx);
     } else {
       openedFiles.add(
@@ -236,7 +249,14 @@ class TabletToolController extends GetxController {
     }
 
     if (targetLine != null) {
-      activeTargetLine.value = targetLine;
+      fileLineJumpRequest.value = FileLineJumpRequest(
+        path: path,
+        worktree: worktree,
+        line: targetLine,
+        timestamp: DateTime.now().microsecondsSinceEpoch,
+      );
+    } else {
+      fileLineJumpRequest.value = null;
     }
 
     activeTabIndex.value = tabCode;
@@ -270,6 +290,7 @@ class TabletToolController extends GetxController {
     );
     if (idx == -1) return;
     _activate(idx);
+    fileLineJumpRequest.value = null;
     activeTabIndex.value = tabCode;
   }
 
@@ -281,6 +302,7 @@ class TabletToolController extends GetxController {
     );
     if (idx == -1) return;
 
+    fileLineJumpRequest.value = null;
     final tab = openedFiles[idx];
     openedFiles.removeAt(idx);
     _contentCache.remove(fileKey(tab.path, tab.worktree));
@@ -298,6 +320,7 @@ class TabletToolController extends GetxController {
 
   /// Close all opened file tabs.
   void closeAllFiles() {
+    fileLineJumpRequest.value = null;
     openedFiles.clear();
     _contentCache.clear();
     activeFilePath.value = '';
@@ -306,6 +329,7 @@ class TabletToolController extends GetxController {
 
   /// Close all files except the specified worktree+path.
   void closeOtherFiles(String path, {String? worktree}) {
+    fileLineJumpRequest.value = null;
     openedFiles.removeWhere(
       (f) => f.path != path || (worktree != null && f.worktree != worktree),
     );

@@ -1119,9 +1119,6 @@ class LocaleKeys {
   static const searchFilesPlaceholder = "search_files_placeholder";
   static const searchTextPlaceholder = "search_text_placeholder";
   static const searchNoResults = "search_no_results";
-  static const searchMatchesCount = "search_matches_count";
-  static const searchCaseSensitive = "search_case_sensitive";
-  static const searchError = "search_error";
   static const searchLoading = "search_loading";
 }
 
@@ -2253,9 +2250,6 @@ class Messages extends Translations {
     LocaleKeys.searchFilesPlaceholder: '搜索文件名...',
     LocaleKeys.searchTextPlaceholder: '搜索代码内容...',
     LocaleKeys.searchNoResults: '未找到匹配结果',
-    LocaleKeys.searchMatchesCount: '@count 处匹配',
-    LocaleKeys.searchCaseSensitive: '区分大小写',
-    LocaleKeys.searchError: '搜索失败',
     LocaleKeys.searchLoading: '搜索中...',
   };
 
@@ -3476,9 +3470,6 @@ class Messages extends Translations {
     LocaleKeys.searchFilesPlaceholder: 'Search files...',
     LocaleKeys.searchTextPlaceholder: 'Search code...',
     LocaleKeys.searchNoResults: 'No matches found',
-    LocaleKeys.searchMatchesCount: '@count matches',
-    LocaleKeys.searchCaseSensitive: 'Match Case',
-    LocaleKeys.searchError: 'Search failed',
     LocaleKeys.searchLoading: 'Searching...',
   };
 }

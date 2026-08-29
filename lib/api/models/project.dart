@@ -72,6 +72,17 @@ class ProjectModel {
         .toList();
     return segs.isNotEmpty ? segs.last : 'Project';
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ProjectModel &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          worktree == other.worktree;
+
+  @override
+  int get hashCode => Object.hash(id, worktree);
 }
 
 /// Timestamps for when a project was created and (optionally) first

@@ -100,6 +100,12 @@ class ApiEndpoints {
 
   // ── VCS (版本控制) ───────────────────────────────────────────
 
+  /// GET VCS branch and repository info (`GET /vcs`).
+  static const String vcsInfo = '/vcs';
+
+  /// GET workspace status file list (`GET /vcs/status`).
+  static const String vcsStatus = '/vcs/status';
+
   /// GET workspace diff (`GET /vcs/diff?mode=git|branch&context=...`).
   ///
   /// 注意：OpenCode 后端真实接口路径为 `/vcs/diff`（v1 平路径），

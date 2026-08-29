@@ -5,6 +5,7 @@ import 'controllers/pty_controller.dart';
 import 'controllers/session_controller.dart';
 import 'controllers/settings_controller.dart';
 import 'controllers/tablet_tool_controller.dart';
+import 'controllers/vcs_controller.dart';
 import 'services/app_feedback_service.dart';
 
 class GlobalBinding extends Bindings {
@@ -16,6 +17,7 @@ class GlobalBinding extends Bindings {
     Get.put<PtyController>(PtyController(), permanent: true);
     Get.put<TabletToolController>(TabletToolController(), permanent: true);
     Get.put<FileSearchController>(FileSearchController(), permanent: true);
+    Get.put<VcsController>(VcsController(), permanent: true);
     Get.put<AppFeedbackService>(AppFeedbackService(), permanent: true);
   }
 }

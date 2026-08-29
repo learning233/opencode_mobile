@@ -1120,6 +1120,20 @@ class LocaleKeys {
   static const searchTextPlaceholder = "search_text_placeholder";
   static const searchNoResults = "search_no_results";
   static const searchLoading = "search_loading";
+
+  // ── VCS / Git ──
+  static const vcsBranch = "vcs_branch";
+  static const vcsStatus = "vcs_status";
+  static const vcsDefault = "vcs_default";
+  static const vcsClean = "vcs_clean";
+  static const vcsModified = "vcs_modified";
+  static const vcsAdded = "vcs_added";
+  static const vcsDeleted = "vcs_deleted";
+  static const vcsUntracked = "vcs_untracked";
+  static const vcsViewDiff = "vcs_view_diff";
+  static const vcsNotGitRepo = "vcs_not_git_repo";
+  static const vcsLoading = "vcs_loading";
+  static const vcsChangedFiles = "vcs_changed_files";
 }
 
 Map<String, String> languageMap = {"简体中文": "zh_CN", "English": "en_US"};
@@ -2251,6 +2265,19 @@ class Messages extends Translations {
     LocaleKeys.searchTextPlaceholder: '搜索代码内容...',
     LocaleKeys.searchNoResults: '未找到匹配结果',
     LocaleKeys.searchLoading: '搜索中...',
+    // ── VCS / Git ──
+    LocaleKeys.vcsBranch: 'Git 分支与状态',
+    LocaleKeys.vcsStatus: '工作区状态',
+    LocaleKeys.vcsDefault: '默认',
+    LocaleKeys.vcsClean: '工作区干净，无未提交更改',
+    LocaleKeys.vcsModified: '已修改',
+    LocaleKeys.vcsAdded: '新增',
+    LocaleKeys.vcsDeleted: '已删除',
+    LocaleKeys.vcsUntracked: '未跟踪',
+    LocaleKeys.vcsViewDiff: '查看完整对比',
+    LocaleKeys.vcsNotGitRepo: '非 Git 仓库或暂无版本控制信息',
+    LocaleKeys.vcsLoading: '正在获取 Git 状态...',
+    LocaleKeys.vcsChangedFiles: '@count 个变更文件',
   };
 
   // ──────────────────────────────────────────────────────
@@ -3471,5 +3498,18 @@ class Messages extends Translations {
     LocaleKeys.searchTextPlaceholder: 'Search code...',
     LocaleKeys.searchNoResults: 'No matches found',
     LocaleKeys.searchLoading: 'Searching...',
+    // ── VCS / Git ──
+    LocaleKeys.vcsBranch: 'Git Branch & Status',
+    LocaleKeys.vcsStatus: 'Workspace Status',
+    LocaleKeys.vcsDefault: 'Default',
+    LocaleKeys.vcsClean: 'Working tree clean, no uncommitted changes',
+    LocaleKeys.vcsModified: 'Modified',
+    LocaleKeys.vcsAdded: 'Added',
+    LocaleKeys.vcsDeleted: 'Deleted',
+    LocaleKeys.vcsUntracked: 'Untracked',
+    LocaleKeys.vcsViewDiff: 'View Full Diff',
+    LocaleKeys.vcsNotGitRepo: 'Not a Git repository or no VCS info',
+    LocaleKeys.vcsLoading: 'Fetching Git status...',
+    LocaleKeys.vcsChangedFiles: '@count changed files',
   };
 }

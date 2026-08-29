@@ -204,17 +204,15 @@ v1 搜索端点：
 
 ---
 
-## 13. VCS — 版本控制（已废弃）
+## 13. VCS — 版本控制
 
-> ⚠️ 全部未使用 — git 功能已全本地化（本地 `git` 进程），端点仅作参考。
-
-| 路径 | 方法 | 响应 | 状态 |
-|------|------|------|------|
-| `/vcs` | GET | `VcsInfo`（分支等） | unused |
-| `/vcs/status` | GET | `VcsStatus[]` | unused |
-| `/vcs/diff` | GET | `VcsDiff[]` | unused |
-| `/vcs/diff/raw` | GET | `string`（patch 文本） | unused |
-| `/vcs/apply` | POST | `void` | unused |
+| 路径 | 方法 | 查询参数 | 响应 | 版本 | 状态 |
+|------|------|----------|------|------|------|
+| `/vcs` | GET | — | `VcsInfo`（分支名 `branch`、默认分支 `defaultBranch`、`isClean` 等） | v1 | **active** (分支信息主用) |
+| `/vcs/status` | GET | — | `VcsStatusFile[]`（变更文件列表 `file`、`status`、`additions`、`deletions`） | v1 | **active** (工作区状态主用) |
+| `/vcs/diff` | GET | `mode: "git" \| "branch"`, `context?: number` | `VcsFileDiff[]`（全量或分支 diff 及 patch） | v1 | **active** (Review Tab 差异对比主用) |
+| `/vcs/diff/raw` | GET | — | `string`（patch 文本） | v1 | unused |
+| `/vcs/apply` | POST | — | `void` | v1 | unused |
 
 ---
 

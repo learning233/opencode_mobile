@@ -24,6 +24,8 @@ import '../../widgets/input_stack.dart';
 import '../../controllers/voice_input_controller.dart';
 import '../../widgets/voice_floating_overlay.dart';
 import '../../widgets/browser/in_app_browser_view.dart';
+import '../../controllers/vcs_controller.dart';
+import '../../widgets/vcs/vcs_branch_sheet.dart';
 
 class PromptInput extends StatefulWidget {
   final String sessionId;
@@ -698,18 +700,18 @@ class _UtilityBar extends StatelessWidget {
     );
   }
 
-  /// 临时调试入口：读取 Flutter 端日志文件最后 100 行。
-  void _showLogSheet(BuildContext context) {
+  void _showVcsBranchSheet(BuildContext context) {
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (_) => const _LogSheet(),
+      builder: (_) => const VcsBranchSheet(),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final sessionCtrl = Get.find<SessionController>();
 
     return Padding(
@@ -746,19 +748,52 @@ class _UtilityBar extends StatelessWidget {
                       }
                     },
                   ),
-                  // 4.预览
+                  // 4. 预览
                   IconButton(
                     tooltip: LocaleKeys.tabletWebTab.tr,
                     icon: const Icon(CupertinoIcons.eye, size: 20),
                     onPressed: () => _openPreview(context),
                     onLongPress: () => _showBindPortDialog(context),
                   ),
-                  // 5.语音输入
+                  // 5. 语音输入
                   _VoiceInputButton(
                     textController: textController,
                     onSendVoice: onSendVoice,
                   ),
-                  // 6. 关键词检测指示器
+                  // 6. Git 分支与状态
+                  Obx(() {
+                    final vcsCtrl = Get.find<VcsController>();
+                    final hasChanges = vcsCtrl.hasUncommittedChanges;
+                    final branchName = vcsCtrl.branch.value;
+                    final tooltip = branchName.isNotEmpty
+                        ? '${LocaleKeys.vcsBranch.tr}: $branchName'
+                        : LocaleKeys.vcsBranch.tr;
+
+                    return Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        IconButton(
+                          tooltip: tooltip,
+                          icon: const Icon(CupertinoIcons.arrow_branch, size: 20),
+                          onPressed: () => _showVcsBranchSheet(context),
+                        ),
+                        if (hasChanges)
+                          Positioned(
+                            right: 8,
+                            top: 8,
+                            child: Container(
+                              width: 7,
+                              height: 7,
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.primary,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  }),
+                  // 7. 关键词检测指示器
                   Obx(() {
                     final sessionId = sessionCtrl.activeSessionId.value;
                     final showAlert = sessionId.isNotEmpty
@@ -779,12 +814,6 @@ class _UtilityBar extends StatelessWidget {
                       ),
                     );
                   }),
-                  // 6. 日志查看（临时调试入口，放指示器右侧）
-                  IconButton(
-                    tooltip: '日志',
-                    icon: const Icon(Icons.article_outlined, size: 20),
-                    onPressed: () => _showLogSheet(context),
-                  ),
                 ],
               ),
             ),

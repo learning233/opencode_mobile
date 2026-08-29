@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io';
+// import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -16,7 +16,7 @@ import '../../models/model_info.dart';
 import '../../models/session_runtime_state.dart';
 import '../../routes.dart';
 import '../../utils/app_theme.dart';
-import '../../utils/app_logger.dart';
+// import '../../utils/app_logger.dart';
 import '../../utils/snackbar_utils.dart';
 import '../../utils/translations.dart';
 import '../../utils/url_utils.dart';
@@ -154,9 +154,7 @@ class _PromptInputState extends State<PromptInput> with WidgetsBindingObserver {
 
   Future<void> _pickImages() async {
     final picker = ImagePicker();
-    final result = await picker.pickMultiImage(
-      limit: 5,
-    );
+    final result = await picker.pickMultiImage(limit: 5);
     if (result.isEmpty) return;
     final state = _ctrl.stateOf(widget.sessionId);
     for (final xfile in result) {
@@ -371,7 +369,8 @@ class _PromptInputState extends State<PromptInput> with WidgetsBindingObserver {
                     hasSession: hasSession,
                     isGenerating: isWorking,
                     hasPendingPermission: hasPendingPermission,
-                    canSend: _hasText ||
+                    canSend:
+                        _hasText ||
                         state.attachedFiles.isNotEmpty ||
                         state.attachedImages.isNotEmpty,
                     model: state.selectedModel.value,
@@ -583,10 +582,7 @@ class _SendStopButton extends StatelessWidget {
             curve: Curves.easeInOut,
             width: 32,
             height: 32,
-            decoration: BoxDecoration(
-              color: bgColor,
-              shape: BoxShape.circle,
-            ),
+            decoration: BoxDecoration(color: bgColor, shape: BoxShape.circle),
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 180),
               child: Icon(
@@ -774,7 +770,10 @@ class _UtilityBar extends StatelessWidget {
                       children: [
                         IconButton(
                           tooltip: tooltip,
-                          icon: const Icon(CupertinoIcons.arrow_branch, size: 20),
+                          icon: const Icon(
+                            CupertinoIcons.arrow_branch,
+                            size: 20,
+                          ),
                           onPressed: () => _showVcsBranchSheet(context),
                         ),
                         if (hasChanges)
@@ -797,7 +796,10 @@ class _UtilityBar extends StatelessWidget {
                   Obx(() {
                     final sessionId = sessionCtrl.activeSessionId.value;
                     final showAlert = sessionId.isNotEmpty
-                        ? sessionCtrl.stateOf(sessionId).keywordDetectionAlert.value
+                        ? sessionCtrl
+                              .stateOf(sessionId)
+                              .keywordDetectionAlert
+                              .value
                         : false;
                     return SizedBox(
                       width: 24,
@@ -807,7 +809,9 @@ class _UtilityBar extends StatelessWidget {
                           width: 12,
                           height: 12,
                           decoration: BoxDecoration(
-                            color: showAlert ? Colors.redAccent : Colors.transparent,
+                            color: showAlert
+                                ? Colors.redAccent
+                                : Colors.transparent,
                             shape: BoxShape.circle,
                           ),
                         ),
@@ -911,7 +915,10 @@ class _BindPortDialogState extends State<_BindPortDialog> {
         return;
       }
     }
-    await Global.setPreviewPort(widget.project.id, input.isEmpty ? null : input);
+    await Global.setPreviewPort(
+      widget.project.id,
+      input.isEmpty ? null : input,
+    );
     if (mounted) {
       Navigator.pop(context);
     }
@@ -971,10 +978,7 @@ class _BindPortDialogState extends State<_BindPortDialog> {
           },
           child: Text(LocaleKeys.previewPortClear.tr),
         ),
-        FilledButton(
-          onPressed: _confirm,
-          child: Text(LocaleKeys.ok.tr),
-        ),
+        FilledButton(onPressed: _confirm, child: Text(LocaleKeys.ok.tr)),
       ],
     );
   }
@@ -1008,9 +1012,7 @@ class _BarIconBtn extends StatelessWidget {
           width: 28,
           height: 28,
           alignment: Alignment.center,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(6),
-          ),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(6)),
           child: Icon(
             icon,
             size: 16,
@@ -1271,8 +1273,9 @@ class _AttachmentsBar extends StatelessWidget {
           height: 52,
           padding: const EdgeInsets.symmetric(horizontal: 10),
           decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest
-                .withValues(alpha: 0.6),
+            color: theme.colorScheme.surfaceContainerHighest.withValues(
+              alpha: 0.6,
+            ),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
               color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
@@ -1361,8 +1364,9 @@ class _AttachmentsBar extends StatelessWidget {
                     color: context.appColors.chipBg,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: theme.colorScheme.outlineVariant
-                          .withValues(alpha: 0.4),
+                      color: theme.colorScheme.outlineVariant.withValues(
+                        alpha: 0.4,
+                      ),
                       width: 0.5,
                     ),
                   ),
@@ -1460,9 +1464,7 @@ class _ImageChipState extends State<_ImageChip> {
       builder: (ctx) => Dialog(
         backgroundColor: theme.colorScheme.surface,
         insetPadding: const EdgeInsets.all(12),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         child: SizedBox(
           width: MediaQuery.sizeOf(ctx).width - 24,
           height: MediaQuery.sizeOf(ctx).height * 0.8,
@@ -1475,10 +1477,7 @@ class _ImageChipState extends State<_ImageChip> {
                     minScale: 0.5,
                     maxScale: 4,
                     child: Center(
-                      child: Image.memory(
-                        widget.bytes,
-                        fit: BoxFit.contain,
-                      ),
+                      child: Image.memory(widget.bytes, fit: BoxFit.contain),
                     ),
                   ),
                 ),
@@ -1488,8 +1487,9 @@ class _ImageChipState extends State<_ImageChip> {
                 right: 8,
                 child: IconButton(
                   style: IconButton.styleFrom(
-                    backgroundColor:
-                        theme.colorScheme.surface.withValues(alpha: 0.7),
+                    backgroundColor: theme.colorScheme.surface.withValues(
+                      alpha: 0.7,
+                    ),
                   ),
                   onPressed: () => Navigator.of(ctx).pop(),
                   icon: Icon(
@@ -1525,10 +1525,7 @@ class _ImageChipState extends State<_ImageChip> {
             Positioned.fill(
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(7),
-                child: Image.memory(
-                  widget.bytes,
-                  fit: BoxFit.cover,
-                ),
+                child: Image.memory(widget.bytes, fit: BoxFit.cover),
               ),
             ),
             Positioned(
@@ -1768,6 +1765,8 @@ class _VoiceInputButtonState extends State<_VoiceInputButton> {
   }
 }
 
+// 日志查看入口已从工具栏移除，代码注释保留备用。
+/*
 /// 临时调试用：只读 Flutter 端日志文件，展示最后 100 行。后续会删除。
 class _LogSheet extends StatefulWidget {
   const _LogSheet();
@@ -1897,3 +1896,4 @@ class _LogSheetState extends State<_LogSheet> {
     );
   }
 }
+*/

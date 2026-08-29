@@ -148,7 +148,7 @@ class _VcsBranchSheetState extends State<VcsBranchSheet> {
                           child: InkWell(
                             onTap: () {
                               Clipboard.setData(ClipboardData(text: branch));
-                              Snack.success('已复制分支名: $branch');
+                              Snack.success('${LocaleKeys.vcsBranchCopied.tr}: $branch');
                             },
                             borderRadius: BorderRadius.circular(4),
                             child: Padding(

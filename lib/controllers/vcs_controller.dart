@@ -21,7 +21,8 @@ class VcsController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    refreshAll();
+    // 不在启动时立即拉取：连接尚未建立，请求注定失败且可能提前触发全局 401。
+    // 项目扫描设置 activeProject 后由 worker 触发首次刷新，面板打开时也会刷新。
 
     if (Get.isRegistered<ProjectController>()) {
       _projectWorker = ever(Get.find<ProjectController>().activeProject, (_) {

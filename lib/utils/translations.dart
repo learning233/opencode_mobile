@@ -1134,6 +1134,7 @@ class LocaleKeys {
   static const vcsNotGitRepo = "vcs_not_git_repo";
   static const vcsLoading = "vcs_loading";
   static const vcsChangedFiles = "vcs_changed_files";
+  static const vcsBranchCopied = "vcs_branch_copied";
 }
 
 Map<String, String> languageMap = {"简体中文": "zh_CN", "English": "en_US"};
@@ -2278,6 +2279,7 @@ class Messages extends Translations {
     LocaleKeys.vcsNotGitRepo: '非 Git 仓库或暂无版本控制信息',
     LocaleKeys.vcsLoading: '正在获取 Git 状态...',
     LocaleKeys.vcsChangedFiles: '@count 个变更文件',
+    LocaleKeys.vcsBranchCopied: '已复制分支名',
   };
 
   // ──────────────────────────────────────────────────────
@@ -3511,5 +3513,6 @@ class Messages extends Translations {
     LocaleKeys.vcsNotGitRepo: 'Not a Git repository or no VCS info',
     LocaleKeys.vcsLoading: 'Fetching Git status...',
     LocaleKeys.vcsChangedFiles: '@count changed files',
+    LocaleKeys.vcsBranchCopied: 'Branch name copied',
   };
 }

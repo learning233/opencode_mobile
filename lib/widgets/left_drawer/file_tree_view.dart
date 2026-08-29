@@ -103,7 +103,11 @@ class _FileTreeViewState extends State<FileTreeView> {
     _refreshDebounce = Timer(const Duration(milliseconds: 300), () {
       if (!mounted) return;
       if (Get.isRegistered<ProjectController>()) {
-        Get.find<ProjectController>().invalidateDirectoryCache();
+        final projectWorktree =
+            Get.find<ProjectController>().activeProject.value?.worktree;
+        Get.find<ProjectController>().invalidateDirectoryCache(
+          worktree: projectWorktree,
+        );
       }
       _dirCache.clear();
       // 记录当前已展开的目录，清缓存后一并重载，避免展开子树渲染空白。

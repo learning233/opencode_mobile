@@ -61,6 +61,13 @@ class _FileListPageState extends State<FileListPage> {
     _fileChangeDebounce?.cancel();
     _fileChangeDebounce = Timer(const Duration(milliseconds: 300), () {
       if (!mounted) return;
+      if (Get.isRegistered<ProjectController>()) {
+        final projectWorktree =
+            Get.find<ProjectController>().activeProject.value?.worktree;
+        Get.find<ProjectController>().invalidateDirectoryCache(
+          worktree: projectWorktree,
+        );
+      }
       _loadDirectory(force: true, silent: _entries.isNotEmpty);
     });
   }

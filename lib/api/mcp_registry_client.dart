@@ -19,6 +19,8 @@ class McpRegistryClient {
 
   static const Duration _listCacheTtl = Duration(minutes: 3);
   static const Duration _detailCacheTtl = Duration(minutes: 10);
+  static const int _maxListCacheEntries = 50;
+  static const int _maxDetailCacheEntries = 100;
 
   /// Creates an [McpRegistryClient] with an optional custom [Dio] instance.
   McpRegistryClient({Dio? dio}) : _dio = dio ?? _createBaseDio();
@@ -80,6 +82,9 @@ class McpRegistryClient {
         throw McpRegistryException('Invalid server list response format');
       }
       final result = _parseServerList(body);
+      if (_listCache.length >= _maxListCacheEntries) {
+        _listCache.remove(_listCache.keys.first);
+      }
       _listCache[cacheKey] = (data: result, timestamp: now);
       return result;
     } on DioException catch (e) {
@@ -124,6 +129,9 @@ class McpRegistryClient {
         throw McpRegistryException('Invalid server detail payload format');
       }
       final result = RegistryServerInfo.fromJson(serverJson);
+      if (_detailCache.length >= _maxDetailCacheEntries) {
+        _detailCache.remove(_detailCache.keys.first);
+      }
       _detailCache[cacheKey] = (data: result, timestamp: now);
       return result;
     } on DioException catch (e) {

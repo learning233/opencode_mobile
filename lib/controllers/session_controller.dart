@@ -3349,12 +3349,24 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     if (sessionId.isEmpty || messageId.isEmpty) return const [];
     final state = stateOf(sessionId);
 
-    // 生成期间不读写缓存：assistant 消息入列后无法可靠判断 messageId 是否
-    // 属于进行中的回合，而中途拉到的部分 diff 缓存后会因缺乏失效机制
-    // 在回合结束后仍被命中。生成中每次直拉网络，回合结束后的第一次
-    // 拉取结果才是最终值，可安全缓存。
+    // 生成期间判断：仅针对正在生成的当前最新回合跳过缓存；
+    // 历史已完成的回合 diff 永远不可变，始终允许命中缓存，避免新回合生成时
+    // 导致查看历史卡片 Diff 重复请求。
+    String? activeGeneratingUserMsgId;
+    if (state.isGenerating.value) {
+      for (var i = state.messages.length - 1; i >= 0; i--) {
+        if (state.messages[i].role == MessageRole.user) {
+          activeGeneratingUserMsgId = state.messages[i].id;
+          break;
+        }
+      }
+    }
+    final isGeneratingThisTurn =
+        activeGeneratingUserMsgId != null &&
+        (activeGeneratingUserMsgId == messageId);
+
     if (!force &&
-        !state.isGenerating.value &&
+        !isGeneratingThisTurn &&
         state.fetchedMessageDiffs.containsKey(messageId)) {
       return state.fetchedMessageDiffs[messageId]!;
     }
@@ -3376,7 +3388,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
             .where((d) => d.file.isNotEmpty)
             .toList();
 
-        if (!state.isGenerating.value) {
+        if (!isGeneratingThisTurn) {
           state.fetchedMessageDiffs[messageId] = parsed;
         }
         return parsed;

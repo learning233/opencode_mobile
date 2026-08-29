@@ -70,7 +70,7 @@ class TabletToolController extends GetxController {
   /// Stable identity of a file tab: worktree + path, so same-relative-path
   /// files from different projects are distinct tabs (never merged).
   static String fileKey(String path, String? worktree) =>
-      worktree == null ? path : '$worktree\u0000$path';
+      (worktree == null || worktree.isEmpty) ? path : '$worktree\u0000$path';
 
   /// Key of the active tab.
   String get activeFileKey =>

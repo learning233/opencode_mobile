@@ -256,18 +256,50 @@ class _ChatViewState extends State<ChatView> {
                 }
 
                 if (msgs.isEmpty && !showThinking) {
-                  final isLoading = !state.hasLoadedHistory.value;
+                  if (!state.hasLoadedHistory.value) {
+                    return Center(
+                      child: Text(
+                        LocaleKeys.chatLoadingMessages.tr,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(
+                            context,
+                          ).textTheme.bodySmall?.color?.withValues(alpha: 0.5),
+                        ),
+                      ),
+                    );
+                  }
+                  // 拉取失败≠空会话：显示可点击重试的失败提示，避免误导。
+                  if (state.historyLoadFailed.value) {
+                    return Center(
+                      child: GestureDetector(
+                        onTap: () =>
+                            controller.loadMessages(sessionId, force: true),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 8,
+                          ),
+                          child: Text(
+                            LocaleKeys.chatLoadMessagesFailed.tr,
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.error.withValues(alpha: 0.7),
+                                ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }
                   return Center(
                     child: Text(
-                      isLoading
-                          ? LocaleKeys.chatLoadingMessages.tr
-                          : LocaleKeys.chatStartConversation.tr,
+                      LocaleKeys.chatStartConversation.tr,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.color
-                            ?.withValues(alpha: 0.5),
+                        color: Theme.of(
+                          context,
+                        ).textTheme.bodySmall?.color?.withValues(alpha: 0.5),
                       ),
                     ),
                   );

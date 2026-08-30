@@ -54,6 +54,11 @@ class SessionRuntimeState {
   /// session and must not block the first history fetch.
   final hasLoadedHistory = false.obs;
 
+  /// True when the last [SessionController.loadMessages] attempt for this
+  /// session ended in an error. Lets the empty-session UI offer a retry
+  /// instead of showing the misleading "start a conversation" empty state.
+  final historyLoadFailed = false.obs;
+
   /// 重连后标记「历史可能过期」：SSE 自动重连的补偿只强刷当前激活页签，
   /// 其余打开页签置此标记，切到该页签时经 loadMessages 懒加载守卫重新拉取，
   /// 避免一次断线触发 N 个全量请求（见 _refreshAfterReconnect）。

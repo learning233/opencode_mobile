@@ -1207,7 +1207,17 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     // dedicated flag instead of messages.isNotEmpty because SSE may pre-populate
     // messages for a not-yet-opened session, which must not skip the first fetch.
     // 重连标脏（needsReloadAfterReconnect）强制一次重拉并纠正生成态。
-    if (!force && reloadState.hasLoadedHistory.value && !flaggedReload) return;
+    // 上次拉取失败（historyLoadFailed）同样放行：切回页签时自动重试。
+    if (!force &&
+        reloadState.hasLoadedHistory.value &&
+        !reloadState.historyLoadFailed.value &&
+        !flaggedReload) {
+      return;
+    }
+    // 重拉/重试前回到未加载态，空会话 UI 才能显示"正在加载消息..."而不是
+    // 残留的失败提示；空态分支只在 msgs 为空时渲染，不影响已加载的会话。
+    reloadState.historyLoadFailed.value = false;
+    reloadState.hasLoadedHistory.value = false;
     // Fire the todo fetch concurrently with the full-history GET below so its
     // ~one round-trip of latency is hidden behind the much slower message fetch
     // instead of running serially after it. SSE todoUpdated also populates
@@ -1240,6 +1250,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         // API may return newest-first; keep chronological for the timeline.
         final state = stateOf(sessionId);
         state.hasLoadedHistory.value = true;
+        state.historyLoadFailed.value = false;
         state.needsReloadAfterReconnect = false;
         // 全量历史是权威数据：清空流式通道，避免通道里的旧累计值在后续
         // 全量 part 对齐/落库时覆盖服务端历史。
@@ -1338,6 +1349,11 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       }
     } catch (e) {
       AppLogger.e('loadMessages failed: $e');
+      // 失败同样终结加载态（见 finally），但标记失败：空会话 UI 提示重试
+      // 而不是伪装成"开启对话"。seq 守卫避免切项目后写过期会话状态。
+      if (seq == _sessionFetchSeq) {
+        stateOf(sessionId).historyLoadFailed.value = true;
+      }
     } finally {
       if (seq == _sessionFetchSeq) {
         stateOf(sessionId).hasLoadedHistory.value = true;

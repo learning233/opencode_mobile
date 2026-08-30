@@ -59,11 +59,7 @@ class ReadCard extends StatelessWidget {
     return ':$firstLine-$lastLine';
   }
 
-  void _openFile(
-    BuildContext context,
-    String filePath,
-    String shortFileName,
-  ) {
+  void _openFile(BuildContext context, String filePath, String shortFileName) {
     if (filePath.isEmpty) return;
 
     if (Get.isRegistered<TabletToolController>()) {
@@ -72,11 +68,7 @@ class ReadCard extends StatelessWidget {
           ? (Get.find<ProjectController>().activeProject.value?.worktree ?? '')
           : '';
 
-      toolCtrl.openFile(
-        filePath,
-        shortFileName,
-        worktree: worktree,
-      );
+      toolCtrl.openFile(filePath, shortFileName, worktree: worktree);
 
       final isTablet = isTabletLayout(context);
       if (!isTablet) {
@@ -134,11 +126,7 @@ class ReadCard extends StatelessWidget {
                   color: Colors.transparent,
                   child: InkWell(
                     onTap: canOpen
-                        ? () => _openFile(
-                            context,
-                            filePath,
-                            shortFileName,
-                          )
+                        ? () => _openFile(context, filePath, shortFileName)
                         : null,
                     borderRadius: BorderRadius.circular(4),
                     child: Padding(
@@ -156,9 +144,11 @@ class ReadCard extends StatelessWidget {
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
                                 color: isError
-                                    ? theme.colorScheme.error.withValues(alpha: 0.7)
+                                    ? theme.colorScheme.error.withValues(
+                                        alpha: 0.7,
+                                      )
                                     : (theme.textTheme.bodySmall?.color ??
-                                        theme.colorScheme.primary),
+                                          theme.colorScheme.primary),
                               ),
                             ),
                             if (rangeText.isNotEmpty)

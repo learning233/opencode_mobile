@@ -1,11 +1,26 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'app_logger.dart';
 import 'card_visibility.dart';
 
 class AppSettingsStore {
   AppSettingsStore(this._prefs);
 
   final SharedPreferences _prefs;
+
+  /// 读-改-写类持久化的串行队列：两次写之间的 await 会把事件循环让给另一次
+  /// RMW，导致后写覆盖先写（如快速连续操作两个项目的页签/预览端口）。
+  Future<void> _prefsWriteQueue = Future.value();
+
+  /// 把一次读-改-写任务串入队列。返回值保留原有错误语义（抛给调用方），
+  /// 队列本身通过 catchError 吞掉失败继续排后续任务。
+  Future<void> _enqueuePrefsWrite(Future<void> Function() task) {
+    final result = _prefsWriteQueue.then((_) => task());
+    _prefsWriteQueue = result.catchError((Object e) {
+      AppLogger.e('AppSettingsStore queued write failed', e);
+    });
+    return result;
+  }
 
   static const _themeIsLight = 'theme_is_light';
   static const _language = 'language';
@@ -100,7 +115,11 @@ class AppSettingsStore {
         if (list is List) {
           return list.map((e) => e.toString()).toList();
         }
-      } catch (_) {}
+      } catch (e) {
+        AppLogger.w(
+          'AppSettingsStore: corrupted JSON in $_projectOpenedSessionIds, treating as empty: $e',
+        );
+      }
     }
     // 项目无记录时返回空列表，不回退到全局 openedSessionIds（=最近一次写入
     // 项目的页签），避免把 A 项目的页签当作 B 项目恢复造成跨项目污染。
@@ -110,19 +129,25 @@ class AppSettingsStore {
   Future<void> setOpenedSessionIdsForProject(
     String projectKey,
     List<String> ids,
-  ) async {
-    await setOpenedSessionIds(ids);
-    if (projectKey.isEmpty) return;
+  ) {
+    return _enqueuePrefsWrite(() async {
+      await setOpenedSessionIds(ids);
+      if (projectKey.isEmpty) return;
 
-    final raw = _prefs.getString(_projectOpenedSessionIds);
-    Map<String, dynamic> map = {};
-    if (raw != null && raw.isNotEmpty) {
-      try {
-        map = Map<String, dynamic>.from(jsonDecode(raw) as Map);
-      } catch (_) {}
-    }
-    map[projectKey] = ids;
-    await _prefs.setString(_projectOpenedSessionIds, jsonEncode(map));
+      final raw = _prefs.getString(_projectOpenedSessionIds);
+      Map<String, dynamic> map = {};
+      if (raw != null && raw.isNotEmpty) {
+        try {
+          map = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+        } catch (e) {
+          AppLogger.w(
+            'AppSettingsStore: corrupted JSON in $_projectOpenedSessionIds, resetting: $e',
+          );
+        }
+      }
+      map[projectKey] = ids;
+      await _prefs.setString(_projectOpenedSessionIds, jsonEncode(map));
+    });
   }
 
   String? get lastProjectId => _prefs.getString(_lastProjectId);
@@ -144,7 +169,11 @@ class AppSettingsStore {
         return port?.toString().trim().isNotEmpty == true
             ? port.toString().trim()
             : null;
-      } catch (_) {}
+      } catch (e) {
+        AppLogger.w(
+          'AppSettingsStore: corrupted JSON in $_projectPreviewPorts, treating as unbound: $e',
+        );
+      }
     }
     return null;
   }
@@ -163,28 +192,37 @@ class AppSettingsStore {
         }
       });
       return result;
-    } catch (_) {
+    } catch (e) {
+      AppLogger.w(
+        'AppSettingsStore: corrupted JSON in $_projectPreviewPorts, returning empty: $e',
+      );
       return {};
     }
   }
 
   /// Binds the preview port to [projectKey]. Passing null/empty removes the binding.
-  Future<void> setPreviewPort(String projectKey, String? port) async {
-    if (projectKey.isEmpty) return;
-    final cleaned = port?.trim() ?? '';
-    final raw = _prefs.getString(_projectPreviewPorts);
-    Map<String, dynamic> map = {};
-    if (raw != null && raw.isNotEmpty) {
-      try {
-        map = Map<String, dynamic>.from(jsonDecode(raw) as Map);
-      } catch (_) {}
-    }
-    if (cleaned.isEmpty) {
-      map.remove(projectKey);
-    } else {
-      map[projectKey] = cleaned;
-    }
-    await _prefs.setString(_projectPreviewPorts, jsonEncode(map));
+  Future<void> setPreviewPort(String projectKey, String? port) {
+    if (projectKey.isEmpty) return Future.value();
+    return _enqueuePrefsWrite(() async {
+      final cleaned = port?.trim() ?? '';
+      final raw = _prefs.getString(_projectPreviewPorts);
+      Map<String, dynamic> map = {};
+      if (raw != null && raw.isNotEmpty) {
+        try {
+          map = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+        } catch (e) {
+          AppLogger.w(
+            'AppSettingsStore: corrupted JSON in $_projectPreviewPorts, resetting: $e',
+          );
+        }
+      }
+      if (cleaned.isEmpty) {
+        map.remove(projectKey);
+      } else {
+        map[projectKey] = cleaned;
+      }
+      await _prefs.setString(_projectPreviewPorts, jsonEncode(map));
+    });
   }
 
   double get fontScale => _prefs.getDouble(_fontScale) ?? 1.0;

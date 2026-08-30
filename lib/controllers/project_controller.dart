@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:get/get.dart';
 import '../api/endpoints.dart';
 import '../api/models/file_entry.dart';
@@ -233,7 +235,8 @@ class ProjectController extends GetxController {
     }
     activeProject.value = project;
     _client.activeDirectory = project.worktree;
-    Global.lastProjectId = project.id;
+    // 写库即忘（非关键路径），但用显式 unawaited 让"丢弃 Future"是有意的。
+    unawaited(Global.settings.setLastProjectId(project.id));
     AppLogger.i('Selected project: ${project.displayName} (${project.id})');
 
     // 目录缓存按 worktree 隔离但无 TTL，且非激活项目的文件变更不会触发

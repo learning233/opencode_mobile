@@ -37,6 +37,17 @@ class OpenCodeClient {
       InterceptorsWrapper(
         onRequest: (options, handler) {
           final manager = SidecarManager.instance;
+          // 未初始化（首次连接成功前或 stop() 之后）快速失败：不再向默认的
+          // localhost 或残留的 last-known baseUrl 发送携带凭据的请求。
+          if (!manager.isInitialized) {
+            return handler.reject(
+              DioException(
+                requestOptions: options,
+                type: DioExceptionType.connectionError,
+                message: 'OpenCode sidecar is not connected',
+              ),
+            );
+          }
           options.baseUrl = manager.baseUrl;
           if (manager.password.isNotEmpty) {
             final token = base64Encode(

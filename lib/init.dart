@@ -160,6 +160,22 @@ class Global {
   static String get serverPassword => settings.serverPassword ?? '';
   static set serverPassword(String v) => settings.setServerPassword(v);
 
+  /// 连接成功后持久化服务器配置：显式 Future 供 SidecarManager await，
+  /// 写库失败记日志而非静默丢弃（fire-and-forget 会在连接后立刻被杀时丢配置）。
+  static Future<void> persistServerConnection({
+    required String url,
+    required String username,
+    required String password,
+  }) async {
+    try {
+      await settings.setServerUrl(url);
+      await settings.setServerUsername(username);
+      await settings.setServerPassword(password);
+    } catch (e) {
+      AppLogger.e('Failed to persist server connection settings', e);
+    }
+  }
+
   static List<String> get openedSessionIds => settings.openedSessionIds;
   static set openedSessionIds(List<String> v) =>
       settings.setOpenedSessionIds(v);

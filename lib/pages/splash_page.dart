@@ -162,6 +162,10 @@ class _SplashPageState extends State<SplashPage> {
                 onPressed: () {
                   _connectSeq++;
                   SidecarManager.instance.stop();
+                  // stop() 不感知 SSE：显式断开，避免取消后仍连着旧服务器收事件。
+                  if (Get.isRegistered<SessionController>()) {
+                    Get.find<SessionController>().disconnectSse();
+                  }
                   setState(() => _autoConnecting = false);
                 },
                 child: Text(LocaleKeys.mobileEditSettings.tr),

@@ -142,6 +142,19 @@ class SseClient {
           }
         }
       }
+
+      // 服务端可能在最后一个事件后不发结尾空行即关闭连接：冲刷残留的完整帧，
+      // 避免丢掉断开前的最后一个事件。被取消时不冲刷（内容不完整）；残缺 JSON
+      // 会走解析器降级得到空 type，被消费端分发忽略。
+      if (!(_cancelToken?.isCancelled ?? false) && buffer.isNotEmpty) {
+        final raw = buffer.toString();
+        buffer.clear();
+        try {
+          _controller.add(SseEvent.parse(raw));
+        } catch (e) {
+          AppLogger.e('SSE parse error', e);
+        }
+      }
     } catch (e) {
       // 主动取消（disconnect/dispose 触发）不计入失败次数。
       if (e is DioException && CancelToken.isCancel(e)) return;

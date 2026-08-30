@@ -1058,6 +1058,17 @@ class SessionController extends GetxController with WidgetsBindingObserver {
           ? openedSessionIds.last
           : '';
     }
+    _releaseSessionState(id);
+  }
+
+  /// 释放已关闭页签的运行时状态：状态只在页签打开期间被 UI 消费，重开时
+  /// `hasLoadedHistory` 随新状态重置、走正常懒加载。子会话状态由父会话的
+  /// 事件路径管理，这里跳过。若释放后会话仍有事件到达（如后台生成中），
+  /// getOrCreateSessionState 会按未打开会话的既有逻辑重建。
+  void _releaseSessionState(String id) {
+    if (id.isEmpty || _parentSessionIds.containsKey(id)) return;
+    _discardPendingPartDeltas(sessionIds: {id});
+    sessionRuntimeStates.remove(id);
   }
 
   void clearAllOpenedSessions() {
@@ -2150,6 +2161,17 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         (sse.isConnected || sse.isConnecting) &&
         _sseServerUrl == serverUrl &&
         sse.queryParams['directory'] == directory;
+  }
+
+  /// 主动断开当前 SSE 连接并丢弃客户端（连接页取消/停止连接时配合
+  /// SidecarManager.stop() 使用）。不重建，需要时由 _connectSse 重新建立。
+  void disconnectSse() {
+    _sseSub?.cancel();
+    _sseSub = null;
+    _sseClient?.dispose();
+    _sseClient = null;
+    _sseServerUrl = '';
+    _sseHasConnected = false;
   }
 
   void _connectSse() {

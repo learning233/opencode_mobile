@@ -22,14 +22,12 @@ class SidecarManager {
   String _password = '';
   bool _isInitialized = false;
   String _phase = 'disconnected';
-  String _lastError = '';
 
   String get baseUrl => _baseUrl;
   String get username => _username;
   String get password => _password;
   bool get isInitialized => _isInitialized;
   String get phase => _phase;
-  String get lastError => _lastError;
 
   Future<({bool success, String? error})> updateConnection(
     String url,
@@ -41,44 +39,43 @@ class SidecarManager {
     final cancelToken = CancelToken();
     _healthCancelToken = cancelToken;
 
-    final newUrl = url.trim();
+    // 规范化服务器 URL：去掉尾斜杠，避免拼出 //api/health 之类的路径。
+    var newUrl = url.trim();
+    while (newUrl.endsWith('/') && newUrl.length > 1) {
+      newUrl = newUrl.substring(0, newUrl.length - 1);
+    }
     final newUser = username.trim();
     final newPass = password.trim();
-    _lastError = '';
 
     _setPhase('connecting');
     AppLogger.i(
       'Connecting to remote Sidecar at [${maskIpsInText(newUrl)}] as $newUser',
     );
-    final isHealthy = await _pollHealthCheck(
-      newUrl,
-      newUser,
-      newPass,
-      cancelToken,
-    );
+    final result = await _pollHealthCheck(newUrl, newUser, newPass, cancelToken);
     if (generation != _generation) {
       AppLogger.w(
         'updateConnection superseded by a newer connect/stop, discarding result',
       );
       return (success: false, error: null);
     }
-    if (isHealthy) {
+    if (result.healthy) {
       AppLogger.i('Remote Sidecar server connection established successfully');
       // 只在健康检查通过后才提交内存态与持久化，失败保留 last-known-good。
       _baseUrl = newUrl;
       _username = newUser;
       _password = newPass;
       _isInitialized = true;
-      Global.serverUrl = newUrl;
-      Global.serverUsername = newUser;
-      Global.serverPassword = newPass;
+      await Global.persistServerConnection(
+        url: newUrl,
+        username: newUser,
+        password: newPass,
+      );
       _setPhase('connected');
       return (success: true, error: null);
-    } else {
-      AppLogger.e('Remote Sidecar server health check failed.');
-      _setPhase('failed');
-      return (success: false, error: _lastError);
     }
+    AppLogger.e('Remote Sidecar server health check failed.');
+    _setPhase('failed');
+    return (success: false, error: result.error);
   }
 
   Future<void> stop() async {
@@ -93,7 +90,10 @@ class SidecarManager {
     _phase = newPhase;
   }
 
-  Future<bool> _pollHealthCheck(
+  /// 健康检查结果：healthy 之外带回最后一次失败的错误描述，供连接表单展示。
+  /// 错误随返回值传递而非写入共享字段，避免旧一代连接的迟到响应覆盖新连接的
+  /// 错误信息（跨 generation 竞态）。
+  Future<({bool healthy, String? error})> _pollHealthCheck(
     String url,
     String username,
     String password,
@@ -109,12 +109,15 @@ class SidecarManager {
       headers['Authorization'] = 'Basic $token';
     }
 
+    String? lastError;
     int attempts = 0;
     const maxAttempts = 3;
 
     try {
       while (attempts < maxAttempts) {
-        if (cancelToken.isCancelled) return false;
+        if (cancelToken.isCancelled) {
+          return (healthy: false, error: lastError);
+        }
         try {
           final response = await _healthDio.get(
             healthUrl,
@@ -128,21 +131,24 @@ class SidecarManager {
             cancelToken: cancelToken,
           );
           if (response.statusCode == 200) {
-            return true;
+            return (healthy: true, error: null);
           }
           if (response.statusCode == 401) {
-            _lastError =
-                'Authentication failed (401). Check username/password.';
-            return false;
+            return (
+              healthy: false,
+              error: 'Authentication failed (401). Check username/password.',
+            );
           }
-          _lastError = 'Server returned status ${response.statusCode}.';
+          lastError = 'Server returned status ${response.statusCode}.';
         } catch (e) {
-          if (e is DioException && CancelToken.isCancel(e)) return false;
+          if (e is DioException && CancelToken.isCancel(e)) {
+            return (healthy: false, error: lastError);
+          }
           final msg = e.toString();
           AppLogger.w(
             'Health check attempt $attempts failed: ${maskIpsInText(msg)}',
           );
-          _lastError = maskIpsInText(msg);
+          lastError = maskIpsInText(msg);
         }
         attempts++;
         // 最后一次尝试后不再 sleep，避免每次失败连接无谓多等 0.5s。
@@ -150,7 +156,7 @@ class SidecarManager {
           await Future.delayed(const Duration(milliseconds: 500));
         }
       }
-      return false;
+      return (healthy: false, error: lastError);
     } finally {
       if (identical(cancelToken, _healthCancelToken)) {
         _healthCancelToken = null;

@@ -5,6 +5,7 @@ import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/widgets.dart';
+import 'package:dio/dio.dart' show CancelToken;
 import 'package:get/get.dart';
 import '../api/endpoints.dart';
 import '../api/models/event.dart';
@@ -62,6 +63,15 @@ class SessionController extends GetxController with WidgetsBindingObserver {
   /// 最近一次已发出的 `fetchModels` 所属代际；作用同 [_lastSessionFetchIssuedSeq]，
   /// 避免切项目时在途旧请求阻塞新项目模型列表刷新。
   int _lastModelsFetchIssuedSeq = -1;
+
+  /// H1：loadMessages 在途表（sessionId → 在途 Future）。同会话在途时非
+  /// force 调用直接复用同一 Future——`hasLoadedHistory` 守卫在在途窗口内
+  /// 不成立（进入即置 false），没有这张表时预取/切页签/重连强刷会并发叠
+  /// 加多个全量 GET（实测单个约 4.4s，窗口很大）。force 到来时经
+  /// [_messageLoadCancelTokens] 取消在途旧请求再发新，旧响应不再可能后到
+  /// 覆盖新数据（代际守卫只防切项目，不防同项目内乱序）。
+  final _messageLoadInFlight = <String, Future<void>>{};
+  final _messageLoadCancelTokens = <String, CancelToken>{};
 
   final sessionRuntimeStates = <String, SessionRuntimeState>{};
   final _subtaskOwners = <String, _SubtaskOwner>{};
@@ -774,8 +784,9 @@ class SessionController extends GetxController with WidgetsBindingObserver {
 
       // Prefetch the remaining restored tabs in the background so switching to
       // them after restart is instant instead of a blocking full-history fetch
-      // on each tab switch. `loadMessages`' hasLoadedHistory guard dedupes with
-      // the selectSession call above (and any concurrent SSE pre-population).
+      // on each tab switch. 在途去重由 loadMessages 的 in-flight 表兜底
+      // （H1）：selectSession / SSE 预填充在预取完成前到达时复用同一 Future，
+      // 不会并发重复发全量 GET。
       for (final id in valid) {
         if (id != activeSessionId.value) {
           unawaited(loadMessages(id));
@@ -1259,7 +1270,35 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     return msgs;
   }
 
+  /// Public entry（H1）：同会话在途去重 + force 取消旧请求。见
+  /// [_messageLoadInFlight] 注释；实际加载逻辑在 [_loadMessagesImpl]。
   Future<void> loadMessages(
+    String sessionId, {
+    bool force = false,
+    bool reconcileGenerating = false,
+  }) {
+    final inFlight = _messageLoadInFlight[sessionId];
+    if (inFlight != null) {
+      if (!force) return inFlight;
+      _messageLoadCancelTokens[sessionId]?.cancel();
+    }
+    final future = _loadMessagesImpl(
+      sessionId,
+      force: force,
+      reconcileGenerating: reconcileGenerating,
+    );
+    _messageLoadInFlight[sessionId] = future;
+    // 完成后清理；仅当在途表项仍是本次 Future（未被更新的 force 请求替换）
+    // 时才移除，避免误删新请求的表项。
+    future.whenComplete(() {
+      if (identical(_messageLoadInFlight[sessionId], future)) {
+        _messageLoadInFlight.remove(sessionId);
+      }
+    });
+    return future;
+  }
+
+  Future<void> _loadMessagesImpl(
     String sessionId, {
     bool force = false,
     bool reconcileGenerating = false,
@@ -1310,9 +1349,16 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     // in-flight todos never change again (e.g. paused mid-turn after restart).
     unawaited(_fetchTodosIfEmpty(sessionId, seq));
     try {
+      // H1：注册 CancelToken，force 到来时可取消在途旧请求。
+      final cancelToken = CancelToken();
+      _messageLoadCancelTokens[sessionId] = cancelToken;
       final response = await _client.get(
         ApiEndpoints.sessionMessages(sessionId),
+        cancelToken: cancelToken,
       );
+      if (identical(_messageLoadCancelTokens[sessionId], cancelToken)) {
+        _messageLoadCancelTokens.remove(sessionId);
+      }
       // 切项目后返回：不重建/不写过期会话状态，避免污染新项目内存。
       if (seq != _sessionFetchSeq) return;
       if (response.statusCode == 200) {

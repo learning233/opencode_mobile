@@ -1706,8 +1706,9 @@ class SettingsController extends GetxController {
       registryServers.addAll(result.servers);
       registryNextCursor.value = result.nextCursor;
     } catch (e) {
-      if (seq == _registryRequestSeq)
+      if (seq == _registryRequestSeq) {
         registryError.value = maskIpsInText(e.toString());
+      }
     } finally {
       if (seq == _registryRequestSeq) isLoadingRegistry.value = false;
     }

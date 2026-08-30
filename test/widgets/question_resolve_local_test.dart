@@ -36,7 +36,7 @@ void main() {
 
     test('returns the cached questionID for a plain callID', () {
       final part = _questionPart(callID: 'call_1');
-      final lookup = (String callId, {String? sessionId}) =>
+      String? lookup(String callId, {String? sessionId}) =>
           callId == 'call_1' ? 'que_xyz' : null;
       expect(resolveQuestionIDLocal(part, lookup), 'que_xyz');
     });
@@ -48,17 +48,18 @@ void main() {
 
     test('returns null when cache returns an empty string', () {
       final part = _questionPart(callID: 'call_1');
-      final lookup = (String callId, {String? sessionId}) => '';
+      String? lookup(String callId, {String? sessionId}) => '';
       expect(resolveQuestionIDLocal(part, lookup), isNull);
     });
 
     test('passes the part sessionID to the lookup', () {
       final part = _questionPart(callID: 'call_1', sessionID: 's9');
       String? sessionSeen;
-      final lookup = (String callId, {String? sessionId}) {
+      String? lookup(String callId, {String? sessionId}) {
         sessionSeen = sessionId;
         return 'que_xyz';
-      };
+      }
+
       expect(resolveQuestionIDLocal(part, lookup), 'que_xyz');
       expect(sessionSeen, 's9');
     });

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import '../init.dart';
 import '../utils/app_logger.dart';
+import '../utils/session_cache_store.dart';
 import '../utils/url_utils.dart';
 import 'endpoints.dart';
 
@@ -66,6 +67,12 @@ class SidecarManager {
     if (result.healthy) {
       AppLogger.i('Remote Sidecar server connection established successfully');
       // 只在健康检查通过后才提交内存态与持久化，失败保留 last-known-good。
+      // 换服务器（含首次连接）时清空会话历史缓存，防止 A 服务器的会话
+      // 缓存被 B 服务器的会话误命中；首次连接无缓存，clearAll 无害。
+      final previousUrl = Global.settings.serverUrl;
+      if (previousUrl != null && previousUrl != newUrl) {
+        unawaited(SessionCacheStore.instance.clearAll());
+      }
       _baseUrl = newUrl;
       _username = newUser;
       _password = newPass;

@@ -27,6 +27,7 @@ import '../utils/diff_paths.dart';
 import '../utils/error_formatter.dart';
 import '../utils/image_cache.dart';
 import '../utils/image_compressor.dart';
+import '../utils/session_cache_store.dart';
 import '../utils/snackbar_utils.dart';
 import '../utils/translations.dart';
 
@@ -1038,6 +1039,8 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       _forgetQuestionRequestsForSession(id);
       _discardPendingPartDeltas(sessionIds: {id});
       _persistOpenedIds();
+      // 服务端删除成功才清缓存；失败保留（无害，下次删除/清空兜底）。
+      unawaited(SessionCacheStore.instance.delete(id));
       if (activeSessionId.value == id) {
         activeSessionId.value = openedSessionIds.isNotEmpty
             ? openedSessionIds.last
@@ -1191,6 +1194,26 @@ class SessionController extends GetxController with WidgetsBindingObserver {
 
   // ── Messages ──
 
+  /// 归一化服务端消息原始 JSON：过滤非聊天消息，并按 `time.created` 检测
+  /// newest-first 返回翻转为时间正序。网络路径与缓存落盘共用，保证缓存
+  /// 命中渲染与网络对齐后的渲染顺序、消息范围完全一致。
+  static List<MessageModel> normalizeServerMessages(List rawMessages) {
+    final msgs = rawMessages
+        .whereType<Map>()
+        .map((json) => MessageModel.fromJson(Map<String, dynamic>.from(json)))
+        .where((m) => m.isChatMessage)
+        .toList();
+    // API may return newest-first; keep chronological for the timeline.
+    if (msgs.length >= 2 &&
+        (msgs.first.time?['created'] is num) &&
+        (msgs.last.time?['created'] is num) &&
+        (msgs.first.time!['created'] as num) >
+            (msgs.last.time!['created'] as num)) {
+      return msgs.reversed.toList();
+    }
+    return msgs;
+  }
+
   Future<void> loadMessages(
     String sessionId, {
     bool force = false,
@@ -1218,6 +1241,21 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     // 残留的失败提示；空态分支只在 msgs 为空时渲染，不影响已加载的会话。
     reloadState.historyLoadFailed.value = false;
     reloadState.hasLoadedHistory.value = false;
+    // SWR 秒开：内存为空时先读本地缓存立即渲染历史，网络请求随后照常发出
+    // 做静默对齐。串行读取（先缓存后发 GET）天然规避"缓存后到覆盖新数据"
+    // 的乱序；缓存缺失/损坏时返回 null，无感降级为正常网络加载。
+    // SSE 预填充或重连强刷场景消息非空，自动跳过走原路径。
+    if (reloadState.messages.isEmpty) {
+      final cached = await SessionCacheStore.instance.load(sessionId);
+      // 读缓存期间可能已切项目：不重建/不写过期会话状态。
+      if (seq != _sessionFetchSeq) return;
+      if (cached != null) {
+        reloadState.messages.assignAll(
+          cached.map((json) => MessageModel.fromJson(json)).toList(),
+        );
+        reloadState.hasLoadedHistory.value = true;
+      }
+    }
     // Fire the todo fetch concurrently with the full-history GET below so its
     // ~one round-trip of latency is hidden behind the much slower message fetch
     // instead of running serially after it. SSE todoUpdated also populates
@@ -1240,29 +1278,31 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         } else {
           rawMessages = [];
         }
-        final msgs = rawMessages
-            .whereType<Map>()
-            .map(
-              (json) => MessageModel.fromJson(Map<String, dynamic>.from(json)),
-            )
-            .where((m) => m.isChatMessage)
-            .toList();
-        // API may return newest-first; keep chronological for the timeline.
+        final msgs = normalizeServerMessages(rawMessages);
         final state = stateOf(sessionId);
         state.hasLoadedHistory.value = true;
         state.historyLoadFailed.value = false;
         state.needsReloadAfterReconnect = false;
-        // 全量历史是权威数据：清空流式通道，避免通道里的旧累计值在后续
-        // 全量 part 对齐/落库时覆盖服务端历史。
-        state.streamingPartText.clear();
-        if (msgs.length >= 2 &&
-            (msgs.first.time?['created'] is num) &&
-            (msgs.last.time?['created'] is num) &&
-            (msgs.first.time!['created'] as num) >
-                (msgs.last.time!['created'] as num)) {
-          state.messages.assignAll(msgs.reversed.toList());
-        } else {
+        // SWR 对齐守卫：快照在途期间回合已开始（本地发送在途/正在生成/
+        // 流式通道有内容）时，旧快照不得冲掉乐观消息与流式内容，落盘交由
+        // idle 收尾兜底。重连强刷（force/flaggedReload）豁免：全量历史是
+        // 权威数据，生成中也必须落快照以纠正断线期间的残留状态。
+        final snapshotStale = !force &&
+            !flaggedReload &&
+            (state.isGenerating.value ||
+                _localSendInFlight.contains(sessionId) ||
+                state.streamingPartText.isNotEmpty);
+        if (!snapshotStale) {
+          // 全量历史是权威数据：清空流式通道，避免通道里的旧累计值在后续
+          // 全量 part 对齐/落库时覆盖服务端历史。
+          state.streamingPartText.clear();
           state.messages.assignAll(msgs);
+          unawaited(
+            SessionCacheStore.instance.save(
+              sessionId,
+              msgs.map((m) => m.raw).toList(),
+            ),
+          );
         }
         // 断网重连兜底：离线期间错过的 idle 事件会让 isGenerating 残留 true，
         // 依据刚拉取到的历史判定回合是否已收尾并纠正（详见 _reconcileGeneratingAfterReconnect）。
@@ -1359,6 +1399,30 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         stateOf(sessionId).hasLoadedHistory.value = true;
       }
     }
+  }
+
+  /// 回合收尾后把内存中的权威消息快照落盘（SWR 的 Sync-on-Idle 侧）。
+  /// 必须在 `_finalizeStreamingText` 之后调用。生成中/本地发送在途/流式通道
+  /// 未清空时跳过；revert 期间也跳过——revert 只隐藏不截断内存消息，照存会
+  /// 把已撤销的消息带进缓存并在冷启动重新显示，缓存保留上一次网络快照、
+  /// 由下次 revalidate 自愈。
+  void _persistSessionCacheSnapshot(
+    String sessionId,
+    SessionRuntimeState state,
+  ) {
+    if (state.messages.isEmpty ||
+        state.isGenerating.value ||
+        _localSendInFlight.contains(sessionId) ||
+        state.streamingPartText.isNotEmpty ||
+        state.revertMessageID.value.isNotEmpty) {
+      return;
+    }
+    unawaited(
+      SessionCacheStore.instance.save(
+        sessionId,
+        state.messages.map((m) => m.raw).toList(),
+      ),
+    );
   }
 
   Future<void> _fetchTodosIfEmpty(String sessionId, int seq) async {
@@ -1836,6 +1900,8 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     state.generatingAgent.value = '';
     state.lastError.value = null;
     state.sessionStatus.value = 'idle';
+    // 中止即收尾：保存已生成的部分内容（finalize 已在上方落回列表）。
+    _persistSessionCacheSnapshot(id, state);
 
     final abortedIds = <String>{
       id,
@@ -2722,6 +2788,8 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     sessionRuntimeStates.remove(sid);
     _feedbackGeneratingSessions.remove(sid);
     openedSessionIds.remove(sid);
+    // 他端删除走 SSE 不经过 deleteSession，同步清缓存避免孤儿文件。
+    unawaited(SessionCacheStore.instance.delete(sid));
     clearSubtaskTracking(sid);
     _forgetQuestionRequestsForSession(sid);
     // The active session was deleted on the server: re-point to another open
@@ -2836,6 +2904,9 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     }
 
     _updateKeywordDetectionAlert(sid);
+    // 快照取队列 flush 前的收尾状态：_checkAndSendPendingPrompt 可能立刻
+    // 开出下一回合（加乐观消息/置生成态），下一回合收尾有自己的 idle 再落盘。
+    _persistSessionCacheSnapshot(sid, state);
     _checkAndSendPendingPrompt(sid);
   }
 
@@ -2914,6 +2985,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         state.generatingAgent.value = '';
         state.sessionStatus.value = 'error';
         state.lastError.value = ErrorFormatter.format(event.error);
+        _persistSessionCacheSnapshot(errorSessionId, state);
       }
     } else {
       final activeState = getOrCreateSessionState(activeSessionId.value);
@@ -2941,6 +3013,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         activeState.generatingAgent.value = '';
         activeState.sessionStatus.value = 'error';
         activeState.lastError.value = ErrorFormatter.format(event.error);
+        _persistSessionCacheSnapshot(activeSessionId.value, activeState);
       }
     }
 

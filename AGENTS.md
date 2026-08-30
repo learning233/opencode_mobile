@@ -40,4 +40,4 @@ Flutter（Android/iOS/Web）客户端，通过 Basic Auth 连接远程 `opencode
 
 ## 文档（中文）
 
-改动子系统前先读对应文档：`voice_input_logic.md`（语音）、`startup_architecture.md`（启动/会话恢复）、`reconnect.md`（自动重连）、`api_endpoints.md`、`项目.md`（项目扫描/添加）、`子会话权限与提问处理.md`、`多项目.md`、`mcp/`、`lsp/`、`agent/`、`developer/`。
+改动子系统前先读对应文档：`voice_input_logic.md`（语音）、`startup_architecture.md`（启动/会话恢复）、`reconnect.md`（自动重连）、`api_endpoints.md`、`会话缓存.md`（会话历史 SWR 缓存）、`项目.md`（项目扫描/添加）、`子会话权限与提问处理.md`、`多项目.md`、`mcp/`、`lsp/`、`agent/`、`developer/`。

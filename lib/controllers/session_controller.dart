@@ -5,7 +5,7 @@ import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/widgets.dart';
-import 'package:dio/dio.dart' show CancelToken;
+import 'package:dio/dio.dart' show CancelToken, DioException, DioExceptionType;
 import 'package:get/get.dart';
 import '../api/endpoints.dart';
 import '../api/models/event.dart';
@@ -72,6 +72,12 @@ class SessionController extends GetxController with WidgetsBindingObserver {
   /// 覆盖新数据（代际守卫只防切项目，不防同项目内乱序）。
   final _messageLoadInFlight = <String, Future<void>>{};
   final _messageLoadCancelTokens = <String, CancelToken>{};
+
+  /// H1：逐会话加载票据。force 取代在途加载时自增并覆盖；旧实现若尚未发
+  /// 出 GET（如还在 SWR 缓存读取阶段，CancelToken 无从取消），在 GET 前的
+  /// 检查点发现票据不符即放弃，杜绝并发双 GET。
+  int _messageLoadTicketSeq = 0;
+  final _messageLoadTickets = <String, int>{};
 
   final sessionRuntimeStates = <String, SessionRuntimeState>{};
   final _subtaskOwners = <String, _SubtaskOwner>{};
@@ -1282,10 +1288,13 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       if (!force) return inFlight;
       _messageLoadCancelTokens[sessionId]?.cancel();
     }
+    final ticket = ++_messageLoadTicketSeq;
+    _messageLoadTickets[sessionId] = ticket;
     final future = _loadMessagesImpl(
       sessionId,
       force: force,
       reconcileGenerating: reconcileGenerating,
+      ticket: ticket,
     );
     _messageLoadInFlight[sessionId] = future;
     // 完成后清理；仅当在途表项仍是本次 Future（未被更新的 force 请求替换）
@@ -1302,6 +1311,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     String sessionId, {
     bool force = false,
     bool reconcileGenerating = false,
+    required int ticket,
   }) async {
     if (sessionId.isEmpty) return;
     final seq = _sessionFetchSeq;
@@ -1348,6 +1358,9 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     // todos and sets hasFetchedTodos; this only fills the gap for sessions whose
     // in-flight todos never change again (e.g. paused mid-turn after restart).
     unawaited(_fetchTodosIfEmpty(sessionId, seq));
+    // H1 票据检查点：本次加载已被更新的 loadMessages（force 重发）取代时
+    // 放弃发出请求（取代者负责收尾，见 _messageLoadTickets）。
+    if (_messageLoadTickets[sessionId] != ticket) return;
     try {
       // H1：注册 CancelToken，force 到来时可取消在途旧请求。
       final cancelToken = CancelToken();
@@ -1483,6 +1496,12 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         }
       }
     } catch (e) {
+      // H1：被 force 取消的在途请求不算失败——取代它的请求负责收尾，
+      // 不能把 historyLoadFailed 置真让空会话 UI 误报重试。
+      if (e is DioException && e.type == DioExceptionType.cancel) {
+        AppLogger.i('loadMessages cancelled (superseded): $sessionId');
+        return;
+      }
       AppLogger.e('loadMessages failed: $e');
       // 失败同样终结加载态（见 finally），但标记失败：空会话 UI 提示重试
       // 而不是伪装成"开启对话"。seq 守卫避免切项目后写过期会话状态。

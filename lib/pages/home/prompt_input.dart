@@ -56,7 +56,11 @@ class _PromptInputState extends State<PromptInput> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _textController.addListener(() {
-      setState(() => _hasText = _textController.text.trim().isNotEmpty);
+      // 值不变不 setState：IME 组合、光标移动等每次输入事件都会进 listener，
+      // 无守卫时整块输入区（工具栈/附件/操作栏）被无谓重建。
+      final hasText = _textController.text.trim().isNotEmpty;
+      if (hasText == _hasText) return;
+      setState(() => _hasText = hasText);
     });
     // 本会话成为激活会话时，把语音输入目标指向本输入框，
     // 保证连续语音模式在切换 session 后输出到当前会话。

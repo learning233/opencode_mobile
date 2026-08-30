@@ -146,6 +146,10 @@ class _BashSheetBodyState extends State<_BashSheetBody> {
   bool _userDisabledFollow = false;
   bool _inProgrammaticScroll = false;
 
+  // E4：stripAnsi 结果缓存（见 _applyStripCache）。
+  final _StripMemo _outputMemo = _StripMemo();
+  final _StripMemo _errorMemo = _StripMemo();
+
   @override
   void initState() {
     super.initState();
@@ -240,6 +244,11 @@ class _BashSheetBodyState extends State<_BashSheetBody> {
     final input = part.toolInput;
     final command = (input['command'] ?? input['cmd'] ?? '') as String;
     final error = part.toolError;
+    // E4：stripAnsi 按 (part 实例, 输入字符串实例) 缓存——流式期间每次
+    // flush 输出都是新字符串、必须重算一次；其余内容未变的重建（状态翻转、
+    // 主题/可见性变化等）直接复用上次结果，不再对全量输出重跑 3 遍正则。
+    final cleanOutput = _applyStripCache(_outputMemo, part, output);
+    final cleanError = _applyStripCache(_errorMemo, part, error);
     return ListView(
       controller: _scrollController,
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -269,7 +278,7 @@ class _BashSheetBodyState extends State<_BashSheetBody> {
               borderRadius: BorderRadius.circular(6),
             ),
             child: SelectableText(
-              stripAnsi(output),
+              cleanOutput,
               style: TextStyle(
                 fontFamily: 'monospace',
                 fontSize: 12,
@@ -290,7 +299,7 @@ class _BashSheetBodyState extends State<_BashSheetBody> {
               borderRadius: BorderRadius.circular(6),
             ),
             child: SelectableText(
-              stripAnsi(error),
+              cleanError,
               style: TextStyle(
                 fontFamily: 'monospace',
                 fontSize: 12,
@@ -308,4 +317,20 @@ class _BashSheetBodyState extends State<_BashSheetBody> {
       ],
     );
   }
+}
+
+/// E4：单条 stripAnsi 结果的缓存槽（part 实例 + 输入字符串实例 + 结果）。
+class _StripMemo {
+  Part? part;
+  String? from;
+  String value = '';
+}
+
+String _applyStripCache(_StripMemo memo, Part part, String input) {
+  if (memo.part == part && identical(memo.from, input)) return memo.value;
+  memo
+    ..part = part
+    ..from = input
+    ..value = stripAnsi(input);
+  return memo.value;
 }

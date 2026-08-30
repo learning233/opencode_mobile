@@ -1483,6 +1483,17 @@ class _ImageChip extends StatefulWidget {
 }
 
 class _ImageChipState extends State<_ImageChip> {
+  /// 全屏预览的解码宽度上限：屏幕短边逻辑像素 × devicePixelRatio × 4（预览
+  /// 最大缩放倍数），即任何缩放级别下视口实际需要的最大物理分辨率。
+  static int? _previewCacheWidth(BuildContext context) {
+    final cap =
+        (MediaQuery.sizeOf(context).shortestSide *
+                MediaQuery.devicePixelRatioOf(context) *
+                4)
+            .round();
+    return cap > 0 ? cap : null;
+  }
+
   void _showPreview() {
     final theme = Theme.of(context);
     showDialog<void>(
@@ -1503,7 +1514,14 @@ class _ImageChipState extends State<_ImageChip> {
                     minScale: 0.5,
                     maxScale: 4,
                     child: Center(
-                      child: Image.memory(widget.bytes, fit: BoxFit.contain),
+                      child: Image.memory(
+                        widget.bytes,
+                        fit: BoxFit.contain,
+                        // 预览最大只放大到 4x：按屏幕短边物理像素 × 4 封顶解码，
+                        // 相机原图（12MP+）不再整幅解码造成内存尖峰。小图不受
+                        // 影响（allowUpscaling 默认 false，低于封顶值按原尺寸解码）。
+                        cacheWidth: _previewCacheWidth(ctx),
+                      ),
                     ),
                   ),
                 ),

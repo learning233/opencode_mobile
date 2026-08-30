@@ -19,10 +19,10 @@ Flutter（Android/iOS/Web）客户端，通过 Basic Auth 连接远程 `opencode
 - `lib/third_party/kterm`、`lib/third_party/zmodem_lbp` — vendor 包，各自带 AGENTS.md，除非改终端相关功能否则不要动
 - `clone/` — **gitignored，不在仓库内**：`clone/opencode` 后端源码与 `clone/opencode_flutter` 桌面参考客户端需另行获取
 
-## 运行时依赖（gitignored）
+## 运行时依赖
 
-- `onnx/libonnxruntime.so`、`assets/vad_stream.onnx` — 未跟踪，缺失会导致构建/运行失败或语音不可用
-- `assets/sensevoice/tokens.txt`、`assets/sensevoice/am.mvn` — 已跟踪
+- `assets/vad_stream.onnx` — **gitignored**，缺失会导致语音不可用（需自备 Silero VAD 模型）
+- `assets/sensevoice/tokens.txt`、`assets/sensevoice/am.mvn`、`onnx/libonnxruntime.so` — 已跟踪
 
 ## 调试后端连接
 

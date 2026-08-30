@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import '../../../utils/translations.dart';
 import '../../../api/models/message.dart';
+import '../../../controllers/project_controller.dart';
+import '../../../controllers/tablet_tool_controller.dart';
+import '../../../routes.dart';
+import '../../../utils/layout_utils.dart';
+import '../../../utils/translations.dart';
 
 class ReadCard extends StatelessWidget {
   final Part part;
@@ -55,6 +59,34 @@ class ReadCard extends StatelessWidget {
     return ':$firstLine-$lastLine';
   }
 
+  void _openFile(
+    BuildContext context,
+    String filePath,
+    String shortFileName,
+  ) {
+    if (filePath.isEmpty) return;
+
+    if (Get.isRegistered<TabletToolController>()) {
+      final toolCtrl = Get.find<TabletToolController>();
+      final worktree = Get.isRegistered<ProjectController>()
+          ? (Get.find<ProjectController>().activeProject.value?.worktree ?? '')
+          : '';
+
+      toolCtrl.openFile(
+        filePath,
+        shortFileName,
+        worktree: worktree,
+      );
+
+      final isTablet = isTabletLayout(context);
+      if (!isTablet) {
+        if (Get.currentRoute != AppRoutes.fileList) {
+          Get.toNamed(AppRoutes.fileList);
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -65,13 +97,15 @@ class ReadCard extends StatelessWidget {
         (input['filePath'] ?? input['file'] ?? input['path'] ?? '') as String;
     final normalizedPath = filePath.replaceAll('\\', '/');
     final pathParts = normalizedPath.split('/');
+    final shortFileName = pathParts.isNotEmpty ? pathParts.last : filePath;
     final fileName = pathParts.length > 2
         ? '${pathParts[pathParts.length - 2]}/${pathParts.last}'
-        : (pathParts.isNotEmpty ? pathParts.last : '');
+        : shortFileName;
 
     final rangeText = _resolveRangeText(input, output);
     final status = part.toolStatus;
     final isError = status == ToolStateStatus.error;
+    final canOpen = filePath.isNotEmpty;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
@@ -92,37 +126,60 @@ class ReadCard extends StatelessWidget {
           ),
           const SizedBox(width: 6),
           if (filePath.isNotEmpty)
-            Expanded(
-              child: Text.rich(
-                TextSpan(
-                  children: [
-                    TextSpan(
-                      text: fileName.isNotEmpty ? fileName : filePath,
-                      style: TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: isError
-                            ? theme.colorScheme.error.withValues(alpha: 0.7)
-                            : theme.textTheme.bodySmall?.color,
+            Flexible(
+              child: Tooltip(
+                message: filePath + (rangeText.isNotEmpty ? rangeText : ''),
+                waitDuration: const Duration(milliseconds: 500),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: canOpen
+                        ? () => _openFile(
+                            context,
+                            filePath,
+                            shortFileName,
+                          )
+                        : null,
+                    borderRadius: BorderRadius.circular(4),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 3,
+                        vertical: 1.5,
+                      ),
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: fileName.isNotEmpty ? fileName : filePath,
+                              style: TextStyle(
+                                fontFamily: 'monospace',
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: isError
+                                    ? theme.colorScheme.error.withValues(alpha: 0.7)
+                                    : (theme.textTheme.bodySmall?.color ??
+                                        theme.colorScheme.primary),
+                              ),
+                            ),
+                            if (rangeText.isNotEmpty)
+                              TextSpan(
+                                text: rangeText,
+                                style: TextStyle(
+                                  fontFamily: 'monospace',
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.normal,
+                                  color: theme.textTheme.bodySmall?.color
+                                      ?.withValues(alpha: 0.45),
+                                ),
+                              ),
+                          ],
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    if (rangeText.isNotEmpty)
-                      TextSpan(
-                        text: rangeText,
-                        style: TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.normal,
-                          color: theme.textTheme.bodySmall?.color?.withValues(
-                            alpha: 0.45,
-                          ),
-                        ),
-                      ),
-                  ],
+                  ),
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
               ),
             )
           else

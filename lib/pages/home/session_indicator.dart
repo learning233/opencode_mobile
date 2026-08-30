@@ -73,7 +73,7 @@ class _SessionDotState extends State<_SessionDot>
   late final Animation<double> _blinkAnimation;
   Worker? _generatingWorker;
   Worker? _permissionWorker;
-  Worker? _messagesWorker;
+  Worker? _pendingQuestionWorker;
 
   @override
   void initState() {
@@ -104,7 +104,9 @@ class _SessionDotState extends State<_SessionDot>
       widget.runState.pendingPermission,
       (_) => _checkRequiresActionBlink(),
     );
-    _messagesWorker = ever(widget.runState.messages, (_) {
+    // E3：订阅惰性布尔而非 messages——流式/工具高峰期列表整表替换不再逐帧
+    // 触发每个页签 dot 的全量 requiresAction 扫描，pending 状态翻转才触发。
+    _pendingQuestionWorker = ever(widget.runState.hasPendingQuestion, (_) {
       _checkRequiresActionBlink();
     });
 
@@ -114,9 +116,9 @@ class _SessionDotState extends State<_SessionDot>
   }
 
   void _checkRequiresActionBlink() {
-    // The active session is the one receiving 80ms streaming deltas; skipping
-    // the full message/part scan here avoids recomputing requiresAction for the
-    // session the user is already watching directly.
+    // 激活页签不显示 requiresAction 闪烁（build 内对 isActive 强制
+    // requiresAction=false）；E3 后 requiresAction 为 O(1)、事件源只剩布尔
+    // 翻转（低频），此处不再是流式高频路径。
     if (widget.isActive) return;
     final requiresAction = widget.runState.requiresAction;
     if (requiresAction) {
@@ -167,7 +169,7 @@ class _SessionDotState extends State<_SessionDot>
   void dispose() {
     _generatingWorker?.dispose();
     _permissionWorker?.dispose();
-    _messagesWorker?.dispose();
+    _pendingQuestionWorker?.dispose();
     _blinkController.dispose();
     super.dispose();
   }

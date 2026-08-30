@@ -37,6 +37,19 @@ class SessionRuntimeState {
   final sessionStatus = ''.obs;
   final lastError = Rxn<String>();
   final pendingPermission = Rxn<PendingPermission>();
+
+  /// 「本会话是否存在 pending/running 的 question 工具 part」惰性布尔（E3）。
+  /// 由 SessionController 在工具 part 处理与消息结构变更处增量维护
+  /// （见 _refreshPendingQuestionAfterUpdate 与各 messages 变更点），输入区
+  /// 状态栈 / 页签指示点只 touch 该布尔与 [pendingPermission]，不再每次广播
+  /// 做 O(messages×parts) 全量扫描。仅当树内确有挂起问题时才全量扫描取 part。
+  final hasPendingQuestion = false.obs;
+
+  /// messages / messageSubtaskDiffs 的变更计数（E3）：每次可能影响工具 diff
+  /// 聚合的变更自增，作为 [effectiveSessionDiffs] 缓存的 O(1) 签名，取代
+  /// 旧的 O(全部 assistant parts) 字符串签名。由 SessionController 在各
+  /// 变更点维护，漏标点位的最坏后果是 diff 面板显示滞后到下一次变更。
+  int partsVersion = 0;
   final selectedThinkingLevel = ''.obs;
   final thinkingLevels = <String>[].obs;
   final attachedFiles = <String>[].obs;
@@ -107,7 +120,7 @@ class SessionRuntimeState {
   final keywordDetectionAlert = false.obs;
 
   /// Cache of the aggregated [effectiveSessionDiffs] keyed by a signature of
-  /// all assistant messages' tool parts + subtask diffs, so the 80ms streaming
+  /// all assistant messages' tool parts + subtask diffs, so the streaming
   /// flush doesn't re-parse every patch while nothing relevant changed.
   List<SnapshotFileDiff>? _effectiveDiffsCache;
   String _effectiveDiffsSignature = '';
@@ -152,45 +165,10 @@ class SessionRuntimeState {
     return result;
   }
 
-  /// Cheap signature over everything that can change the aggregated diffs:
-  /// assistant messages' ids / part counts / tool part statuses, plus the
-  /// subtask diff aggregation (files + +/- counts).
-  String _effectiveDiffSignature() {
-    final sb = StringBuffer();
-    for (final msg in messages) {
-      if (msg.role != MessageRole.assistant) continue;
-      sb
-        ..write(msg.id)
-        ..write('#')
-        ..write(msg.parts.length)
-        ..write(';');
-      for (final p in msg.parts) {
-        if (p.type == PartType.tool) {
-          sb
-            ..write(p.id)
-            ..write('=')
-            ..write(p.toolStatus.name)
-            ..write(',');
-        }
-      }
-    }
-    sb.write('S');
-    for (final entry in messageSubtaskDiffs.entries) {
-      sb
-        ..write(entry.key)
-        ..write('=');
-      for (final d in entry.value) {
-        sb
-          ..write(d.file)
-          ..write('+')
-          ..write(d.additions)
-          ..write('-')
-          ..write(d.deletions)
-          ..write(';');
-      }
-    }
-    return sb.toString();
-  }
+  /// Cheap O(1) signature: a controller-maintained counter bumped on every
+  /// messages / messageSubtaskDiffs change that could affect the aggregated
+  /// diffs (see [partsVersion]).
+  String _effectiveDiffSignature() => 'v$partsVersion';
 
   /// When set, timeline hides messages at/after this id (desktop revert UX).
   final revertMessageID = ''.obs;
@@ -217,9 +195,22 @@ class SessionRuntimeState {
   }
 
   /// Waiting for user action (permission or pending clarifying question).
-  /// Matches desktop [SessionRuntimeState.requiresAction].
+  /// Matches desktop [SessionRuntimeState.requiresAction]. O(1)：question
+  /// 侧读增量维护的 [hasPendingQuestion]（维护点见字段注释），不再全量扫描。
   bool get requiresAction {
     if (pendingPermission.value != null) return true;
+    return hasPendingQuestion.value;
+  }
+
+  /// 从当前 messages 全量重算 [hasPendingQuestion]（O(messages×parts)）。
+  /// 只在消息结构性变更（整表替换/删除/重扫兜底）处调用；question part 的
+  /// 增删改主路径由 SessionController 直接置位/短路重扫。
+  void rescanHasPendingQuestion() {
+    final found = _containsPendingQuestionPart();
+    if (hasPendingQuestion.value != found) hasPendingQuestion.value = found;
+  }
+
+  bool _containsPendingQuestionPart() {
     for (final msg in messages) {
       for (final part in msg.parts) {
         if (part.type == PartType.tool &&

@@ -296,10 +296,23 @@ class _QuestionCardState extends State<QuestionCard> {
     return parsedList;
   }
 
+  /// E2：解析结果按 output 字符串实例 memo（part 更新即整体换实例、新 raw
+  /// 新字符串），避免每次 build 重复 jsonDecode 整个输出。
+  Map<int, List<String>>? _completedAnswersCache;
+  String? _completedAnswersSource;
+
   Map<int, List<String>> _getCompletedAnswers() {
+    final rawOutput = widget.part.toolOutput;
+    final cached = _completedAnswersCache;
+    if (cached != null && identical(_completedAnswersSource, rawOutput)) {
+      return cached;
+    }
     final Map<int, List<String>> completed = {};
-    final outputStr = widget.part.toolOutput.trim();
-    if (outputStr.isEmpty) return completed;
+    final outputStr = rawOutput.trim();
+    if (outputStr.isEmpty) {
+      _completedAnswersSource = rawOutput;
+      return _completedAnswersCache = completed;
+    }
 
     // Try to parse as JSON
     try {
@@ -414,7 +427,8 @@ class _QuestionCardState extends State<QuestionCard> {
       }
     }
 
-    return completed;
+    _completedAnswersSource = rawOutput;
+    return _completedAnswersCache = completed;
   }
 
   void _navigateToPage(int index) {

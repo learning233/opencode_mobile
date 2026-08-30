@@ -5,6 +5,7 @@ import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/widgets.dart';
+import 'package:dio/dio.dart' show CancelToken, DioException, DioExceptionType;
 import 'package:get/get.dart';
 import '../api/endpoints.dart';
 import '../api/models/event.dart';
@@ -62,6 +63,21 @@ class SessionController extends GetxController with WidgetsBindingObserver {
   /// 最近一次已发出的 `fetchModels` 所属代际；作用同 [_lastSessionFetchIssuedSeq]，
   /// 避免切项目时在途旧请求阻塞新项目模型列表刷新。
   int _lastModelsFetchIssuedSeq = -1;
+
+  /// H1：loadMessages 在途表（sessionId → 在途 Future）。同会话在途时非
+  /// force 调用直接复用同一 Future——`hasLoadedHistory` 守卫在在途窗口内
+  /// 不成立（进入即置 false），没有这张表时预取/切页签/重连强刷会并发叠
+  /// 加多个全量 GET（实测单个约 4.4s，窗口很大）。force 到来时经
+  /// [_messageLoadCancelTokens] 取消在途旧请求再发新，旧响应不再可能后到
+  /// 覆盖新数据（代际守卫只防切项目，不防同项目内乱序）。
+  final _messageLoadInFlight = <String, Future<void>>{};
+  final _messageLoadCancelTokens = <String, CancelToken>{};
+
+  /// H1：逐会话加载票据。force 取代在途加载时自增并覆盖；旧实现若尚未发
+  /// 出 GET（如还在 SWR 缓存读取阶段，CancelToken 无从取消），在 GET 前的
+  /// 检查点发现票据不符即放弃，杜绝并发双 GET。
+  int _messageLoadTicketSeq = 0;
+  final _messageLoadTickets = <String, int>{};
 
   final sessionRuntimeStates = <String, SessionRuntimeState>{};
   final _subtaskOwners = <String, _SubtaskOwner>{};
@@ -472,13 +488,20 @@ class SessionController extends GetxController with WidgetsBindingObserver {
 
   /// First pending `question` tool part within [rootId]'s session tree (root
   /// first, then descendant subtasks recursively). Returns null when none.
+  ///
+  /// E3：先读每层会话的 [SessionRuntimeState.hasPendingQuestion] 惰性布尔做
+  /// 短路（Obx 调用时由此只注册布尔依赖，不再注册 messages），布尔为 true
+  /// 才做该会话的 O(messages×parts) 全量扫描取 part。
   Part? pendingQuestionInTree(String rootId, [Set<String>? visited]) {
     if (rootId.isEmpty) return null;
     final set = visited ?? <String>{};
     if (!set.add(rootId)) return null;
-    final rootPending = pendingQuestionPartFor(rootId);
-    if (rootPending != null) return rootPending;
-    for (final child in getOrCreateSessionState(rootId).childSessions) {
+    final state = getOrCreateSessionState(rootId);
+    if (state.hasPendingQuestion.value) {
+      final rootPending = pendingQuestionPartFor(rootId);
+      if (rootPending != null) return rootPending;
+    }
+    for (final child in state.childSessions) {
       final childPending = pendingQuestionInTree(child.id, set);
       if (childPending != null) return childPending;
     }
@@ -569,6 +592,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       }
     }
     rootState.messageSubtaskDiffs.refresh();
+    rootState.partsVersion++;
   }
 
   // ── Persist openedSessionIds ──
@@ -766,8 +790,9 @@ class SessionController extends GetxController with WidgetsBindingObserver {
 
       // Prefetch the remaining restored tabs in the background so switching to
       // them after restart is instant instead of a blocking full-history fetch
-      // on each tab switch. `loadMessages`' hasLoadedHistory guard dedupes with
-      // the selectSession call above (and any concurrent SSE pre-population).
+      // on each tab switch. 在途去重由 loadMessages 的 in-flight 表兜底
+      // （H1）：selectSession / SSE 预填充在预取完成前到达时复用同一 Future，
+      // 不会并发重复发全量 GET。
       for (final id in valid) {
         if (id != activeSessionId.value) {
           unawaited(loadMessages(id));
@@ -1089,24 +1114,61 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     _releaseSessionState(id);
   }
 
-  /// 释放已关闭页签的运行时状态：状态只在页签打开期间被 UI 消费，重开时
-  /// `hasLoadedHistory` 随新状态重置、走正常懒加载。子会话状态由父会话的
-  /// 事件路径管理，这里跳过。若释放后会话仍有事件到达（如后台生成中），
-  /// getOrCreateSessionState 会按未打开会话的既有逻辑重建。
-  void _releaseSessionState(String id) {
-    if (id.isEmpty || _parentSessionIds.containsKey(id)) return;
-    // 会话仍持有待回复的权限请求时保留状态：asked 不重放、loadMessages 也不
-    // 恢复权限，释放会让重开页签后的卡片永久消失（agent 挂起在等待回复上）。
-    // 回复/级联 replied 清槽后再关闭页签即可正常释放。
-    if (sessionRuntimeStates[id]?.pendingPermission.value != null) return;
+  /// 释放已关闭页签的运行时状态（F2 定版方案）：
+  /// - 普通会话：整个 remove，重开时 `hasLoadedHistory` 随新状态重置、走
+  ///   正常懒加载；
+  /// - 父会话：保留轻量外壳——`childSessions` 树是 pendingQuestionInTree /
+  ///   权限遍历的依赖（fetchSessions 重建前的窗口不能为空），只清消息类
+  ///   字段（messages / streamingPartText / turnDiffCache / messageSubtaskDiffs
+  ///   / fetchedMessageDiffs）并重置 `hasLoadedHistory=false`；其子会话 state
+  ///   逐个递归释放（多层嵌套同规则）；
+  /// - 挂起权限的会话跳过：asked 不重放、loadMessages 也不恢复权限，释放会
+  ///   让重开页签后的权限卡永久消失（agent 挂起在等待回复上）。回复/级联
+  ///   replied 清槽后再关闭页签即可正常释放；
+  /// - 生成中不额外设守卫：与既有普通页签释放语义一致，释放后事件到达由
+  ///   getOrCreateSessionState 重建空壳，重开时 loadMessages 全量纠正。
+  void _releaseSessionState(String id, {Set<String>? visited}) {
+    if (id.isEmpty) return;
+    final guard = visited ?? <String>{};
+    if (!guard.add(id)) return;
+    final state = sessionRuntimeStates[id];
+    if (state == null) return;
+    // 会话仍持有待回复的权限请求时保留状态（含其子树一并保留）。
+    if (state.pendingPermission.value != null) return;
+    final isParent =
+        state.childSessions.isNotEmpty || _parentSessionIds.values.contains(id);
+    if (isParent) {
+      // 父会话：清消息类字段、保留 childSessions 树，子会话逐个释放。
+      _discardPendingPartDeltas(sessionIds: {id});
+      state.messages.clear();
+      state.streamingPartText.clear();
+      state.turnDiffCache.clear();
+      state.messageSubtaskDiffs.clear();
+      state.fetchedMessageDiffs.clear();
+      state.hasLoadedHistory.value = false;
+      state.partsVersion++;
+      state.rescanHasPendingQuestion();
+      for (final child in state.childSessions.toList()) {
+        _releaseSessionState(child.id, visited: guard);
+      }
+      return;
+    }
     _discardPendingPartDeltas(sessionIds: {id});
     sessionRuntimeStates.remove(id);
   }
 
+  /// 清空所有页签（F2）：除清 openedSessionIds / activeSessionId 外，遍历
+  /// 全部运行时状态逐个释放（含不在 openedSessionIds 里的后台子会话）——
+  /// 父会话走 [_releaseSessionState] 的外壳级联，普通/子会话整个 remove，
+  /// 挂起权限的会话沿用守卫跳过；最后统一清一次 delta 合并队列。
   void clearAllOpenedSessions() {
     openedSessionIds.clear();
     activeSessionId.value = '';
     _persistOpenedIds();
+    for (final id in sessionRuntimeStates.keys.toList()) {
+      _releaseSessionState(id);
+    }
+    _discardPendingPartDeltas();
     AppLogger.i('🧹 Cleared all opened sessions');
   }
 
@@ -1214,10 +1276,42 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     return msgs;
   }
 
+  /// Public entry（H1）：同会话在途去重 + force 取消旧请求。见
+  /// [_messageLoadInFlight] 注释；实际加载逻辑在 [_loadMessagesImpl]。
   Future<void> loadMessages(
     String sessionId, {
     bool force = false,
     bool reconcileGenerating = false,
+  }) {
+    final inFlight = _messageLoadInFlight[sessionId];
+    if (inFlight != null) {
+      if (!force) return inFlight;
+      _messageLoadCancelTokens[sessionId]?.cancel();
+    }
+    final ticket = ++_messageLoadTicketSeq;
+    _messageLoadTickets[sessionId] = ticket;
+    final future = _loadMessagesImpl(
+      sessionId,
+      force: force,
+      reconcileGenerating: reconcileGenerating,
+      ticket: ticket,
+    );
+    _messageLoadInFlight[sessionId] = future;
+    // 完成后清理；仅当在途表项仍是本次 Future（未被更新的 force 请求替换）
+    // 时才移除，避免误删新请求的表项。
+    future.whenComplete(() {
+      if (identical(_messageLoadInFlight[sessionId], future)) {
+        _messageLoadInFlight.remove(sessionId);
+      }
+    });
+    return future;
+  }
+
+  Future<void> _loadMessagesImpl(
+    String sessionId, {
+    bool force = false,
+    bool reconcileGenerating = false,
+    required int ticket,
   }) async {
     if (sessionId.isEmpty) return;
     final seq = _sessionFetchSeq;
@@ -1254,6 +1348,8 @@ class SessionController extends GetxController with WidgetsBindingObserver {
           cached.map((json) => MessageModel.fromJson(json)).toList(),
         );
         reloadState.hasLoadedHistory.value = true;
+        reloadState.partsVersion++;
+        reloadState.rescanHasPendingQuestion();
       }
     }
     // Fire the todo fetch concurrently with the full-history GET below so its
@@ -1262,10 +1358,20 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     // todos and sets hasFetchedTodos; this only fills the gap for sessions whose
     // in-flight todos never change again (e.g. paused mid-turn after restart).
     unawaited(_fetchTodosIfEmpty(sessionId, seq));
+    // H1 票据检查点：本次加载已被更新的 loadMessages（force 重发）取代时
+    // 放弃发出请求（取代者负责收尾，见 _messageLoadTickets）。
+    if (_messageLoadTickets[sessionId] != ticket) return;
     try {
+      // H1：注册 CancelToken，force 到来时可取消在途旧请求。
+      final cancelToken = CancelToken();
+      _messageLoadCancelTokens[sessionId] = cancelToken;
       final response = await _client.get(
         ApiEndpoints.sessionMessages(sessionId),
+        cancelToken: cancelToken,
       );
+      if (identical(_messageLoadCancelTokens[sessionId], cancelToken)) {
+        _messageLoadCancelTokens.remove(sessionId);
+      }
       // 切项目后返回：不重建/不写过期会话状态，避免污染新项目内存。
       if (seq != _sessionFetchSeq) return;
       if (response.statusCode == 200) {
@@ -1297,6 +1403,8 @@ class SessionController extends GetxController with WidgetsBindingObserver {
           // 全量 part 对齐/落库时覆盖服务端历史。
           state.streamingPartText.clear();
           state.messages.assignAll(msgs);
+          state.partsVersion++;
+          state.rescanHasPendingQuestion();
           unawaited(
             SessionCacheStore.instance.save(
               sessionId,
@@ -1388,6 +1496,12 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         }
       }
     } catch (e) {
+      // H1：被 force 取消的在途请求不算失败——取代它的请求负责收尾，
+      // 不能把 historyLoadFailed 置真让空会话 UI 误报重试。
+      if (e is DioException && e.type == DioExceptionType.cancel) {
+        AppLogger.i('loadMessages cancelled (superseded): $sessionId');
+        return;
+      }
       AppLogger.e('loadMessages failed: $e');
       // 失败同样终结加载态（见 finally），但标记失败：空会话 UI 提示重试
       // 而不是伪装成"开启对话"。seq 守卫避免切项目后写过期会话状态。
@@ -2020,6 +2134,10 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         parts: newParts,
         raw: msg.raw,
       );
+      state.partsVersion++;
+      // 运行中的 tool part（可能是挂起 question）被标记 error：布尔为 true
+      // 时重扫兜底。
+      if (state.hasPendingQuestion.value) state.rescanHasPendingQuestion();
     }
   }
 
@@ -3191,26 +3309,39 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     if (partIdx == -1) return false;
 
     final existing = message.parts[partIdx];
-    final currentRaw = existing.raw[item.field];
+    // 工具 part 的流式字段挂在 raw['state'][field]（与 toolOutput 等类型化
+    // 读取一致），文本/推理 part 直接挂 raw[field]。
+    final isTool = existing.type == PartType.tool;
+    final currentRaw = isTool
+        ? ((existing.raw['state'] as Map?)?[item.field])
+        : existing.raw[item.field];
     final currentText = currentRaw is String
         ? currentRaw
         : (currentRaw?.toString() ?? '');
 
-    if (item.field == 'text') {
-      // 流式文本走细粒度通道：只更新 per-part RxString（流式文本部件订阅它
-      // 局部重建），不整列表替换——否则 80ms 的每次 flush 都会广播给所有
-      // 订阅 messages 的组件，让所有可见气泡级联重建。列表仅在「从空到有」
-      // 的首次 delta 时同步一次（驱动 showThinking → 正式气泡的切换）。
-      final rx = state.streamingPartText.putIfAbsent(
-        '${item.partId}\u0000${item.field}',
-        () => currentText.obs,
-      );
-      rx.value += item.delta;
-      if (currentText.isNotEmpty) return true;
-    }
+    // 流式 delta 走细粒度通道：只更新 per-part RxString（key
+    // `$partId\u0000$field`，订阅它的部件局部重建），不整列表替换——否则
+    // 每次 flush 都会广播给所有订阅 messages 的组件，让所有可见气泡级联
+    // 重建。E1：非 text 字段（bash 输出等）flush 同样只走通道。列表仅在
+    // 「从空到有」的首次 delta 时同步一次（驱动占位 → 正式气泡/卡片的切换）。
+    final rx = state.streamingPartText.putIfAbsent(
+      '${item.partId}\u0000${item.field}',
+      () => currentText.obs,
+    );
+    rx.value += item.delta;
+    if (currentText.isNotEmpty) return true;
 
+    final deltaText = '$currentText${item.delta}';
     final raw = Map<String, dynamic>.from(existing.raw);
-    raw[item.field] = '$currentText${item.delta}';
+    if (isTool) {
+      final toolState = Map<String, dynamic>.from(
+        (existing.raw['state'] as Map?) ?? const {},
+      );
+      toolState[item.field] = deltaText;
+      raw['state'] = toolState;
+    } else {
+      raw[item.field] = deltaText;
+    }
     final existingParts = [...message.parts];
     existingParts[partIdx] = Part(
       id: existing.id,
@@ -3232,13 +3363,16 @@ class SessionController extends GetxController with WidgetsBindingObserver {
 
   /// 全量 part 更新（part.updated / message.updated）是权威数据：把流式通道
   /// 的累计值对齐到服务端全量内容，避免 delta 累计与服务端内容分叉。
+  /// 工具 part 的字段从 raw['state'][field] 取（与类型化读取一致）。
   void _syncStreamingPartText(SessionRuntimeState state, Part part) {
     if (state.streamingPartText.isEmpty) return;
     for (final key in List.of(state.streamingPartText.keys)) {
       final sep = key.indexOf('\u0000');
       if (sep == -1 || key.substring(0, sep) != part.id) continue;
       final field = key.substring(sep + 1);
-      final v = part.raw[field];
+      final v = part.type == PartType.tool
+          ? ((part.raw['state'] as Map?)?[field])
+          : part.raw[field];
       state.streamingPartText[key]!.value = v is String
           ? v
           : (v?.toString() ?? '');
@@ -3264,11 +3398,24 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       final parts = [...message.parts];
       final pIdx = parts.indexWhere((p) => p.id == partId);
       final existing = parts[pIdx];
-      final cur = existing.raw[field];
+      // 工具 part 的流式字段落回 raw['state'][field]（与 delta 写入、
+      // toolOutput 读取位置一致）。
+      final isTool = existing.type == PartType.tool;
+      final cur = isTool
+          ? ((existing.raw['state'] as Map?)?[field])
+          : existing.raw[field];
       final curText = cur is String ? cur : (cur?.toString() ?? '');
       if (value == curText) continue;
       final raw = Map<String, dynamic>.from(existing.raw);
-      raw[field] = value;
+      if (isTool) {
+        final toolState = Map<String, dynamic>.from(
+          (existing.raw['state'] as Map?) ?? const {},
+        );
+        toolState[field] = value;
+        raw['state'] = toolState;
+      } else {
+        raw[field] = value;
+      }
       parts[pIdx] = Part(
         id: existing.id,
         sessionID: existing.sessionID,
@@ -3310,6 +3457,9 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       parts: newParts,
       raw: state.messages[idx].raw,
     );
+    state.partsVersion++;
+    // 删除的可能是挂起的 question part：布尔为 true 时重扫兜底。
+    if (state.hasPendingQuestion.value) state.rescanHasPendingQuestion();
   }
 
   void _onSessionCompacted(SseEvent event) {
@@ -3384,6 +3534,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
 
       if (part.type == PartType.tool && part.toolName == 'question') {
         _rememberQuestionToolPart(part, sid);
+        _refreshPendingQuestionOnPartUpdate(state, part);
       }
 
       unawaited(_registerSubtaskOwner(sid, part));
@@ -3422,6 +3573,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
           raw: const {'role': 'assistant'},
         ),
       );
+      state.partsVersion++;
       _syncStreamingPartText(state, part);
       return;
     }
@@ -3431,6 +3583,25 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     if (pIdx == -1) {
       existingParts.add(part);
     } else {
+      final existing = existingParts[pIdx];
+      if (_partContentUnchanged(existing, part)) {
+        // E1 no-op 守卫：part.updated 高频重发相同载荷（全量快照对齐、状态
+        // 未变的重复刷新）时直接跳过，不整列表广播。通道已与该内容对齐，
+        // 跳过同步也避免把通道里尚未落列表的 delta 累计值回卷。
+        return;
+      }
+      if (_isToolOutputGrowth(existing, part)) {
+        // E1 输出增长：工具输出（bash 等）流式增长时只推进 per-part 通道
+        // （订阅通道的卡片/弹窗局部重建），不整列表替换——列表留给状态
+        // 变化（会改卡片的更新）与回合收尾 finalize 同步。
+        final output = part.toolOutput;
+        final rx = state.streamingPartText.putIfAbsent(
+          '$partId\u0000output',
+          () => output.obs,
+        );
+        if (rx.value != output) rx.value = output;
+        return;
+      }
       existingParts[pIdx] = part;
     }
 
@@ -3441,7 +3612,101 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       parts: existingParts,
       raw: state.messages[idx].raw,
     );
+    state.partsVersion++;
     _syncStreamingPartText(state, part);
+  }
+
+  /// E1：part 内容与列表中现有实例是否完全一致（实例/ raw 引用相等或深相等）。
+  bool _partContentUnchanged(Part existing, Part part) {
+    if (identical(existing, part)) return true;
+    if (identical(existing.raw, part.raw)) return true;
+    return _deepEquals(existing.raw, part.raw);
+  }
+
+  /// E1：工具 part 非终态（pending/running）且除 `state.output` 外全部内容
+  /// 与现有实例一致 —— 判定为输出流式增长（服务端重发累积输出快照），
+  /// 只推进 per-part 通道、不整列表替换。
+  bool _isToolOutputGrowth(Part existing, Part part) {
+    if (part.type != PartType.tool || existing.type != PartType.tool) {
+      return false;
+    }
+    final status = part.toolStatus;
+    if (status != ToolStateStatus.running &&
+        status != ToolStateStatus.pending) {
+      return false;
+    }
+    final sa = existing.raw['state'];
+    final sb = part.raw['state'];
+    if (sa is! Map || sb is! Map) return false;
+    final ra = Map<String, dynamic>.from(existing.raw)..remove('state');
+    final rb = Map<String, dynamic>.from(part.raw)..remove('state');
+    if (!_deepEquals(ra, rb)) return false;
+    final sa2 = Map<String, dynamic>.from(sa)..remove('output');
+    final sb2 = Map<String, dynamic>.from(sb)..remove('output');
+    return _deepEquals(sa2, sb2);
+  }
+
+  /// 递归深比较（JSON 值域：Map/List/String/num/bool/null），key 顺序无关。
+  /// 仅用于 E1 守卫的短路径判定，避免为比较分配中间结构。
+  static bool _deepEquals(Object? a, Object? b) {
+    if (identical(a, b)) return true;
+    if (a is Map && b is Map) {
+      if (a.length != b.length) return false;
+      for (final key in a.keys) {
+        if (!b.containsKey(key) || !_deepEquals(a[key], b[key])) return false;
+      }
+      return true;
+    }
+    if (a is List && b is List) {
+      if (a.length != b.length) return false;
+      for (var i = 0; i < a.length; i++) {
+        if (!_deepEquals(a[i], b[i])) return false;
+      }
+      return true;
+    }
+    return a == b;
+  }
+
+  /// E3：question part 更新后增量维护 [SessionRuntimeState.hasPendingQuestion]，
+  /// 让输入区/指示点只 touch 布尔而非全量扫描 messages。
+  void _refreshPendingQuestionOnPartUpdate(
+    SessionRuntimeState state,
+    Part part,
+  ) {
+    final status = part.toolStatus;
+    if (status == ToolStateStatus.running ||
+        status == ToolStateStatus.pending) {
+      if (!state.hasPendingQuestion.value) {
+        state.hasPendingQuestion.value = true;
+      }
+      return;
+    }
+    // 终态：树内可能还有其他挂起的 question part，仅在布尔为 true 时重扫。
+    if (state.hasPendingQuestion.value) state.rescanHasPendingQuestion();
+  }
+
+  /// E3：消息整表替换/新增后的公共维护 —— bump diff 版本号 + pending
+  /// question 布尔增量更新（新消息带挂起 question 置 true；否则布尔为 true
+  /// 时重扫兜底，替换可能终止了原先挂起的 part）。
+  void _afterMessageUpsert(SessionRuntimeState state, MessageModel msg) {
+    state.partsVersion++;
+    if (_messageHasPendingQuestion(msg)) {
+      state.hasPendingQuestion.value = true;
+    } else if (state.hasPendingQuestion.value) {
+      state.rescanHasPendingQuestion();
+    }
+  }
+
+  static bool _messageHasPendingQuestion(MessageModel msg) {
+    for (final part in msg.parts) {
+      if (part.type == PartType.tool &&
+          part.toolName == 'question' &&
+          (part.toolStatus == ToolStateStatus.running ||
+              part.toolStatus == ToolStateStatus.pending)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   void _onMessageUpdated(SseEvent event) {
@@ -3491,9 +3756,11 @@ class SessionController extends GetxController with WidgetsBindingObserver {
               _syncStreamingPartText(state, p);
             }
           }
+          _afterMessageUpsert(state, msg);
         }
       } else {
         state.messages.add(msg);
+        _afterMessageUpsert(state, msg);
       }
     } catch (e) {
       AppLogger.e('_onMessageUpdated failed: $e');
@@ -3508,6 +3775,9 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     final mid = event.properties['messageID']?.toString() ?? '';
     if (mid.isNotEmpty) {
       state.messages.removeWhere((m) => m.id == mid);
+      state.partsVersion++;
+      // 删除可能移除了挂起的 question part：布尔为 true 时重扫兜底。
+      if (state.hasPendingQuestion.value) state.rescanHasPendingQuestion();
     }
   }
 
@@ -3685,6 +3955,9 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         parts: parts,
         raw: msg.raw,
       );
+      state.partsVersion++;
+      // 本地已把该 question 置终态：布尔为 true 时重扫（可能还有其他挂起）。
+      if (state.hasPendingQuestion.value) state.rescanHasPendingQuestion();
       return;
     }
   }
@@ -3809,6 +4082,9 @@ class SessionController extends GetxController with WidgetsBindingObserver {
           parts: newParts,
           raw: msg.raw,
         );
+        state.partsVersion++;
+        // 挂起 question 被标记 skipped（终态）：布尔为 true 时重扫兜底。
+        if (state.hasPendingQuestion.value) state.rescanHasPendingQuestion();
       }
     }
   }

@@ -7,12 +7,42 @@ import '../../../routes.dart';
 import '../../../utils/layout_utils.dart';
 import '../../../utils/translations.dart';
 
+/// 行号前缀（`123:`）匹配模式。E2：提为顶层 final，避免每次 build 新建。
+final RegExp _lineNumRe = RegExp(r'^\s*(\d+):[ \t]', multiLine: true);
+
+/// E2：`_resolveRangeText` 结果按 part 实例 memo（Part 不可变、更新即整体换
+/// 实例）——大输出逐次 build 重扫全量的开销随重建频次放大。Expando 随 part
+/// 实例回收，无需淘汰。
+final Expando<String> _rangeTextCache = Expando<String>();
+
 class ReadCard extends StatelessWidget {
   final Part part;
 
   const ReadCard({super.key, required this.part});
 
+  /// 从尾部反向找最后一个带行号前缀的行（与 `allMatches().last` 等价，
+  /// 但不物化全部 Match）。
+  Match? _lastLineNumMatch(String output) {
+    var end = output.length;
+    while (end > 0) {
+      final nl = output.lastIndexOf('\n', end - 1);
+      final m = _lineNumRe.firstMatch(output.substring(nl + 1, end));
+      if (m != null) return m;
+      if (nl == -1) break;
+      end = nl;
+    }
+    return null;
+  }
+
   String _resolveRangeText(Map<String, dynamic> input, String output) {
+    final cached = _rangeTextCache[part];
+    if (cached != null) return cached;
+    final result = _computeRangeText(input, output);
+    _rangeTextCache[part] = result;
+    return result;
+  }
+
+  String _computeRangeText(Map<String, dynamic> input, String output) {
     final startVal =
         input['StartLine'] ??
         input['startLine'] ??
@@ -49,11 +79,13 @@ class ReadCard extends StatelessWidget {
     }
 
     if (output.isEmpty) return '';
-    final lineNumRe = RegExp(r'^\s*(\d+):[ \t]', multiLine: true);
-    final matches = lineNumRe.allMatches(output).toList();
-    if (matches.isEmpty) return '';
-    final firstLine = int.tryParse(matches.first.group(1)!);
-    final lastLine = int.tryParse(matches.last.group(1)!);
+    // E2：firstMatch 取首行行号 + 反向查找取末行行号，不再
+    // allMatches().toList() 物化全部 Match（千行文件 = 千个 Match/build）。
+    final first = _lineNumRe.firstMatch(output);
+    if (first == null) return '';
+    final last = _lastLineNumMatch(output);
+    final firstLine = int.tryParse(first.group(1)!);
+    final lastLine = last == null ? null : int.tryParse(last.group(1)!);
     if (firstLine == null || lastLine == null) return '';
     if (firstLine == lastLine) return ':$firstLine';
     return ':$firstLine-$lastLine';

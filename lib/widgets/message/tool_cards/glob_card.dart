@@ -17,10 +17,9 @@ class GlobCard extends StatelessWidget {
     final dir = (input['path'] ?? input['directory'])?.toString() ?? '';
     final status = part.toolStatus;
 
-    final output = part.toolOutput;
-    final fileCount = output.isEmpty
-        ? 0
-        : output.split('\n').where((l) => l.trim().isNotEmpty).length;
+    // E2：行数按 part 实例缓存（Part.toolOutputNonEmptyLineCount），
+    // 每次 build 不再对整个 output split + 过滤。
+    final fileCount = part.toolOutputNonEmptyLineCount;
 
     final label = dir.isNotEmpty ? dir : pattern;
     final suffix = fileCount > 0 ? '$fileCount files' : '';

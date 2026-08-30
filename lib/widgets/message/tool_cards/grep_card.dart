@@ -15,10 +15,9 @@ class GrepCard extends StatelessWidget {
     final query = (input['query'] ?? input['pattern'] ?? '') as String;
     final status = part.toolStatus;
 
-    final output = part.toolOutput;
-    final resultCount = output.isEmpty
-        ? 0
-        : output.split('\n').where((l) => l.trim().isNotEmpty).length;
+    // E2：行数按 part 实例缓存（Part.toolOutputNonEmptyLineCount），
+    // 每次 build 不再对整个 output split + 过滤。
+    final resultCount = part.toolOutputNonEmptyLineCount;
 
     final suffix = resultCount > 0 ? '$resultCount results' : '';
     final isError = status == ToolStateStatus.error;

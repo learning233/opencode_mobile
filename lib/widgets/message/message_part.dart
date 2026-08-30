@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -23,10 +22,16 @@ final RegExp _thinkingTagPattern = RegExp(
 );
 
 /// file:// 附件图片的 provider 缓存：同一路径复用同一 MemoryImage 实例，
-/// 滚动往返（State 销毁重建）命中 Flutter ImageCache，跳过重复 IO + 解码
-/// （data: URI 路径已有磁盘缓存兜底）。FIFO 上限防无界增长。
+/// 滚动往返（State 销毁重建）命中 Flutter ImageCache，跳过重复 IO + 解码。
+/// FIFO 上限防无界增长。
 final Map<String, MemoryImage> _fileImageProviderCache = {};
 const int _fileImageCacheLimit = 32;
+
+/// data: URI 附件图片的 provider 缓存（G3）：key 为 `$messageID:$partId`，
+/// 与 file:// 同模式——滚动往返直接复用已解码 provider 命中 ImageCache，
+/// 跳过磁盘读 + 解码（磁盘缓存只做冷启动兜底）。FIFO 上限防无界增长。
+final Map<String, MemoryImage> _dataImageProviderCache = {};
+const int _dataImageCacheLimit = 32;
 
 /// Renders a single message [Part] — aligned with desktop MessagePartWidget.
 class MessagePartWidget extends StatelessWidget {
@@ -180,9 +185,10 @@ class _FileAttachmentState extends State<_FileAttachment> {
   };
 
   bool _isImage = false;
-  Uint8List? _imageBytes;
 
-  /// file:// 路径图片的缓存 provider（命中时替代 _imageBytes 渲染路径）。
+  /// 图片缓存 provider（命中时替代逐次 IO/解码渲染路径）。file:// 与 data:
+  /// 两条路径共用：分别由各自的顶层 provider 缓存（_fileImageProviderCache /
+  /// _dataImageProviderCache）填充。
   MemoryImage? _fileImage;
 
   @override
@@ -195,7 +201,6 @@ class _FileAttachmentState extends State<_FileAttachment> {
   void didUpdateWidget(covariant _FileAttachment oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.part.fileUrl != widget.part.fileUrl) {
-      _imageBytes = null;
       _fileImage = null;
       _detectAndLoad();
     }
@@ -222,33 +227,44 @@ class _FileAttachmentState extends State<_FileAttachment> {
   Future<void> _loadImageBytes() async {
     final url = widget.part.fileUrl;
     if (url.startsWith('data:image/')) {
-      // Prefer the local disk cache (written when the image was sent) so
-      // re-rendering history does not base64-decode large strings on the main
-      // thread. Falls back to decoding the data URL when the cache has no entry
-      // (e.g. the app was reinstalled or the image predates the cache).
+      // G3：内存 provider 缓存优先（key `$messageID:$partId`，FIFO 上限 32）
+      // ——滚动往返（State 销毁重建）直接复用已解码 provider，跳过磁盘 IO
+      // 与解码。磁盘缓存只做冷启动兜底；缓存也无条目时退回解码 data: URL。
+      final key = '${widget.part.messageID}:${widget.part.id}';
+      final cachedProvider = _dataImageProviderCache[key];
+      if (cachedProvider != null) {
+        if (!mounted) return;
+        setState(() => _fileImage = cachedProvider);
+        return;
+      }
+      MemoryImage? provider;
       final cached = await defaultImageCache.find(
         widget.part.messageID,
         widget.part.id,
       );
       if (cached != null) {
         try {
-          final bytes = await cached.readAsBytes();
-          if (!mounted) return;
-          setState(() => _imageBytes = bytes);
-          return;
+          provider = MemoryImage(await cached.readAsBytes());
         } catch (e) {
           AppLogger.e('_FileAttachment load cached image failed: $e');
         }
       }
-      final comma = url.indexOf(',');
-      if (comma == -1) return;
-      try {
-        final bytes = base64Decode(url.substring(comma + 1));
-        if (!mounted) return;
-        setState(() => _imageBytes = bytes);
-      } catch (e) {
-        AppLogger.e('_FileAttachment decode data image failed: $e');
+      if (provider == null) {
+        final comma = url.indexOf(',');
+        if (comma == -1) return;
+        try {
+          provider = MemoryImage(base64Decode(url.substring(comma + 1)));
+        } catch (e) {
+          AppLogger.e('_FileAttachment decode data image failed: $e');
+          return;
+        }
       }
+      if (_dataImageProviderCache.length >= _dataImageCacheLimit) {
+        _dataImageProviderCache.remove(_dataImageProviderCache.keys.first);
+      }
+      _dataImageProviderCache[key] = provider;
+      if (!mounted) return;
+      setState(() => _fileImage = provider);
       return;
     }
     if (!url.startsWith('file://')) return;
@@ -281,12 +297,9 @@ class _FileAttachmentState extends State<_FileAttachment> {
   @override
   Widget build(BuildContext context) {
     if (_isImage) {
-      if (_fileImage != null) {
-        return _ImageAttachmentThumbnail(image: _fileImage);
-      }
-      final bytes = _imageBytes;
-      if (bytes != null) {
-        return _ImageAttachmentThumbnail(bytes: bytes);
+      final image = _fileImage;
+      if (image != null) {
+        return _ImageAttachmentThumbnail(image: image);
       }
     }
     return _buildFileRow(context);
@@ -328,12 +341,11 @@ class _FileAttachmentState extends State<_FileAttachment> {
 
 /// Renders a sent image attachment as a thumbnail with tap-to-zoom preview.
 class _ImageAttachmentThumbnail extends StatelessWidget {
-  /// data: URI 路径的原始字节；file:// 路径改走缓存的 [image] provider。
-  final Uint8List? bytes;
-  final MemoryImage? image;
+  /// 已缓存的解码 provider（file:// 与 data: 两条路径统一，见
+  /// _FileAttachmentState._fileImage）。
+  final MemoryImage image;
 
-  const _ImageAttachmentThumbnail({this.bytes, this.image})
-    : assert(bytes != null || image != null, 'bytes or image must be provided');
+  const _ImageAttachmentThumbnail({required this.image});
 
   void _showPreview(BuildContext context) {
     // 解码宽度按屏幕物理分辨率封顶（见 build 内预览分支的注释）。
@@ -358,19 +370,13 @@ class _ImageAttachmentThumbnail extends StatelessWidget {
                   child: Center(
                     // 预览按屏幕物理分辨率限制解码宽度：保持 1:1 观感的同时
                     // 避免全尺寸位图的内存尖峰（放大超过 1x 后略糊，可接受）。
-                    child: image != null
-                        ? Image(
-                            // Image 主构造器无 cacheWidth，用 ResizeImage
-                            // 限制解码尺寸（内部 provider 实例不变，同尺寸
-                            // 解码仍命中 ImageCache）。
-                            image: ResizeImage(image!, width: previewWidth),
-                            fit: BoxFit.contain,
-                          )
-                        : Image.memory(
-                            bytes!,
-                            fit: BoxFit.contain,
-                            cacheWidth: previewWidth,
-                          ),
+                    // Image 主构造器无 cacheWidth，用 ResizeImage 限制解码
+                    // 尺寸（内部 provider 实例不变，同尺寸解码仍命中
+                    // ImageCache）。
+                    child: Image(
+                      image: ResizeImage(image, width: previewWidth),
+                      fit: BoxFit.contain,
+                    ),
                   ),
                 ),
               ),
@@ -409,12 +415,10 @@ class _ImageAttachmentThumbnail extends StatelessWidget {
             constraints: const BoxConstraints(maxWidth: 220, maxHeight: 220),
             // 缩略图无需全分辨率解码（点击预览另有全尺寸入口），
             // 限制缓存尺寸避免长会话多图时内存放大。
-            child: image != null
-                ? Image(
-                    image: ResizeImage(image!, width: 440),
-                    fit: BoxFit.contain,
-                  )
-                : Image.memory(bytes!, fit: BoxFit.contain, cacheWidth: 440),
+            child: Image(
+              image: ResizeImage(image, width: 440),
+              fit: BoxFit.contain,
+            ),
           ),
         ),
       ),

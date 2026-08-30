@@ -3191,26 +3191,39 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     if (partIdx == -1) return false;
 
     final existing = message.parts[partIdx];
-    final currentRaw = existing.raw[item.field];
+    // 工具 part 的流式字段挂在 raw['state'][field]（与 toolOutput 等类型化
+    // 读取一致），文本/推理 part 直接挂 raw[field]。
+    final isTool = existing.type == PartType.tool;
+    final currentRaw = isTool
+        ? ((existing.raw['state'] as Map?)?[item.field])
+        : existing.raw[item.field];
     final currentText = currentRaw is String
         ? currentRaw
         : (currentRaw?.toString() ?? '');
 
-    if (item.field == 'text') {
-      // 流式文本走细粒度通道：只更新 per-part RxString（流式文本部件订阅它
-      // 局部重建），不整列表替换——否则 80ms 的每次 flush 都会广播给所有
-      // 订阅 messages 的组件，让所有可见气泡级联重建。列表仅在「从空到有」
-      // 的首次 delta 时同步一次（驱动 showThinking → 正式气泡的切换）。
-      final rx = state.streamingPartText.putIfAbsent(
-        '${item.partId}\u0000${item.field}',
-        () => currentText.obs,
-      );
-      rx.value += item.delta;
-      if (currentText.isNotEmpty) return true;
-    }
+    // 流式 delta 走细粒度通道：只更新 per-part RxString（key
+    // `$partId\u0000$field`，订阅它的部件局部重建），不整列表替换——否则
+    // 每次 flush 都会广播给所有订阅 messages 的组件，让所有可见气泡级联
+    // 重建。E1：非 text 字段（bash 输出等）flush 同样只走通道。列表仅在
+    // 「从空到有」的首次 delta 时同步一次（驱动占位 → 正式气泡/卡片的切换）。
+    final rx = state.streamingPartText.putIfAbsent(
+      '${item.partId}\u0000${item.field}',
+      () => currentText.obs,
+    );
+    rx.value += item.delta;
+    if (currentText.isNotEmpty) return true;
 
+    final deltaText = '$currentText${item.delta}';
     final raw = Map<String, dynamic>.from(existing.raw);
-    raw[item.field] = '$currentText${item.delta}';
+    if (isTool) {
+      final toolState = Map<String, dynamic>.from(
+        (existing.raw['state'] as Map?) ?? const {},
+      );
+      toolState[item.field] = deltaText;
+      raw['state'] = toolState;
+    } else {
+      raw[item.field] = deltaText;
+    }
     final existingParts = [...message.parts];
     existingParts[partIdx] = Part(
       id: existing.id,
@@ -3232,13 +3245,16 @@ class SessionController extends GetxController with WidgetsBindingObserver {
 
   /// 全量 part 更新（part.updated / message.updated）是权威数据：把流式通道
   /// 的累计值对齐到服务端全量内容，避免 delta 累计与服务端内容分叉。
+  /// 工具 part 的字段从 raw['state'][field] 取（与类型化读取一致）。
   void _syncStreamingPartText(SessionRuntimeState state, Part part) {
     if (state.streamingPartText.isEmpty) return;
     for (final key in List.of(state.streamingPartText.keys)) {
       final sep = key.indexOf('\u0000');
       if (sep == -1 || key.substring(0, sep) != part.id) continue;
       final field = key.substring(sep + 1);
-      final v = part.raw[field];
+      final v = part.type == PartType.tool
+          ? ((part.raw['state'] as Map?)?[field])
+          : part.raw[field];
       state.streamingPartText[key]!.value = v is String
           ? v
           : (v?.toString() ?? '');
@@ -3264,11 +3280,24 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       final parts = [...message.parts];
       final pIdx = parts.indexWhere((p) => p.id == partId);
       final existing = parts[pIdx];
-      final cur = existing.raw[field];
+      // 工具 part 的流式字段落回 raw['state'][field]（与 delta 写入、
+      // toolOutput 读取位置一致）。
+      final isTool = existing.type == PartType.tool;
+      final cur = isTool
+          ? ((existing.raw['state'] as Map?)?[field])
+          : existing.raw[field];
       final curText = cur is String ? cur : (cur?.toString() ?? '');
       if (value == curText) continue;
       final raw = Map<String, dynamic>.from(existing.raw);
-      raw[field] = value;
+      if (isTool) {
+        final toolState = Map<String, dynamic>.from(
+          (existing.raw['state'] as Map?) ?? const {},
+        );
+        toolState[field] = value;
+        raw['state'] = toolState;
+      } else {
+        raw[field] = value;
+      }
       parts[pIdx] = Part(
         id: existing.id,
         sessionID: existing.sessionID,
@@ -3431,6 +3460,25 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     if (pIdx == -1) {
       existingParts.add(part);
     } else {
+      final existing = existingParts[pIdx];
+      if (_partContentUnchanged(existing, part)) {
+        // E1 no-op 守卫：part.updated 高频重发相同载荷（全量快照对齐、状态
+        // 未变的重复刷新）时直接跳过，不整列表广播。通道已与该内容对齐，
+        // 跳过同步也避免把通道里尚未落列表的 delta 累计值回卷。
+        return;
+      }
+      if (_isToolOutputGrowth(existing, part)) {
+        // E1 输出增长：工具输出（bash 等）流式增长时只推进 per-part 通道
+        // （订阅通道的卡片/弹窗局部重建），不整列表替换——列表留给状态
+        // 变化（会改卡片的更新）与回合收尾 finalize 同步。
+        final output = part.toolOutput;
+        final rx = state.streamingPartText.putIfAbsent(
+          '$partId\u0000output',
+          () => output.obs,
+        );
+        if (rx.value != output) rx.value = output;
+        return;
+      }
       existingParts[pIdx] = part;
     }
 
@@ -3442,6 +3490,57 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       raw: state.messages[idx].raw,
     );
     _syncStreamingPartText(state, part);
+  }
+
+  /// E1：part 内容与列表中现有实例是否完全一致（实例/ raw 引用相等或深相等）。
+  bool _partContentUnchanged(Part existing, Part part) {
+    if (identical(existing, part)) return true;
+    if (identical(existing.raw, part.raw)) return true;
+    return _deepEquals(existing.raw, part.raw);
+  }
+
+  /// E1：工具 part 非终态（pending/running）且除 `state.output` 外全部内容
+  /// 与现有实例一致 —— 判定为输出流式增长（服务端重发累积输出快照），
+  /// 只推进 per-part 通道、不整列表替换。
+  bool _isToolOutputGrowth(Part existing, Part part) {
+    if (part.type != PartType.tool || existing.type != PartType.tool) {
+      return false;
+    }
+    final status = part.toolStatus;
+    if (status != ToolStateStatus.running &&
+        status != ToolStateStatus.pending) {
+      return false;
+    }
+    final sa = existing.raw['state'];
+    final sb = part.raw['state'];
+    if (sa is! Map || sb is! Map) return false;
+    final ra = Map<String, dynamic>.from(existing.raw)..remove('state');
+    final rb = Map<String, dynamic>.from(part.raw)..remove('state');
+    if (!_deepEquals(ra, rb)) return false;
+    final sa2 = Map<String, dynamic>.from(sa)..remove('output');
+    final sb2 = Map<String, dynamic>.from(sb)..remove('output');
+    return _deepEquals(sa2, sb2);
+  }
+
+  /// 递归深比较（JSON 值域：Map/List/String/num/bool/null），key 顺序无关。
+  /// 仅用于 E1 守卫的短路径判定，避免为比较分配中间结构。
+  static bool _deepEquals(Object? a, Object? b) {
+    if (identical(a, b)) return true;
+    if (a is Map && b is Map) {
+      if (a.length != b.length) return false;
+      for (final key in a.keys) {
+        if (!b.containsKey(key) || !_deepEquals(a[key], b[key])) return false;
+      }
+      return true;
+    }
+    if (a is List && b is List) {
+      if (a.length != b.length) return false;
+      for (var i = 0; i < a.length; i++) {
+        if (!_deepEquals(a[i], b[i])) return false;
+      }
+      return true;
+    }
+    return a == b;
   }
 
   void _onMessageUpdated(SseEvent event) {

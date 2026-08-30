@@ -196,13 +196,32 @@ class _BashSheetBodyState extends State<_BashSheetBody> {
     final appColors = context.appColors;
     final state = widget.controller.sessionRuntimeStates[widget.sessionId];
     if (state == null) {
-      return _content(theme, appColors: appColors, part: widget.fallback);
+      return _content(
+        theme,
+        appColors: appColors,
+        part: widget.fallback,
+        output: widget.fallback.toolOutput,
+      );
     }
     return Obx(() {
       final part = _lookup();
+      // 输出内容订阅 per-part 通道（key `$partId\u0000output`，E1）：工具流式
+      // 期间列表不再随输出增长整表替换，弹窗跟随通道 flush 局部重建。通道项
+      // 惰性创建、初值取列表当前值（与 _StreamingTextMarkdown 两侧一致约定
+      // 相同）；流式时通道由 delta flush / 全量快照对齐持续更新。
+      final rx = state.streamingPartText.putIfAbsent(
+        '${part.id}\u0000output',
+        () => part.toolOutput.obs,
+      );
+      final output = rx.value;
       // 只在 part 被流式替换后自动跟随底部；打开已完成卡时停在顶部。
       if (part != widget.fallback) _scrollToBottom();
-      return _content(theme, appColors: appColors, part: part);
+      return _content(
+        theme,
+        appColors: appColors,
+        part: part,
+        output: output,
+      );
     });
   }
 
@@ -210,10 +229,10 @@ class _BashSheetBodyState extends State<_BashSheetBody> {
     ThemeData theme, {
     required AppThemeColors appColors,
     required Part part,
+    required String output,
   }) {
     final input = part.toolInput;
     final command = (input['command'] ?? input['cmd'] ?? '') as String;
-    final output = part.toolOutput;
     final error = part.toolError;
     return ListView(
       controller: _scrollController,

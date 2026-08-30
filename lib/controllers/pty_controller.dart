@@ -224,33 +224,64 @@ class PtyController extends GetxController with WidgetsBindingObserver {
           }
         }
 
+        // 收集需要新 attach 的会话 id（保持服务端返回顺序并去重）。
+        final attachIds = <String>[];
         for (final item in list) {
-          if (seq != _fetchSeq) return;
           if (item is Map) {
             final id =
                 item['id']?.toString() ?? item['ptyID']?.toString() ?? '';
             final status = item['status']?.toString();
-            if (id.isNotEmpty && status != 'exited') {
-              if (!sessions.any((s) => s.id == id)) {
-                // 后端 list 按请求目录返回，会话 cwd 即该目录，直接复用。
-                final added = await _attachToSession(
-                  id,
-                  directory: directory,
-                  activate: false,
-                );
-                // attach 在 await 期间可能已被更新的 fetch 接管（seq 变化），
-                // 若此时才完成，需移除刚追加的会话，避免旧目录幽灵终端残留
-                // （更新的 fetch 只清理其同目录会话，覆盖不到这里）。
-                // 只移除本次 add 的会话对象，避免并发 attach 同一 id 时
-                // 按 id 查询误删新 fetch 刚加入的会话。
-                if (seq != _fetchSeq && added != null) {
-                  added.dispose();
-                  sessions.remove(added);
-                  return;
-                }
-              }
+            if (id.isNotEmpty &&
+                status != 'exited' &&
+                !attachIds.contains(id) &&
+                !sessions.any((s) => s.id == id)) {
+              attachIds.add(id);
             }
           }
+        }
+        if (seq != _fetchSeq) return;
+
+        // 并行 attach：每个终端的恢复 = 1 次 ticket POST + WS 握手，串行时
+        // N 个终端总时长线性叠加。并行发起、完成后按 seq 统一清理 —— 保持
+        // 与原串行实现相同的代际语义：attach 期间被更新的 fetch 接管（seq
+        // 变化）时，移除本次新增的会话对象，避免旧目录幽灵终端残留（更新的
+        // fetch 只清理其同目录会话，覆盖不到这里）。只移除本次返回的实例，
+        // 避免按 id 查询误删新 fetch 刚加入的会话。
+        // 标题编号先经 _ptyTitleBase 串行预留，避免并行计数撞号。
+        final addedList = <PtySession?>[];
+        if (attachIds.isNotEmpty) {
+          final titleBase = _ptyTitleBase(directory);
+          addedList.addAll(
+            await Future.wait(
+              attachIds.asMap().entries.map((entry) async {
+                try {
+                  return await _attachToSession(
+                    entry.value,
+                    directory: directory,
+                    activate: false,
+                    customTitle:
+                        '${titleBase.projectName} '
+                        '${titleBase.existingCount + entry.key + 1}',
+                  );
+                } catch (e) {
+                  AppLogger.w(
+                    'PTY parallel attach failed (${entry.value}): '
+                    '${maskIpsInText('$e')}',
+                  );
+                  return null;
+                }
+              }),
+            ),
+          );
+        }
+        if (seq != _fetchSeq) {
+          for (final added in addedList) {
+            if (added != null) {
+              added.dispose();
+              sessions.remove(added);
+            }
+          }
+          return;
         }
       }
 
@@ -272,6 +303,34 @@ class PtyController extends GetxController with WidgetsBindingObserver {
         isLoading.value = false;
       }
     }
+  }
+
+  /// 终端标题基础名与现有同目录会话数（用于编号）。提取为独立方法以便并行
+  /// attach 前先串行统一预留编号：sessions.add 发生在握手之后，若各 attach
+  /// 各自计数，并行时会拿到相同编号导致标题重复。
+  ({String projectName, int existingCount}) _ptyTitleBase(String directory) {
+    String projectName = LocaleKeys.terminalTitle.tr;
+    try {
+      final activeProject = Get.find<ProjectController>().activeProject.value;
+      if (activeProject != null && activeProject.displayName.isNotEmpty) {
+        projectName = activeProject.displayName;
+      }
+    } catch (_) {}
+
+    if (projectName == LocaleKeys.terminalTitle.tr && directory.isNotEmpty) {
+      final segs = directory.split('/').where((s) => s.isNotEmpty).toList();
+      if (segs.isNotEmpty) {
+        projectName = segs.last;
+      }
+    }
+    final sameProjectCount = sessions.where((s) {
+      final sNorm = normalizeDirectory(s.directory);
+      if (directory.isNotEmpty && sNorm.isNotEmpty) {
+        return sNorm == normalizeDirectory(directory);
+      }
+      return s.title.startsWith('$projectName ');
+    }).length;
+    return (projectName: projectName, existingCount: sameProjectCount);
   }
 
   Future<PtySession?> _attachToSession(
@@ -408,29 +467,8 @@ class PtyController extends GetxController with WidgetsBindingObserver {
 
     String title = customTitle ?? '';
     if (title.isEmpty) {
-      String projectName = LocaleKeys.terminalTitle.tr;
-      try {
-        final activeProject = Get.find<ProjectController>().activeProject.value;
-        if (activeProject != null && activeProject.displayName.isNotEmpty) {
-          projectName = activeProject.displayName;
-        }
-      } catch (_) {}
-
-      if (projectName == LocaleKeys.terminalTitle.tr && directory.isNotEmpty) {
-        final segs = directory.split('/').where((s) => s.isNotEmpty).toList();
-        if (segs.isNotEmpty) {
-          projectName = segs.last;
-        }
-      }
-      final sameProjectCount = sessions.where((s) {
-        final sNorm = normalizeDirectory(s.directory);
-        if (directory.isNotEmpty && sNorm.isNotEmpty) {
-          return sNorm == normalizeDirectory(directory);
-        }
-        return s.title.startsWith('$projectName ');
-      }).length;
-      final titleNum = sameProjectCount + 1;
-      title = '$projectName $titleNum';
+      final base = _ptyTitleBase(directory);
+      title = '${base.projectName} ${base.existingCount + 1}';
     }
 
     session = PtySession(

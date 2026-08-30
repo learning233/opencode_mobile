@@ -470,11 +470,20 @@ class _AssistantBubble extends StatelessWidget {
     return null;
   }
 
+  /// parts 的 per-part key：流式新增 part 时按 id 稳定匹配，避免 Column 后续
+  /// children 按索引误配导致下游 Markdown/ToolCard State 失效、触发全量重
+  /// parse。id 缺失或重复时退回无 key（保持原行为，防 duplicate-key 异常）。
+  Key? _partKey(Part part, Set<String> seen) =>
+      part.id.isNotEmpty && seen.add(part.id)
+      ? ValueKey('part_${part.id}')
+      : null;
+
   /// Desktop-aligned part columns: task/subtask → SubtaskGroupCard; sub-steps
   /// are skipped in the flat list (they render inside the group when expanded).
   List<Widget> _buildPartColumns(List<Part> parts) {
     final widgets = <Widget>[];
     String? parentHeader;
+    final seenPartIds = <String>{};
 
     for (final part in parts) {
       final toolNameLower = part.type == PartType.tool
@@ -509,6 +518,7 @@ class _AssistantBubble extends StatelessWidget {
 
         widgets.add(
           Padding(
+            key: _partKey(part, seenPartIds),
             padding: const EdgeInsets.only(bottom: 4),
             child: SubtaskGroupCard(
               header: part,
@@ -541,6 +551,7 @@ class _AssistantBubble extends StatelessWidget {
 
       widgets.add(
         Padding(
+          key: _partKey(part, seenPartIds),
           padding: const EdgeInsets.only(bottom: 4),
           child: MessagePartWidget(
             part: part,

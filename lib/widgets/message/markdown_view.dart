@@ -56,58 +56,11 @@ class MarkdownView extends StatelessWidget {
 
     return MarkdownBody(
       data: content,
-      selectable: true,
+      // 列表层已为每条消息包 SelectionArea（chat_view._buildMessageItem），
+      // 这里不再开 selectable，避免同一段文本维护两套选择系统（长消息开销
+      // 明显且交互易冲突）。链接点击仍由 onTapLink 处理。
       extensionSet: md.ExtensionSet.gitHubFlavored,
-      styleSheet: MarkdownStyleSheet(
-        p: const TextStyle(fontSize: 14, height: 1.5),
-        h1: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        h2: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-        h3: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-        code: TextStyle(
-          fontSize: 12,
-          backgroundColor: isDark
-              ? const Color(0xFF242630)
-              : const Color(0xFFF1F3F5),
-          fontFamily: 'monospace',
-          color: isDark ? const Color(0xFFE2E4E9) : const Color(0xFF2A2B36),
-        ),
-        codeblockDecoration: const BoxDecoration(),
-        codeblockPadding: const EdgeInsets.all(0),
-        blockquoteDecoration: BoxDecoration(
-          color: isDark ? const Color(0xFF181A22) : const Color(0xFFF6F8FA),
-          border: Border(
-            left: BorderSide(
-              color: theme.colorScheme.primary.withValues(alpha: 0.6),
-              width: 3,
-            ),
-          ),
-        ),
-        blockquotePadding: const EdgeInsets.only(left: 12, top: 4, bottom: 4),
-        listIndent: 22,
-        tableBorder: TableBorder.symmetric(
-          inside: BorderSide(
-            color: theme.dividerColor.withValues(alpha: 0.2),
-            width: 0.5,
-          ),
-          outside: BorderSide(
-            color: theme.dividerColor.withValues(alpha: 0.35),
-            width: 0.5,
-          ),
-        ),
-        tableHead: theme.textTheme.bodyMedium?.copyWith(
-          fontWeight: FontWeight.bold,
-          fontSize: 12,
-        ),
-        tableBody: theme.textTheme.bodyMedium?.copyWith(fontSize: 12),
-        horizontalRuleDecoration: BoxDecoration(
-          border: Border(
-            top: BorderSide(
-              color: theme.dividerColor.withValues(alpha: 0.5),
-              width: 0.5,
-            ),
-          ),
-        ),
-      ),
+      styleSheet: _styleSheetFor(theme, isDark),
       builders: {
         'pre': CodeBlockBuilder(isDark: isDark, isStreaming: isStreaming),
       },
@@ -122,6 +75,83 @@ class MarkdownView extends StatelessWidget {
       },
     );
   }
+}
+
+/// [_styleSheetFor] 的记忆化缓存。flutter_markdown_plus 在 didUpdateWidget 中
+/// 对 data 与 styleSheet 均按实例比较，任一变化即全量重 parse markdown——
+/// 若每次 build 都新建 styleSheet，内容没变的重建也会触发重 parse。该 sheet
+/// 只依赖主题亮度与个别主题色/字体，命中时复用同一实例。
+MarkdownStyleSheet? _cachedStyleSheet;
+bool? _cachedSheetIsDark;
+Color? _cachedSheetPrimary;
+Color? _cachedSheetDivider;
+TextStyle? _cachedSheetBodyText;
+
+MarkdownStyleSheet _styleSheetFor(ThemeData theme, bool isDark) {
+  final primary = theme.colorScheme.primary;
+  final divider = theme.dividerColor;
+  final bodyText = theme.textTheme.bodyMedium;
+  final cached = _cachedStyleSheet;
+  if (cached != null &&
+      _cachedSheetIsDark == isDark &&
+      _cachedSheetPrimary == primary &&
+      _cachedSheetDivider == divider &&
+      _cachedSheetBodyText == bodyText) {
+    return cached;
+  }
+  final sheet = MarkdownStyleSheet(
+    p: const TextStyle(fontSize: 14, height: 1.5),
+    h1: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+    h2: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+    h3: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+    code: TextStyle(
+      fontSize: 12,
+      backgroundColor: isDark
+          ? const Color(0xFF242630)
+          : const Color(0xFFF1F3F5),
+      fontFamily: 'monospace',
+      color: isDark ? const Color(0xFFE2E4E9) : const Color(0xFF2A2B36),
+    ),
+    codeblockDecoration: const BoxDecoration(),
+    codeblockPadding: const EdgeInsets.all(0),
+    blockquoteDecoration: BoxDecoration(
+      color: isDark ? const Color(0xFF181A22) : const Color(0xFFF6F8FA),
+      border: Border(
+        left: BorderSide(
+          color: primary.withValues(alpha: 0.6),
+          width: 3,
+        ),
+      ),
+    ),
+    blockquotePadding: const EdgeInsets.only(left: 12, top: 4, bottom: 4),
+    listIndent: 22,
+    tableBorder: TableBorder.symmetric(
+      inside: BorderSide(
+        color: divider.withValues(alpha: 0.2),
+        width: 0.5,
+      ),
+      outside: BorderSide(
+        color: divider.withValues(alpha: 0.35),
+        width: 0.5,
+      ),
+    ),
+    tableHead: bodyText?.copyWith(fontWeight: FontWeight.bold, fontSize: 12),
+    tableBody: bodyText?.copyWith(fontSize: 12),
+    horizontalRuleDecoration: BoxDecoration(
+      border: Border(
+        top: BorderSide(
+          color: divider.withValues(alpha: 0.5),
+          width: 0.5,
+        ),
+      ),
+    ),
+  );
+  _cachedStyleSheet = sheet;
+  _cachedSheetIsDark = isDark;
+  _cachedSheetPrimary = primary;
+  _cachedSheetDivider = divider;
+  _cachedSheetBodyText = bodyText;
+  return sheet;
 }
 
 /// Custom code block builder that extracts language info and adds an

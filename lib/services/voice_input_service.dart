@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-import 'dart:typed_data';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -51,6 +51,12 @@ class VoiceInputService {
   /// 转写流结束信号。`stopListening` 依赖它在取消订阅前等待 worker 冲刷
   /// 完剩余音频（句尾 final 送达 onResult 后才关闭流）。
   Completer<void>? _transcriptionDone;
+
+  /// 资产路径按进程缓存：文件写入应用私有目录后不会中途变化，无需每次
+  /// startListening 重新校验。否则每次录音都要 `rootBundle.load` 整个
+  /// libonnxruntime.so（约 27MB）进内存只为比对长度，白白增加「点麦克风→
+  /// 出声」延迟与 GC 压力。校验抛错时不写缓存，下次录音自动重试。
+  static Map<String, String>? _preparedAssetPaths;
 
   Future<File> getModelFile() async {
     final dir = await getApplicationSupportDirectory();
@@ -409,6 +415,8 @@ class VoiceInputService {
   }
 
   Future<Map<String, String>> _prepareAssetPaths() async {
+    final cached = _preparedAssetPaths;
+    if (cached != null) return cached;
     final dir = await getApplicationSupportDirectory();
     final modelFile = await getModelFile();
     final vocabFile = File('${dir.path}/tokens.txt');
@@ -429,7 +437,7 @@ class VoiceInputService {
       );
     }
 
-    return {
+    return _preparedAssetPaths = {
       'modelPath': modelFile.path,
       'vocabPath': vocabFile.path,
       'vadModelPath': vadFile.path,
@@ -474,6 +482,11 @@ class VoiceInputService {
       }
       debugPrint('VoiceInputService: mic permission granted');
 
+      // Rust 核心已随启动异步初始化（不阻塞首帧，见 Global.rustReady），首次
+      // 录音在这里等它就绪；若初始化失败会静默完成，下方桥接调用自行抛错
+      // 降级 —— 与原先启动期同步等待失败的行为一致。
+      await Global.rustReady;
+
       final modelReady = await ensureModelDownloaded();
       if (!modelReady) {
         debugPrint('VoiceInputService: model download cancelled or failed');
@@ -510,7 +523,13 @@ class VoiceInputService {
           )
           .listen(
             (payload) {
-              debugPrint('VoiceInputService: rust payload received: $payload');
+              // 高频路径：每个转写事件都走这里，且 payload 是整段识别 JSON；
+              // release 下 debugPrint 仍会做字符串插值 + 节流输出，不剔除白耗 CPU。
+              if (kDebugMode) {
+                debugPrint(
+                  'VoiceInputService: rust payload received: $payload',
+                );
+              }
               if (!_isListening) return;
               try {
                 final Map<String, dynamic> json = jsonDecode(payload);

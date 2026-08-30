@@ -44,6 +44,13 @@ class Global {
   static final autoSendVoiceEnabledRx = false.obs;
   static final voiceSendCommandRx = '发送'.obs;
 
+  static Future<void>? _rustInitFuture;
+
+  /// Rust 核心（语音 ASR/VAD）初始化 Future。dlopen 原生库 + FRB 注册是启动
+  /// 链最重的一步且可降级（失败仅语音不可用，其余功能照常），因此 [init]
+  /// 不等待它、首帧先行；语音入口在调用桥接前 `await [rustReady]` 就绪。
+  static Future<void> get rustReady => _rustInitFuture ??= _initRust();
+
   static Future<void> init() async {
     if (kDebugMode) {
       SharedPreferences.setPrefix('flutter_debug.');
@@ -55,7 +62,8 @@ class Global {
     getTheme();
     getLanguage();
     _loadDisplayPrefs();
-    await _initRust();
+    // Rust 初始化移出首帧阻塞路径（见 [rustReady]），语音入口处惰性等待。
+    unawaited(rustReady);
   }
 
   static Future<void> _initRust() async {

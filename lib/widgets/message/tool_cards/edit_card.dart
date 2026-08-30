@@ -8,6 +8,24 @@ import '../../detail_bottom_sheet.dart';
 import '../../diff/diff_code_view.dart';
 import '../../diff/diff_view.dart';
 
+/// E2：`_collectEntries` 与 header 统计的按 part 实例 memo（Part 不可变、
+/// 更新即整体换实例）。Expando 随 part 回收，无需淘汰。
+class _EditCardData {
+  final List<_FileEntry> entries;
+  final int addedLines;
+  final int removedLines;
+
+  const _EditCardData(this.entries, this.addedLines, this.removedLines);
+}
+
+final Expando<_EditCardData> _editCardDataCache = Expando<_EditCardData>();
+
+/// `@@ -L,N +M,K @@` hunk 头（含 loose 形式 `@@ -L`）。E2：提为顶层 final。
+final RegExp _startLineHunkRe = RegExp(
+  r'^@@\s+-(\d+)(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@',
+);
+final RegExp _fallbackHunkRe = RegExp(r'@@\s+-(\d+)', multiLine: true);
+
 /// Renders the diff for `edit` / `write` tool parts.
 ///
 /// Prefers the standard unified diff opencode already provides in tool
@@ -176,7 +194,12 @@ class _EditCardState extends State<EditCard> {
     final theme = Theme.of(context);
     final appColors = context.appColors;
 
-    final entries = _collectEntries(widget.part);
+    // E2：entries 与 header 统计按 part 实例 memo，每次 build 不再重跑
+    // 整 patch split / 逐行正则 / LCS。
+    final data = _editCardDataCache[widget.part] ??= _computeCardData(
+      widget.part,
+    );
+    final entries = data.entries;
     final status = widget.part.toolStatus;
     final isRunning =
         status == ToolStateStatus.running || status == ToolStateStatus.pending;
@@ -190,31 +213,8 @@ class _EditCardState extends State<EditCard> {
     final headerPath = single?.displayPath ?? '';
 
     // Header added/removed stats (prefer metadata counts).
-    var addedLines = 0;
-    var removedLines = 0;
-    for (final entry in entries) {
-      addedLines += entry.additions;
-      removedLines += entry.deletions;
-    }
-    if (addedLines == 0 && removedLines == 0) {
-      for (final entry in entries) {
-        final patch = entry.patch;
-        if (patch != null && patch.isNotEmpty) {
-          final stats = _countPatchChanges(patch);
-          addedLines += stats.$1;
-          removedLines += stats.$2;
-        } else if (entry.isWrite && entry.newStr.isNotEmpty) {
-          addedLines += entry.newStr.split('\n').length;
-        } else {
-          if (entry.oldStr.isNotEmpty) {
-            removedLines += entry.oldStr.split('\n').length;
-          }
-          if (entry.newStr.isNotEmpty) {
-            addedLines += entry.newStr.split('\n').length;
-          }
-        }
-      }
-    }
+    final addedLines = data.addedLines;
+    final removedLines = data.removedLines;
 
     final hasContent = entries.any(
       (e) =>
@@ -453,6 +453,42 @@ String _typeLabel(String type) {
   }
 }
 
+/// Collect the per-file entries to render for this tool part, plus the header
+/// added/removed stats. Runs once per part instance (see [_editCardDataCache]).
+///
+/// Order of preference:
+///   1. `edit`/`write` → `metadata.filediff.patch` / `metadata.diff`
+///   2. raw `toolInput` patch / old-new strings (fallback)
+_EditCardData _computeCardData(Part part) {
+  final entries = _collectEntries(part);
+  var addedLines = 0;
+  var removedLines = 0;
+  for (final entry in entries) {
+    addedLines += entry.additions;
+    removedLines += entry.deletions;
+  }
+  if (addedLines == 0 && removedLines == 0) {
+    for (final entry in entries) {
+      final patch = entry.patch;
+      if (patch != null && patch.isNotEmpty) {
+        final stats = _countPatchChanges(patch);
+        addedLines += stats.$1;
+        removedLines += stats.$2;
+      } else if (entry.isWrite && entry.newStr.isNotEmpty) {
+        addedLines += entry.newStr.split('\n').length;
+      } else {
+        if (entry.oldStr.isNotEmpty) {
+          removedLines += entry.oldStr.split('\n').length;
+        }
+        if (entry.newStr.isNotEmpty) {
+          addedLines += entry.newStr.split('\n').length;
+        }
+      }
+    }
+  }
+  return _EditCardData(entries, addedLines, removedLines);
+}
+
 /// Collect the per-file entries to render for this tool part.
 ///
 /// Order of preference:
@@ -545,13 +581,12 @@ String _recoverStrippedIndent(String patch, List<String> faithfulLines) {
 int _startLineFromPatch(String patch) {
   if (patch.isEmpty) return 1;
   final lines = patch.replaceAll('\r\n', '\n').split('\n');
-  final hunkRe = RegExp(r'^@@\s+-(\d+)(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@');
   int oldLine = 1;
   int newLine = 1;
   bool inHunk = false;
 
   for (final line in lines) {
-    final hunkMatch = hunkRe.firstMatch(line);
+    final hunkMatch = _startLineHunkRe.firstMatch(line);
     if (hunkMatch != null) {
       oldLine = int.parse(hunkMatch.group(1)!);
       newLine = int.parse(hunkMatch.group(2)!);
@@ -581,7 +616,7 @@ int _startLineFromPatch(String patch) {
     }
   }
   // Fallback: no change lines found, use first hunk start.
-  final fallback = RegExp(r'@@\s+-(\d+)', multiLine: true).firstMatch(patch);
+  final fallback = _fallbackHunkRe.firstMatch(patch);
   if (fallback != null) return int.tryParse(fallback.group(1)!) ?? 1;
   return 1;
 }

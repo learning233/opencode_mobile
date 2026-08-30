@@ -247,6 +247,21 @@ class Part {
     return '';
   }
 
+  /// [toolOutput] 非空行数缓存（E2）：glob/grep 卡片每次 build 都要数行数，
+  /// Part 不可变、更新即整体替换实例，按实例缓存一次计算结果。
+  int? _toolOutputNonEmptyLineCount;
+
+  /// toolOutput 的非空行数（trim 后非空的行；空输出为 0）。
+  int get toolOutputNonEmptyLineCount {
+    final cached = _toolOutputNonEmptyLineCount;
+    if (cached != null) return cached;
+    var count = 0;
+    for (final line in toolOutput.split('\n')) {
+      if (line.trim().isNotEmpty) count++;
+    }
+    return _toolOutputNonEmptyLineCount = count;
+  }
+
   /// The error message if the tool failed, from `raw['state']['error']`.
   String get toolError {
     final s = raw['state'];

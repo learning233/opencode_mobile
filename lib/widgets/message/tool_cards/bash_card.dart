@@ -7,11 +7,17 @@ import '../../../utils/app_theme.dart';
 import '../../detail_bottom_sheet.dart';
 import '../../../controllers/session_controller.dart';
 
+/// ANSI 转义清洗用的三个模式。E2：提为顶层 final，避免每次调用新建
+/// RegExp（stripAnsi 在流式期间对全量输出反复执行）。
+final RegExp _ansiCsiRe = RegExp(r'\x1B\[[\x20-\x3F]*[\x20-\x2F]*[\x40-\x7E]');
+final RegExp _ansiOscRe = RegExp(r'\x1B\].*?(?:\x07|\x1B\\)');
+final RegExp _ansiShortRe = RegExp(r'\x1B.');
+
 String stripAnsi(String text) {
   return text
-      .replaceAll(RegExp(r'\x1B\[[\x20-\x3F]*[\x20-\x2F]*[\x40-\x7E]'), '')
-      .replaceAll(RegExp(r'\x1B\].*?(?:\x07|\x1B\\)'), '')
-      .replaceAll(RegExp(r'\x1B.'), '');
+      .replaceAll(_ansiCsiRe, '')
+      .replaceAll(_ansiOscRe, '')
+      .replaceAll(_ansiShortRe, '');
 }
 
 /// Compact bash header. Full command/output opens in a BottomSheet.

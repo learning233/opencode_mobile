@@ -19,11 +19,19 @@ class MessageBubble extends StatelessWidget {
   final bool showAvatar;
   final bool isStreaming;
 
+  /// ChatView 传入的时间线快照与该消息的下标：气泡内不再读取/订阅整个
+  /// `state.messages`（订阅整列表会让流式期间所有可见气泡级联重建），
+  /// 列表结构/全量变化时由外层重建并携带新快照下发。
+  final List<MessageModel> timelineMsgs;
+  final int msgIndex;
+
   const MessageBubble({
     super.key,
     required this.message,
     this.showAvatar = true,
     this.isStreaming = false,
+    this.timelineMsgs = const [],
+    this.msgIndex = -1,
   });
 
   static bool isPartVisible(
@@ -303,12 +311,10 @@ class MessageBubble extends StatelessWidget {
         );
       }
 
-      final state = sessionCtrl.sessionRuntimeStates[message.sessionID];
-      final allMsgs = state?.messages ?? const <MessageModel>[];
-      final isGenerating = state?.isGenerating.value ?? false;
-      final isLastMsg = allMsgs.isNotEmpty && allMsgs.last.id == message.id;
-      final isStreaming = isGenerating && isLastMsg;
-      final msgIdx = allMsgs.indexWhere((m) => m.id == message.id);
+      // 时间线信息来自 ChatView 下发的快照（普通参数，不注册 Rx 依赖）；
+      // isStreaming 由外层按「生成中 + 最后一条 assistant」算好传入（字段直读）。
+      final allMsgs = timelineMsgs;
+      final msgIdx = msgIndex;
       final turnUserMsgId = _findTurnUserMessageId(allMsgs, msgIdx);
       final turnDiffs = _collectTurnDiffs(
         allMsgs,

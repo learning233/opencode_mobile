@@ -148,14 +148,21 @@ class _ChatViewState extends State<ChatView> {
   Widget _buildMessageItem(
     MessageModel msg,
     bool showAvatar,
-    bool isStreaming,
-  ) {
+    bool isStreaming, {
+    required List<MessageModel> timelineMsgs,
+    required int msgIndex,
+  }) {
+    // 时间线快照与下标作为普通参数下发：气泡内部不再订阅整个 messages
+    // RxList（流式 delta 已改走细粒度通道，见 SessionRuntimeState.streamingPartText），
+    // 列表结构/全量变化时由本层 Obx 重建并携带新快照。
     return SelectionArea(
       child: MessageBubble(
         key: ValueKey('msg_${msg.id}'),
         message: msg,
         showAvatar: showAvatar,
         isStreaming: isStreaming,
+        timelineMsgs: timelineMsgs,
+        msgIndex: msgIndex,
       ),
     );
   }
@@ -274,7 +281,13 @@ class _ChatViewState extends State<ChatView> {
                           final msg = msgs[msgIdx];
                           final showAvatar =
                               msgIdx == 0 || msg.role != msgs[msgIdx - 1].role;
-                          return _buildMessageItem(msg, showAvatar, false);
+                          return _buildMessageItem(
+                            msg,
+                            showAvatar,
+                            false,
+                            timelineMsgs: msgs,
+                            msgIndex: msgIdx,
+                          );
                         }, childCount: lastUserIdx),
                       ),
                     );
@@ -291,6 +304,8 @@ class _ChatViewState extends State<ChatView> {
                         centerMsg,
                         centerShowAvatar,
                         false,
+                        timelineMsgs: msgs,
+                        msgIndex: lastUserIdx,
                       ),
                     ),
                   );
@@ -312,6 +327,8 @@ class _ChatViewState extends State<ChatView> {
                             msg,
                             showAvatar,
                             isStreaming,
+                            timelineMsgs: msgs,
+                            msgIndex: msgIdx,
                           );
                         }, childCount: replyCount),
                       ),
@@ -358,7 +375,13 @@ class _ChatViewState extends State<ChatView> {
                             isWorking &&
                             i == msgs.length - 1 &&
                             msg.role == MessageRole.assistant;
-                        return _buildMessageItem(msg, showAvatar, isStreaming);
+                        return _buildMessageItem(
+                          msg,
+                          showAvatar,
+                          isStreaming,
+                          timelineMsgs: msgs,
+                          msgIndex: i,
+                        );
                       }, childCount: msgs.length),
                     ),
                   );

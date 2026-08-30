@@ -3,7 +3,9 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import '../../api/models/message.dart';
+import '../../controllers/session_controller.dart';
 import '../../utils/app_logger.dart';
 import '../../utils/image_cache.dart';
 import '../../utils/tool_call_detector.dart';
@@ -13,6 +15,12 @@ import 'reasoning_part.dart';
 import 'tool_call_card.dart';
 import 'tool_cards/subtask_header_card.dart';
 import 'tool_cards/tool_part_dispatcher.dart';
+
+/// 文本 part 中遗留 thinking 标记的清理模式（历史格式兼容）。
+final RegExp _thinkingTagPattern = RegExp(
+  r'</?thinking>',
+  caseSensitive: false,
+);
 
 /// Renders a single message [Part] — aligned with desktop MessagePartWidget.
 class MessagePartWidget extends StatelessWidget {
@@ -33,12 +41,14 @@ class MessagePartWidget extends StatelessWidget {
 
     switch (part.type) {
       case PartType.text:
+        if (isStreaming && sessionId != null && sessionId!.isNotEmpty) {
+          // 流式中的文本改读细粒度通道（delta flush 不再更新列表，见
+          // SessionRuntimeState.streamingPartText），仅本部件局部重建。
+          return _StreamingTextMarkdown(part: part, sessionId: sessionId!);
+        }
         var text = part.text;
         if (text.isEmpty && !isStreaming) return const SizedBox.shrink();
-        text = text.replaceAll(
-          RegExp(r'</?thinking>', caseSensitive: false),
-          '',
-        );
+        text = text.replaceAll(_thinkingTagPattern, '');
         final info = !isStreaming ? ToolCallDetector.detect(text) : null;
         if (info != null) {
           return ToolCallCard(
@@ -352,6 +362,73 @@ class _ImageAttachmentThumbnail extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// 流式中的文本 part：订阅 [SessionRuntimeState.streamingPartText] 的
+/// per-part RxString，delta flush 时仅本部件局部重建（列表不再整表广播）。
+/// 流结束（isGenerating 翻转 / 通道 finalize 落库）后，上层改走普通
+/// part.text 渲染路径，本部件随之卸载。
+class _StreamingTextMarkdown extends StatefulWidget {
+  final Part part;
+  final String sessionId;
+
+  const _StreamingTextMarkdown({required this.part, required this.sessionId});
+
+  @override
+  State<_StreamingTextMarkdown> createState() =>
+      _StreamingTextMarkdownState();
+}
+
+class _StreamingTextMarkdownState extends State<_StreamingTextMarkdown> {
+  RxString? _rx;
+
+  @override
+  void initState() {
+    super.initState();
+    _attach();
+  }
+
+  @override
+  void didUpdateWidget(covariant _StreamingTextMarkdown oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.part.id != widget.part.id ||
+        oldWidget.sessionId != widget.sessionId) {
+      _attach();
+    }
+  }
+
+  void _attach() {
+    try {
+      final state = Get.find<SessionController>()
+          .sessionRuntimeStates[widget.sessionId];
+      if (state == null) {
+        _rx = null;
+        return;
+      }
+      // 通道项由 delta flush（_applyPartDelta）与本部件共同惰性创建，
+      // 初值都取列表当前文本，两侧一致。
+      _rx = state.streamingPartText.putIfAbsent(
+        '${widget.part.id}\u0000text',
+        () => widget.part.text.obs,
+      );
+    } catch (_) {
+      _rx = null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rx = _rx;
+    return Padding(
+      padding: const EdgeInsets.only(top: 2, left: 4, right: 4),
+      child: rx != null
+          ? Obx(() {
+              final text = rx.value.replaceAll(_thinkingTagPattern, '');
+              return MarkdownView(content: text, isStreaming: true);
+            })
+          : MarkdownView(content: widget.part.text, isStreaming: true),
     );
   }
 }

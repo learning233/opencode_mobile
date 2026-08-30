@@ -179,8 +179,12 @@ class _ReasoningSheetBodyState extends State<_ReasoningSheetBody> {
     }
     return Obx(() {
       final part = _lookup();
+      // 流式 delta 不再更新列表（细粒度通道），优先读 per-part RxString；
+      // 两者在全量 part 更新与回合 finalize 时由控制器对齐。
+      final channel = state.streamingPartText['${part.id}\u0000text'];
+      final text = channel != null ? channel.value : part.reasoningText;
       _scrollToBottom();
-      return _content(theme, text: part.reasoningText);
+      return _content(theme, text: text);
     });
   }
 

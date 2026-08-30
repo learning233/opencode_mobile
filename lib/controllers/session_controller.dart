@@ -1237,6 +1237,9 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         // API may return newest-first; keep chronological for the timeline.
         final state = stateOf(sessionId);
         state.hasLoadedHistory = true;
+        // 全量历史是权威数据：清空流式通道，避免通道里的旧累计值在后续
+        // 全量 part 对齐/落库时覆盖服务端历史。
+        state.streamingPartText.clear();
         if (msgs.length >= 2 &&
             (msgs.first.time?['created'] is num) &&
             (msgs.last.time?['created'] is num) &&
@@ -1795,6 +1798,9 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     if (id.isEmpty) return;
     final state = getOrCreateSessionState(id);
     state.wasAborted.value = true;
+    // 中止即回合终止：先把流式通道累计文本落回列表（保留已生成的部分内容），
+    // 再丢弃未冲刷的 pending delta。
+    _finalizeStreamingText(state);
     state.suppressAbortErrorUntilMs =
         DateTime.now().millisecondsSinceEpoch + 10000;
     state.isGenerating.value = false;
@@ -1814,6 +1820,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       final childState = sessionRuntimeStates[child.id];
       if (childState != null) {
         childState.wasAborted.value = true;
+        _finalizeStreamingText(childState);
         childState.suppressAbortErrorUntilMs =
             DateTime.now().millisecondsSinceEpoch + 10000;
         childState.isGenerating.value = false;
@@ -2408,6 +2415,8 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       messages: state.messages,
       wasAborted: state.wasAborted.value,
     )) {
+      // 判定回合已收尾：落回流式通道累计文本后再复位生成态。
+      _finalizeStreamingText(state);
       state.isGenerating.value = false;
       state.generatingAgent.value = '';
     }
@@ -2746,6 +2755,9 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     }
     final state = getOrCreateSessionState(sid);
     final wasRetrying = state.isRetrying.value;
+    // 先把流式通道的累计文本落回列表再复位生成态：同一帧内完成，气泡切换
+    // 到列表文本渲染时数据已完整（见 _finalizeStreamingText）。
+    _finalizeStreamingText(state);
     final wasGenerating =
         _feedbackGeneratingSessions.remove(sid) || state.isGenerating.value;
     final agentBeforeClear = state.generatingAgent.value.isNotEmpty
@@ -2836,6 +2848,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
 
     if (errorSessionId.isNotEmpty) {
       final state = getOrCreateSessionState(errorSessionId);
+      _finalizeStreamingText(state);
       final shouldWaitForAutoCompaction =
           isContextOverflowWithAutoCompaction &&
           !state.isCompacting.value &&
@@ -2862,6 +2875,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       }
     } else {
       final activeState = getOrCreateSessionState(activeSessionId.value);
+      _finalizeStreamingText(activeState);
       final shouldWaitForAutoCompaction =
           isContextOverflowWithAutoCompaction &&
           !activeState.isCompacting.value &&
@@ -3058,13 +3072,31 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     if (msgIdx == -1) return false;
 
     final message = state.messages[msgIdx];
-    final existingParts = [...message.parts];
-    final partIdx = existingParts.indexWhere((p) => p.id == item.partId);
+    final partIdx = message.parts.indexWhere((p) => p.id == item.partId);
     if (partIdx == -1) return false;
 
-    final existing = existingParts[partIdx];
+    final existing = message.parts[partIdx];
+    final currentRaw = existing.raw[item.field];
+    final currentText = currentRaw is String
+        ? currentRaw
+        : (currentRaw?.toString() ?? '');
+
+    if (item.field == 'text') {
+      // 流式文本走细粒度通道：只更新 per-part RxString（流式文本部件订阅它
+      // 局部重建），不整列表替换——否则 80ms 的每次 flush 都会广播给所有
+      // 订阅 messages 的组件，让所有可见气泡级联重建。列表仅在「从空到有」
+      // 的首次 delta 时同步一次（驱动 showThinking → 正式气泡的切换）。
+      final rx = state.streamingPartText.putIfAbsent(
+        '${item.partId}\u0000${item.field}',
+        () => currentText.obs,
+      );
+      rx.value += item.delta;
+      if (currentText.isNotEmpty) return true;
+    }
+
     final raw = Map<String, dynamic>.from(existing.raw);
-    raw[item.field] = '${raw[item.field] ?? ''}${item.delta}';
+    raw[item.field] = '$currentText${item.delta}';
+    final existingParts = [...message.parts];
     existingParts[partIdx] = Part(
       id: existing.id,
       sessionID: existing.sessionID,
@@ -3083,6 +3115,62 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     return true;
   }
 
+  /// 全量 part 更新（part.updated / message.updated）是权威数据：把流式通道
+  /// 的累计值对齐到服务端全量内容，避免 delta 累计与服务端内容分叉。
+  void _syncStreamingPartText(SessionRuntimeState state, Part part) {
+    if (state.streamingPartText.isEmpty) return;
+    for (final key in List.of(state.streamingPartText.keys)) {
+      final sep = key.indexOf('\u0000');
+      if (sep == -1 || key.substring(0, sep) != part.id) continue;
+      final field = key.substring(sep + 1);
+      final v = part.raw[field];
+      state.streamingPartText[key]!.value = v is String
+          ? v
+          : (v?.toString() ?? '');
+    }
+  }
+
+  /// 回合收尾（idle / error / abort / 重连纠正）时把流式通道里的累计文本
+  /// 落回列表并清空通道：服务端不保证补发最终全量 part，落库保证流结束后
+  /// 列表数据完整（isGenerating 翻转后部件改读列表文本，不再订阅通道）。
+  void _finalizeStreamingText(SessionRuntimeState state) {
+    if (state.streamingPartText.isEmpty) return;
+    for (final key in List.of(state.streamingPartText.keys)) {
+      final sep = key.indexOf('\u0000');
+      if (sep == -1) continue;
+      final partId = key.substring(0, sep);
+      final field = key.substring(sep + 1);
+      final value = state.streamingPartText.remove(key)!.value;
+      final msgIdx = state.messages.indexWhere(
+        (m) => m.parts.any((p) => p.id == partId),
+      );
+      if (msgIdx == -1) continue;
+      final message = state.messages[msgIdx];
+      final parts = [...message.parts];
+      final pIdx = parts.indexWhere((p) => p.id == partId);
+      final existing = parts[pIdx];
+      final cur = existing.raw[field];
+      final curText = cur is String ? cur : (cur?.toString() ?? '');
+      if (value == curText) continue;
+      final raw = Map<String, dynamic>.from(existing.raw);
+      raw[field] = value;
+      parts[pIdx] = Part(
+        id: existing.id,
+        sessionID: existing.sessionID,
+        messageID: existing.messageID,
+        type: existing.type,
+        raw: raw,
+      );
+      state.messages[msgIdx] = MessageModel(
+        id: message.id,
+        sessionID: message.sessionID,
+        role: message.role,
+        parts: parts,
+        raw: message.raw,
+      );
+    }
+  }
+
   void _onPartRemoved(SseEvent event) {
     final msgId = event.messageID;
     final partId = event.partID;
@@ -3094,6 +3182,9 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     if (state == null) return;
     final idx = state.messages.indexWhere((m) => m.id == msgId);
     if (idx == -1) return;
+    state.streamingPartText.removeWhere(
+      (k, _) => k.startsWith('$partId\u0000'),
+    );
     final newParts = state.messages[idx].parts
         .where((p) => p.id != partId)
         .toList();
@@ -3216,6 +3307,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
           raw: const {'role': 'assistant'},
         ),
       );
+      _syncStreamingPartText(state, part);
       return;
     }
 
@@ -3234,6 +3326,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       parts: existingParts,
       raw: state.messages[idx].raw,
     );
+    _syncStreamingPartText(state, part);
   }
 
   void _onMessageUpdated(SseEvent event) {
@@ -3277,6 +3370,12 @@ class SessionController extends GetxController with WidgetsBindingObserver {
           );
         } else {
           state.messages[idx] = msg;
+          // 全量消息替换是权威数据，逐 part 对齐流式通道，防止分叉。
+          if (state.streamingPartText.isNotEmpty) {
+            for (final p in msg.parts) {
+              _syncStreamingPartText(state, p);
+            }
+          }
         }
       } else {
         state.messages.add(msg);

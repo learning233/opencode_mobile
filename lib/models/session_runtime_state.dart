@@ -70,9 +70,16 @@ class SessionRuntimeState {
   final respondedToolCallIds = <String>{};
 
   /// Cache of per-message turn diff aggregation keyed by message id.
-  /// Invalidated by a signature of the turn's message ids / part counts /
+  /// Invalidated by a signature of the turn's messages / part counts /
   /// part statuses (see MessageBubble._turnDiffSignature).
   final turnDiffCache = <String, TurnDiffCacheEntry>{};
+
+  /// 流式文本的细粒度通道，key 为 `$partId\u0000$field`。文本 delta 的
+  /// 80ms flush 只更新这里的 RxString（订阅它的流式文本部件局部重建），
+  /// 不再整列表替换 [messages] —— 否则每次 flush 都会广播给所有订阅者，
+  /// 导致所有可见气泡级联重建。列表仅在关键节点同步：首次从空到有、
+  /// 收到全量 part 更新（权威对齐）、回合结束 finalize（落库保完整）。
+  final streamingPartText = <String, RxString>{};
 
   /// Cache of fetched server message diffs keyed by userMessageId.
   /// Used by message diff sheets and ReviewPage to avoid redundant network calls.

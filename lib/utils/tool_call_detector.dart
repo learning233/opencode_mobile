@@ -76,11 +76,31 @@ class ToolCallDetector {
     return buf.join('\n').replaceAll(_inlineCodeRegex, '');
   }
 
+  /// detect 结果缓存：已完成消息的文本不再变化，滚动/重建反复进入时避免
+  /// 对全文重复跑 _stripCode + 逐个正则扫描。key 为 trim 后全文，负结果
+  /// （null）同样缓存；按插入序 FIFO 淘汰，超长文本不缓存防内存放大。
+  static final Map<String, ToolCallInfo?> _resultCache = {};
+  static const int _resultCacheLimit = 256;
+  static const int _resultCacheMaxTextLength = 20000;
+
   /// Scans [text] for a tool call XML pattern and returns a [ToolCallInfo] if
   /// one is found, or null if no recognized tool tag is present.
   static ToolCallInfo? detect(String text) {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return null;
+    if (trimmed.length > _resultCacheMaxTextLength) {
+      return _detectUncached(trimmed);
+    }
+    if (_resultCache.containsKey(trimmed)) return _resultCache[trimmed];
+    final info = _detectUncached(trimmed);
+    if (_resultCache.length >= _resultCacheLimit) {
+      _resultCache.remove(_resultCache.keys.first);
+    }
+    _resultCache[trimmed] = info;
+    return info;
+  }
+
+  static ToolCallInfo? _detectUncached(String trimmed) {
     final plain = _stripCode(trimmed);
 
     for (var i = 0; i < _toolTags.length; i++) {

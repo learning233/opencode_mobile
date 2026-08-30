@@ -54,8 +54,8 @@ class MarkdownView extends StatelessWidget {
       );
     }
 
-    return MarkdownBody(
-      data: content,
+    Widget body(String data) => MarkdownBody(
+      data: data,
       // 列表层已为每条消息包 SelectionArea（chat_view._buildMessageItem），
       // 这里不再开 selectable，避免同一段文本维护两套选择系统（长消息开销
       // 明显且交互易冲突）。链接点击仍由 onTapLink 处理。
@@ -74,6 +74,22 @@ class MarkdownView extends StatelessWidget {
         }
       },
     );
+
+    // 流式期间按围栏感知的空行切点分为「稳定前缀 + 活跃尾部」：前缀数据
+    // 不变 → flutter_markdown_plus 因 data 相等跳过重 parse（styleSheet 已
+    // 记忆化），每次 flush 只重 parse 尾部小段，把流式渲染成本从 O(全文)
+    // 降到 O(尾部)。找不到安全切点时整体渲染。
+    if (isStreaming) {
+      final split = _splitStablePrefix(content);
+      if (split != null) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [body(split.$1), body(split.$2)],
+        );
+      }
+    }
+    return body(content);
   }
 }
 
@@ -86,6 +102,40 @@ bool? _cachedSheetIsDark;
 Color? _cachedSheetPrimary;
 Color? _cachedSheetDivider;
 TextStyle? _cachedSheetBodyText;
+
+/// 流式分块的围栏行匹配（与 ToolCallDetector._stripCode 同语义：围栏行切换
+/// 进出代码块状态，不区分 ``` 与 ~~~ 的配对）。
+final RegExp _fenceLinePattern = RegExp(r'^\s*(`{3,}|~{3,})');
+
+/// 流式内容低于该长度时不分块（整体渲染的成本可忽略）。
+const int _streamingSplitMinLength = 1200;
+
+/// 超过该字符数的代码块，高亮延后一帧执行（避免流式结束瞬间同帧多块高亮卡顿）。
+const int _largeHighlightThreshold = 8192;
+
+/// 把流式 markdown 在最后一个「围栏外的空行」处切成稳定前缀 + 活跃尾部，
+/// 前缀随 flush 保持数据不变从而跳过重 parse。找不到安全切点返回 null。
+/// 已知取舍：跨空行的松散列表会被切成两段（有序列表编号从头显示），属
+/// 流式期间的临时观感，流结束整体渲染自动恢复正确。
+(String, String)? _splitStablePrefix(String content) {
+  if (content.length < _streamingSplitMinLength) return null;
+  var inFence = false;
+  var lastBoundary = -1;
+  var offset = 0;
+  for (final line in content.split('\n')) {
+    final lineStart = offset;
+    offset += line.length + 1; // +1 为换行符（末行多算的 1 无碍，仅用于比较）
+    if (_fenceLinePattern.hasMatch(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (!inFence && line.trim().isEmpty) {
+      lastBoundary = lineStart;
+    }
+  }
+  if (lastBoundary <= 0 || lastBoundary >= content.length) return null;
+  return (content.substring(0, lastBoundary), content.substring(lastBoundary));
+}
 
 MarkdownStyleSheet _styleSheetFor(ThemeData theme, bool isDark) {
   final primary = theme.colorScheme.primary;
@@ -239,6 +289,7 @@ class _MarkdownCodeBlockState extends State<_MarkdownCodeBlock> {
   String? _cachedLangId;
   bool? _cachedIsDark;
   bool? _cachedHighlightEnabled;
+  bool _largeHighlightDeferred = false;
 
   @override
   void initState() {
@@ -249,6 +300,9 @@ class _MarkdownCodeBlockState extends State<_MarkdownCodeBlock> {
   @override
   void didUpdateWidget(covariant _MarkdownCodeBlock oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!widget.highlightEnabled) {
+      _largeHighlightDeferred = false;
+    }
     if (oldWidget.infoString != widget.infoString) {
       _configureLanguage();
       _clearHighlightCache();
@@ -500,6 +554,23 @@ class _MarkdownCodeBlockState extends State<_MarkdownCodeBlock> {
   }
 
   TextSpan _resolveCodeSpan(bool isDark) {
+    final langId = _langId;
+    final canHighlight = widget.highlightEnabled && langId != null;
+    // 大代码块的高亮是同步重活；流式结束瞬间整条消息的所有代码块同时翻转
+    // highlightEnabled，会在同一帧内全部执行。超过阈值的块先渲染纯文本、
+    // 延后一帧再高亮，把最重的一帧拆成两帧。
+    if (canHighlight &&
+        !_largeHighlightDeferred &&
+        widget.code.length > _largeHighlightThreshold) {
+      _largeHighlightDeferred = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _clearHighlightCache();
+        setState(() {});
+      });
+      return TextSpan(text: widget.code);
+    }
+
     if (_cachedCodeSpan != null &&
         _cachedCode == widget.code &&
         _cachedLangId == _langId &&
@@ -509,8 +580,7 @@ class _MarkdownCodeBlockState extends State<_MarkdownCodeBlock> {
     }
 
     TextSpan codeSpan;
-    final langId = _langId;
-    if (widget.highlightEnabled && langId != null) {
+    if (canHighlight) {
       try {
         final result = _globalHighlight.highlight(
           code: widget.code,

@@ -1097,24 +1097,61 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     _releaseSessionState(id);
   }
 
-  /// 释放已关闭页签的运行时状态：状态只在页签打开期间被 UI 消费，重开时
-  /// `hasLoadedHistory` 随新状态重置、走正常懒加载。子会话状态由父会话的
-  /// 事件路径管理，这里跳过。若释放后会话仍有事件到达（如后台生成中），
-  /// getOrCreateSessionState 会按未打开会话的既有逻辑重建。
-  void _releaseSessionState(String id) {
-    if (id.isEmpty || _parentSessionIds.containsKey(id)) return;
-    // 会话仍持有待回复的权限请求时保留状态：asked 不重放、loadMessages 也不
-    // 恢复权限，释放会让重开页签后的卡片永久消失（agent 挂起在等待回复上）。
-    // 回复/级联 replied 清槽后再关闭页签即可正常释放。
-    if (sessionRuntimeStates[id]?.pendingPermission.value != null) return;
+  /// 释放已关闭页签的运行时状态（F2 定版方案）：
+  /// - 普通会话：整个 remove，重开时 `hasLoadedHistory` 随新状态重置、走
+  ///   正常懒加载；
+  /// - 父会话：保留轻量外壳——`childSessions` 树是 pendingQuestionInTree /
+  ///   权限遍历的依赖（fetchSessions 重建前的窗口不能为空），只清消息类
+  ///   字段（messages / streamingPartText / turnDiffCache / messageSubtaskDiffs
+  ///   / fetchedMessageDiffs）并重置 `hasLoadedHistory=false`；其子会话 state
+  ///   逐个递归释放（多层嵌套同规则）；
+  /// - 挂起权限的会话跳过：asked 不重放、loadMessages 也不恢复权限，释放会
+  ///   让重开页签后的权限卡永久消失（agent 挂起在等待回复上）。回复/级联
+  ///   replied 清槽后再关闭页签即可正常释放；
+  /// - 生成中不额外设守卫：与既有普通页签释放语义一致，释放后事件到达由
+  ///   getOrCreateSessionState 重建空壳，重开时 loadMessages 全量纠正。
+  void _releaseSessionState(String id, {Set<String>? visited}) {
+    if (id.isEmpty) return;
+    final guard = visited ?? <String>{};
+    if (!guard.add(id)) return;
+    final state = sessionRuntimeStates[id];
+    if (state == null) return;
+    // 会话仍持有待回复的权限请求时保留状态（含其子树一并保留）。
+    if (state.pendingPermission.value != null) return;
+    final isParent =
+        state.childSessions.isNotEmpty || _parentSessionIds.values.contains(id);
+    if (isParent) {
+      // 父会话：清消息类字段、保留 childSessions 树，子会话逐个释放。
+      _discardPendingPartDeltas(sessionIds: {id});
+      state.messages.clear();
+      state.streamingPartText.clear();
+      state.turnDiffCache.clear();
+      state.messageSubtaskDiffs.clear();
+      state.fetchedMessageDiffs.clear();
+      state.hasLoadedHistory.value = false;
+      state.partsVersion++;
+      state.rescanHasPendingQuestion();
+      for (final child in state.childSessions.toList()) {
+        _releaseSessionState(child.id, visited: guard);
+      }
+      return;
+    }
     _discardPendingPartDeltas(sessionIds: {id});
     sessionRuntimeStates.remove(id);
   }
 
+  /// 清空所有页签（F2）：除清 openedSessionIds / activeSessionId 外，遍历
+  /// 全部运行时状态逐个释放（含不在 openedSessionIds 里的后台子会话）——
+  /// 父会话走 [_releaseSessionState] 的外壳级联，普通/子会话整个 remove，
+  /// 挂起权限的会话沿用守卫跳过；最后统一清一次 delta 合并队列。
   void clearAllOpenedSessions() {
     openedSessionIds.clear();
     activeSessionId.value = '';
     _persistOpenedIds();
+    for (final id in sessionRuntimeStates.keys.toList()) {
+      _releaseSessionState(id);
+    }
+    _discardPendingPartDeltas();
     AppLogger.i('🧹 Cleared all opened sessions');
   }
 

@@ -31,6 +31,13 @@ class _FileTreeViewState extends State<FileTreeView> {
   final Map<String, String?> _errors = {};
   Timer? _refreshDebounce;
   StreamSubscription<int>? _fileChangeSub;
+  StreamSubscription<int>? _reconnectSub;
+
+  /// Per-path request sequence: each `_loadDirectory` invocation bumps the
+  /// counter, and a completion whose counter has been superseded (a newer
+  /// request for the same directory started) must not write its — possibly
+  /// stale — result into the caches.
+  final Map<String, int> _loadSeq = {};
 
   // 单点选态：树级订阅各 Rx，行级只挂 ValueListenableBuilder，避免每行一个 Obx。
   final ValueNotifier<_TreeSelection?> _selection = ValueNotifier(null);
@@ -51,6 +58,10 @@ class _FileTreeViewState extends State<FileTreeView> {
       _fileChangeSub = Get.find<TabletToolController>().fileChangeTick.listen(
         (_) => _scheduleRefresh(),
       );
+      // SSE 重连补偿：断线窗口内的文件事件不会补发，整树强制刷新。
+      _reconnectSub = Get.find<TabletToolController>().fileReconnectTick.listen(
+        (_) => _refreshTree(force: true),
+      );
     }
   }
 
@@ -59,6 +70,8 @@ class _FileTreeViewState extends State<FileTreeView> {
     _refreshDebounce?.cancel();
     _fileChangeSub?.cancel();
     _fileChangeSub = null;
+    _reconnectSub?.cancel();
+    _reconnectSub = null;
     for (final w in _selectionWorkers) {
       w.dispose();
     }
@@ -128,6 +141,8 @@ class _FileTreeViewState extends State<FileTreeView> {
   }
 
   Future<void> _loadDirectory(String path, {bool force = false}) async {
+    final seq = (_loadSeq[path] ?? 0) + 1;
+    _loadSeq[path] = seq;
     final projectCtrl = Get.isRegistered<ProjectController>()
         ? Get.find<ProjectController>()
         : null;
@@ -151,6 +166,10 @@ class _FileTreeViewState extends State<FileTreeView> {
       _errors[path] = null;
     });
 
+    // 过期判定：期间同目录又发起了新请求（或 State 已卸载）时，
+    // 本次结果不得写入缓存/错误态。
+    bool isStale() => !mounted || seq != _loadSeq[path];
+
     try {
       if (projectCtrl != null) {
         final list = await projectCtrl.loadDirectory(
@@ -158,7 +177,7 @@ class _FileTreeViewState extends State<FileTreeView> {
           worktree: worktree.isNotEmpty ? worktree : null,
           force: force,
         );
-        if (!mounted) return;
+        if (isStale()) return;
         setState(() {
           _dirCache[path] = list;
         });
@@ -169,7 +188,7 @@ class _FileTreeViewState extends State<FileTreeView> {
           directory: worktree.isNotEmpty ? worktree : null,
         );
 
-        if (!mounted) return;
+        if (isStale()) return;
 
         if (response.statusCode == 200) {
           final data = response.data;
@@ -200,12 +219,13 @@ class _FileTreeViewState extends State<FileTreeView> {
       }
     } catch (e) {
       AppLogger.e('Failed to load directory "$path": $e');
-      if (!mounted) return;
+      if (isStale()) return;
       setState(() {
         _errors[path] = e.toString();
       });
     } finally {
-      if (mounted) {
+      // 过期请求不动 loading 态：由胜出的新请求负责收尾。
+      if (mounted && seq == _loadSeq[path]) {
         setState(() {
           _loading[path] = false;
         });

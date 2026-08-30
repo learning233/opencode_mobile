@@ -49,6 +49,7 @@ class _FileEditorPageState extends State<FileEditorPage> {
   final FocusNode _focusNode = FocusNode();
   final OpenCodeClient _client = OpenCodeClient();
   StreamSubscription<int>? _fileChangeSub;
+  StreamSubscription<int>? _reconnectSub;
   Timer? _reloadDebounce;
   bool _isLoading = false;
   String? _error;
@@ -127,12 +128,19 @@ class _FileEditorPageState extends State<FileEditorPage> {
         _reloadDebounce?.cancel();
         _reloadDebounce = Timer(const Duration(milliseconds: 400), () {
           if (!mounted) return;
-          final changed = ctrl.lastChangedFile.value;
-          if (changed.isEmpty) return;
-          if (diffPathsEqual(changed, widget.filePath)) {
-            _loadFile();
-          }
+          // 防抖结束后在事件窗口内匹配自身路径。连续多文件变更时每个
+          // 事件都会重排定时器，单槽「最后变更文件」会让除最后一个外的
+          // 挂载编辑器匹配失败、永久漏刷。
+          final matched = ctrl.recentChangedFiles.any(
+            (e) => diffPathsEqual(e.path, widget.filePath),
+          );
+          if (matched) _loadFile();
         });
+      });
+      // SSE 重连补偿：断线窗口内的文件事件不会补发，内容可能已过期，
+      // 直接重载（每编辑器一次请求，挂载中的编辑器数量有限）。
+      _reconnectSub = ctrl.fileReconnectTick.listen((_) {
+        if (mounted) _loadFile();
       });
     }
   }
@@ -302,6 +310,8 @@ class _FileEditorPageState extends State<FileEditorPage> {
     _reloadDebounce?.cancel();
     _fileChangeSub?.cancel();
     _fileChangeSub = null;
+    _reconnectSub?.cancel();
+    _reconnectSub = null;
     _findController.dispose();
     _controller.dispose();
     _focusNode.dispose();
@@ -314,10 +324,14 @@ class _FileEditorPageState extends State<FileEditorPage> {
     } else {
       _findController.findMode();
     }
+    // AppBar 搜索图标颜色读取 _findController.value，面板自身有监听会重建，
+    // 但本 State 不会，需主动 setState 刷新图标高亮。
+    if (mounted) setState(() {});
   }
 
   void _closeSearch() {
     _findController.close();
+    if (mounted) setState(() {});
   }
 
   void _toggleWordWrap() {

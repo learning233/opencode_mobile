@@ -46,6 +46,10 @@ class VcsController extends GetxController {
   DateTime? _lastRefreshTime;
   String? _lastRefreshWorktree;
 
+  /// 并发刷新代号：force 与非 force 刷新可能同时在飞（如 sheet 打开的
+  /// 常规刷新 + 用户点手动刷新），后完成的旧响应不得覆盖新结果。
+  int _refreshSeq = 0;
+
   /// 刷新 VCS 状态与分支信息。
   /// [force] 为 false 时，若距离上次刷新不足 3 秒且处于同一 worktree，则直接跳过避免重复请求。
   Future<void> refreshAll({String? worktree, bool force = false}) async {
@@ -66,17 +70,20 @@ class VcsController extends GetxController {
     _lastRefreshTime = now;
     _lastRefreshWorktree = targetWorktree;
 
+    final seq = ++_refreshSeq;
+
     isLoading.value = true;
     error.value = null;
 
     try {
       await Future.wait([
-        fetchVcsInfo(worktree: targetWorktree),
-        fetchVcsStatus(worktree: targetWorktree),
+        fetchVcsInfo(worktree: targetWorktree, requestSeq: seq),
+        fetchVcsStatus(worktree: targetWorktree, requestSeq: seq),
       ]);
     } catch (e) {
       // 回滚节流时间戳，失败后允许立即重试；时间戳前置写入是为了
       // 防止并发的 force=false 调用同时穿过节流检查。
+      // 两个 fetch 的失败（404/400 非 git 仓库语义除外）在这里汇聚。
       _lastRefreshTime = null;
       AppLogger.w('Failed to refresh VCS: $e');
     } finally {
@@ -84,12 +91,17 @@ class VcsController extends GetxController {
     }
   }
 
-  Future<void> fetchVcsInfo({String? worktree}) async {
+  Future<void> fetchVcsInfo({
+    String? worktree,
+    required int requestSeq,
+  }) async {
     try {
       final response = await _client.get(
         ApiEndpoints.vcsInfo,
         directory: worktree,
       );
+
+      if (requestSeq != _refreshSeq) return;
 
       if (response.statusCode == 200) {
         final data = response.data;
@@ -108,21 +120,27 @@ class VcsController extends GetxController {
     } on DioException catch (e) {
       AppLogger.w('Fetch VCS info failed: $e');
       if (e.response?.statusCode == 404 || e.response?.statusCode == 400) {
-        // Not a git repo
+        // Not a git repo：稳定状态（重试不会改变结果），不上抛、不回滚节流。
         branch.value = '';
         defaultBranch.value = '';
+      } else {
+        // 其余失败上抛给 refreshAll：记录错误并回滚节流时间戳。
+        rethrow;
       }
-    } catch (e) {
-      AppLogger.e('Unexpected error in fetchVcsInfo: $e');
     }
   }
 
-  Future<void> fetchVcsStatus({String? worktree}) async {
+  Future<void> fetchVcsStatus({
+    String? worktree,
+    required int requestSeq,
+  }) async {
     try {
       final response = await _client.get(
         ApiEndpoints.vcsStatus,
         directory: worktree,
       );
+
+      if (requestSeq != _refreshSeq) return;
 
       if (response.statusCode == 200) {
         final data = response.data;
@@ -142,11 +160,7 @@ class VcsController extends GetxController {
         }
 
         statusFiles.assignAll(list);
-        if (list.isEmpty) {
-          isClean.value = true;
-        } else {
-          isClean.value = false;
-        }
+        isClean.value = list.isEmpty;
       } else {
         error.value = 'HTTP ${response.statusCode}';
       }
@@ -154,10 +168,11 @@ class VcsController extends GetxController {
       AppLogger.w('Fetch VCS status failed: $e');
       error.value = e.message;
       statusFiles.clear();
-    } catch (e) {
-      AppLogger.e('Unexpected error in fetchVcsStatus: $e');
-      error.value = e.toString();
-      statusFiles.clear();
+      if (e.response?.statusCode == 404 || e.response?.statusCode == 400) {
+        // Not a git repo：稳定状态，不上抛（与 fetchVcsInfo 口径一致）。
+        return;
+      }
+      rethrow;
     }
   }
 }

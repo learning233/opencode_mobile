@@ -42,7 +42,11 @@ class DiffCodeViewState extends State<DiffCodeView> {
   CodeScrollController? _scrollController;
   List<DiffRenderLine> _render = const [];
   List<List<int>> _blocks = const [];
-  int _lastSig = -1;
+
+  /// 上次内容签名。可空哨兵：首次必算（非空 int 签名与 null 恒不等），
+  /// 避免 `Object.hash` 恰好算出初始值 -1 时首帧被当作「内容未变」跳过、
+  /// controller 保持 null 导致整块 diff 永久空白。
+  int? _lastSig;
 
   /// diff 行号（oldLineNum/newLineNum）的最大位数，用于固定行号栏宽度，
   /// 避免单位数涨到两位数/多位数时行号被裁剪或代码横向跳动。

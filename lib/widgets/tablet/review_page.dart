@@ -240,7 +240,13 @@ class _ReviewPageState extends State<ReviewPage> {
     final messageId = _toolCtrl.reviewMessageId.value;
     if (sessionId.isEmpty || messageId.isEmpty) return const [];
 
-    return Get.find<SessionController>().fetchMessageDiff(sessionId, messageId);
+    return Get.find<SessionController>().fetchMessageDiff(
+      sessionId,
+      messageId,
+      // 失败要上抛：_load 的 catch 会置 _failed 展示可重试态，
+      // 否则吞错后 message scope 会把「加载失败」伪装成「无 diff」。
+      throwOnError: true,
+    );
   }
 
   Future<List<SnapshotFileDiff>> _fetchVcsDiff() async {

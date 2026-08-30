@@ -70,7 +70,7 @@
 | `/session/{id}` | DELETE | `id: string` | — | — | `void` | v1 | active |
 | `/session/{id}/children` | GET | `id: string` | — | — | `Session.Info[]` | v1 | legacy |
 | `/session/{id}/todo` | GET | `id: string` | — | — | `Todo[]` | v1 | legacy |
-| `/session/{id}/diff` | GET | `id: string` | — | — | `FileDiff[]` | v1 | legacy |
+| `/session/{id}/diff` | GET | `id: string`, `messageID: string`（必填） | — | — | `SnapshotFileDiff[]` | v1 | **active**（消息变更文件卡 sheet 与 Review message scope 的数据源，见 `session_controller.fetchMessageDiff`；服务端 `SessionSummary.diff` 无 messageID 时返回空数组） |
 | `/api/session/{sessionID}/message` | GET | `sessionID: Session.ID` | `limit?: number (1-200)`, `order?: "asc" \| "desc"`, `cursor?: string` | — | `{ data: SessionMessage.Message[], cursor: { previous?: string, next?: string } }` | v2 | active |
 | `/api/session/{sessionID}/message` | POST | `sessionID: Session.ID` | — | `{ ...message content }` | `{ data: SessionMessage.Message }` | v2 | active |
 | `/api/session/{sessionID}/prompt` | POST | `sessionID: Session.ID` | — | `{ id?: SessionMessage.ID, prompt: PromptInput.Prompt, delivery?: SessionInput.Delivery, resume?: boolean }` | `{ data: SessionInput.Admitted }` | v2 | active |
@@ -172,6 +172,15 @@
 |------|------|------|------|------|------|
 | `/api/event` | GET | 订阅当前实例的 SSE 事件流 | **SSE 流**: `V2Event`（含 `server.connected` 等事件类型） | v2 | active |
 
+### `session.diff` 事件语义（服务端实证，clone/opencode 源码）
+
+载荷为 `{ sessionID, diff }`（经 event-v2-bridge 包装进 `properties`）。**两种发布路径**：
+
+- `SessionSummary.summarize`（summary.ts:114）：在**每回合开始**（prompt.ts step===1）与**回合结束**（processor.ts）发布 **`diff: []` 空载荷**，语义是「重置/重新拉取」信号，实际 per-message diff 仅通过 `GET /session/{id}/diff?messageID=` 提供；
+- `SessionRevert.revert`（revert.ts:78）：发布回滚点之后剩余范围的**实际 diff**（也可能为空）。
+
+因此客户端收到空 diff 属正常信号，应视作「清空 SSE 侧快照、回落本地聚合」而非「忽略」（见 `session_controller._onSessionDiff`）。
+
 ---
 
 ## 11. File — 文件操作
@@ -210,7 +219,7 @@ v1 搜索端点：
 |------|------|----------|------|------|------|
 | `/vcs` | GET | — | `VcsInfo`（分支名 `branch`、默认分支 `defaultBranch`、`isClean` 等） | v1 | **active** (分支信息主用) |
 | `/vcs/status` | GET | — | `VcsStatusFile[]`（变更文件列表 `file`、`status`、`additions`、`deletions`） | v1 | **active** (工作区状态主用) |
-| `/vcs/diff` | GET | `mode: "git" \| "branch"`, `context?: number` | `VcsFileDiff[]`（全量或分支 diff 及 patch） | v1 | **active** (Review Tab 差异对比主用) |
+| `/vcs/diff` | GET | `mode: "git" \| "branch"`, `context?: number` | `SnapshotFileDiff[]` 形态 JSON（全量或分支 diff 及 patch；客户端由 `SnapshotFileDiff.fromJson` 消费，原 `VcsFileDiff` 模型已删） | v1 | **active** (Review Tab 差异对比主用) |
 | `/vcs/diff/raw` | GET | — | `string`（patch 文本） | v1 | unused |
 | `/vcs/apply` | POST | — | `void` | v1 | unused |
 

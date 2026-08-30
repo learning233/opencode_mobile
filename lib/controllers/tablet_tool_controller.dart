@@ -22,13 +22,22 @@ class FileLineJumpRequest {
   });
 }
 
+/// 一条文件变更记录：SSE `file` 原始路径 + 事件到达时间。
+typedef FileChangeRecord = ({String path, DateTime at});
+
 /// Controls the tool panel state in tablet/desktop and code editor mode.
 /// Manages opened file tabs, active tab index, visibility, and panel width.
 class TabletToolController extends GetxController {
   /// Total byte budget for the binary viewer cache; injectable for tests.
   final int binaryCacheMaxBytes;
 
-  TabletToolController({this.binaryCacheMaxBytes = defaultBinaryCacheMaxBytes});
+  /// Total byte budget for the text content cache; injectable for tests.
+  final int contentCacheMaxBytes;
+
+  TabletToolController({
+    this.binaryCacheMaxBytes = defaultBinaryCacheMaxBytes,
+    this.contentCacheMaxBytes = defaultContentCacheMaxBytes,
+  });
 
   // ── Tab indices ──
   static const int tabCode = 0;
@@ -38,6 +47,9 @@ class TabletToolController extends GetxController {
 
   /// Default byte budget for [_binaryCache] (64 MB of raw image/audio bytes).
   static const int defaultBinaryCacheMaxBytes = 64 * 1024 * 1024;
+
+  /// Default byte budget for [_contentCache] (32 MB of UTF-16 text).
+  static const int defaultContentCacheMaxBytes = 32 * 1024 * 1024;
 
   // ── Review scope types ──
   static const String reviewTypeMessage = 'message';
@@ -80,7 +92,16 @@ class TabletToolController extends GetxController {
   /// [openedFiles] so writing the cache does not mutate the Rx list (which would
   /// trigger an Obx rebuild of every tab). Read by `FileEditorPage.initState`
   /// when the tab is (re)created lazily so it can skip re-downloading.
+  /// Capped at [contentCacheMaxBytes] total bytes like [_binaryCache]:
+  /// overwrite refreshes recency, and insertion-order FIFO eviction runs on
+  /// every write.
   final Map<String, String> _contentCache = {};
+
+  /// Rough byte cost of a cached text: UTF-16 code units, 2 bytes each.
+  static int _contentBytes(String content) => content.length * 2;
+
+  /// Tracks the running total for [_contentCache] eviction.
+  int _contentCacheBytes = 0;
 
   /// Per-path cache of binary file contents (images, audio) loaded by viewers.
   /// Capped at [binaryCacheMaxBytes] total bytes: overwrite refreshes recency,
@@ -93,10 +114,40 @@ class TabletToolController extends GetxController {
   /// opened editor) listen and invalidate/refresh, debounced.
   final fileChangeTick = 0.obs;
 
-  /// Raw `file` path of the most recent file-change SSE event (empty until the
-  /// first event). Editors match against their own path to decide whether to
-  /// reload.
-  final lastChangedFile = ''.obs;
+  /// 文件变更事件窗口：最近 [fileChangeMatchWindow] 内出现过的文件路径
+  /// （带时间戳）。编辑器在防抖结束后据此判断自己是否需要重载。
+  ///
+  /// 不能用单槽「最后变更文件」：agent 一次改多个文件时（apply_patch 的
+  /// 多条 file.edited 几乎同刻到达），每个事件都会重排各编辑器的防抖
+  /// 定时器并覆盖单槽值，防抖结束后只有最后一个文件能匹配到自己，
+  /// 其余挂载编辑器会永久漏刷。
+  ///
+  /// 只在 [recordFileChange]（即每次事件）时裁剪，编辑器读取必然发生在
+  /// 一次 recordFileChange 之后的防抖回调里，无需读取侧清理。
+  final recentChangedFiles = <FileChangeRecord>[];
+
+  /// [recentChangedFiles] 的匹配窗口与容量上限。
+  static const Duration fileChangeMatchWindow = Duration(seconds: 5);
+  static const int fileChangeMatchWindowCapacity = 32;
+
+  /// 记录一次文件变更事件（SessionController 在收到 file.edited /
+  /// file.watcher.updated 时调用）：刷新同路径时间戳并裁剪窗口。
+  void recordFileChange(String path) {
+    final now = DateTime.now();
+    recentChangedFiles.removeWhere(
+      (e) => now.difference(e.at) >= fileChangeMatchWindow || e.path == path,
+    );
+    recentChangedFiles.add((path: path, at: now));
+    while (recentChangedFiles.length > fileChangeMatchWindowCapacity) {
+      recentChangedFiles.removeAt(0);
+    }
+  }
+
+  /// Bumped when the SSE connection is (re)established. The server never
+  /// replays events missed while disconnected, so consumers (file tree, opened
+  /// editors) treat this as "file state may be stale" and reload. Written by
+  /// `SessionController._refreshAfterReconnect`.
+  final fileReconnectTick = 0.obs;
 
   // Backward compatibility getters
   String get currentFilePath => activeFilePath.value;
@@ -294,7 +345,22 @@ class TabletToolController extends GetxController {
   /// re-creation (IndexedStack lazy build / word-wrap toggle / tab switch)
   /// renders from cache instead of re-downloading. Does not touch [openedFiles].
   void cacheFileContent(String path, String content, {String? worktree}) {
-    _contentCache[fileKey(path, worktree)] = content;
+    final key = fileKey(path, worktree);
+    _removeContentCacheKey(key);
+    _contentCache[key] = content;
+    _contentCacheBytes += _contentBytes(content);
+    // 淘汰到只剩刚写入的这条为止：单条超大文件保留最新者，不清空整个缓存。
+    while (_contentCacheBytes > contentCacheMaxBytes &&
+        _contentCache.length > 1) {
+      _removeContentCacheKey(_contentCache.keys.first);
+    }
+  }
+
+  void _removeContentCacheKey(String key) {
+    final removed = _contentCache.remove(key);
+    if (removed != null) {
+      _contentCacheBytes -= _contentBytes(removed);
+    }
   }
 
   /// Write loaded binary file content into the cache. Evicts
@@ -321,7 +387,7 @@ class TabletToolController extends GetxController {
   /// it re-downloads instead of showing stale cached text. Called on file-change
   /// SSE events so a lazily-built tab never displays out-of-date content.
   void invalidateFileContent(String path, {String? worktree}) {
-    _contentCache.remove(fileKey(path, worktree));
+    _removeContentCacheKey(fileKey(path, worktree));
     _removeBinaryCacheKey(fileKey(path, worktree));
   }
 
@@ -353,7 +419,7 @@ class TabletToolController extends GetxController {
     fileLineJumpRequest.value = null;
     final tab = openedFiles[idx];
     openedFiles.removeAt(idx);
-    _contentCache.remove(fileKey(tab.path, tab.worktree));
+    _removeContentCacheKey(fileKey(tab.path, tab.worktree));
     _removeBinaryCacheKey(fileKey(tab.path, tab.worktree));
 
     if (activeFileKey == fileKey(tab.path, tab.worktree)) {
@@ -372,10 +438,21 @@ class TabletToolController extends GetxController {
     fileLineJumpRequest.value = null;
     openedFiles.clear();
     _contentCache.clear();
+    _contentCacheBytes = 0;
     _binaryCache.clear();
     _binaryCacheBytes = 0;
     activeFilePath.value = '';
     activeFileWorktree.value = null;
+  }
+
+  /// Clear ALL content caches (text + binary). Reconnect compensation: events
+  /// missed while the SSE stream was down cannot be enumerated, so every cached
+  /// content must be treated as possibly stale.
+  void invalidateAllFileContent() {
+    _contentCache.clear();
+    _contentCacheBytes = 0;
+    _binaryCache.clear();
+    _binaryCacheBytes = 0;
   }
 
   /// Close all files except the specified worktree+path.
@@ -385,6 +462,10 @@ class TabletToolController extends GetxController {
       (f) => f.path != path || (worktree != null && f.worktree != worktree),
     );
     _contentCache.removeWhere((key, _) => key != fileKey(path, worktree));
+    _contentCacheBytes = _contentCache.values.fold(
+      0,
+      (sum, content) => sum + _contentBytes(content),
+    );
     _binaryCache.removeWhere((key, _) => key != fileKey(path, worktree));
     _binaryCacheBytes = _binaryCache.values.fold(
       0,

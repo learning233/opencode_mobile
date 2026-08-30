@@ -79,9 +79,74 @@ void main() {
       expect(ctrl.fileChangeTick.value, 0);
     });
 
-    test('lastChangedFile starts empty', () {
+    test('recentChangedFiles starts empty and records changes', () {
       final ctrl = TabletToolController();
-      expect(ctrl.lastChangedFile.value, isEmpty);
+      expect(ctrl.recentChangedFiles, isEmpty);
+      ctrl.recordFileChange('lib/a.dart');
+      ctrl.recordFileChange('lib/b.dart');
+      expect(ctrl.recentChangedFiles.length, 2);
+      expect(ctrl.recentChangedFiles[0].path, 'lib/a.dart');
+      expect(ctrl.recentChangedFiles[1].path, 'lib/b.dart');
+    });
+
+    test('recordFileChange deduplicates same path and refreshes recency', () {
+      final ctrl = TabletToolController();
+      ctrl.recordFileChange('lib/a.dart');
+      ctrl.recordFileChange('lib/b.dart');
+      ctrl.recordFileChange('lib/a.dart');
+      // 同路径去重且移到最新位置，窗口内不产生重复条目。
+      expect(ctrl.recentChangedFiles.length, 2);
+      expect(ctrl.recentChangedFiles[0].path, 'lib/b.dart');
+      expect(ctrl.recentChangedFiles[1].path, 'lib/a.dart');
+    });
+
+    test('recordFileChange caps the window at the configured capacity', () {
+      final ctrl = TabletToolController();
+      final capacity = TabletToolController.fileChangeMatchWindowCapacity;
+      for (var i = 0; i < capacity + 5; i++) {
+        ctrl.recordFileChange('f$i.dart');
+      }
+      expect(ctrl.recentChangedFiles.length, capacity);
+      // 最旧的 5 条被 FIFO 淘汰。
+      expect(ctrl.recentChangedFiles.first.path, 'f5.dart');
+      expect(ctrl.recentChangedFiles.last.path, 'f${capacity + 4}.dart');
+    });
+  });
+
+  group('TabletToolController content cache budget', () {
+    test('cacheFileContent evicts FIFO when over the byte budget', () {
+      // _contentBytes 按 UTF-16 code unit ×2 估算：'x'*30 占 60 字节。
+      final ctrl = TabletToolController(contentCacheMaxBytes: 100);
+      ctrl.cacheFileContent('a', 'x' * 30);
+      ctrl.cacheFileContent('b', 'x' * 30);
+      // 120 > 100 → 最旧的 a 被 FIFO 淘汰。
+      expect(ctrl.cachedContent('a'), isNull);
+      expect(ctrl.cachedContent('b'), isNotNull);
+    });
+
+    test(
+      'cacheFileContent keeps the newest entry even if it alone exceeds the budget',
+      () {
+        final ctrl = TabletToolController(contentCacheMaxBytes: 10);
+        ctrl.cacheFileContent('a', 'x' * 5);
+        ctrl.cacheFileContent('b', 'y' * 100);
+        expect(ctrl.cachedContent('a'), isNull);
+        expect(ctrl.cachedContent('b'), 'y' * 100);
+      },
+    );
+
+    test('invalidateAllFileContent clears both caches and resets accounting', () {
+      final ctrl = TabletToolController(contentCacheMaxBytes: 100);
+      ctrl.cacheFileContent('a', 'x' * 30);
+      ctrl.cacheFileContent('b', 'x' * 30);
+      ctrl.cacheBinaryContent('a', Uint8List.fromList(List.filled(50, 1)));
+      ctrl.invalidateAllFileContent();
+      expect(ctrl.cachedContent('a'), isNull);
+      expect(ctrl.cachedContent('b'), isNull);
+      expect(ctrl.cachedBinaryContent('a'), isNull);
+      // 字节计数随清空归零：若未归零（120 字节残留），这条会被预算淘汰。
+      ctrl.cacheFileContent('c', 'x' * 30);
+      expect(ctrl.cachedContent('c'), isNotNull);
     });
   });
 

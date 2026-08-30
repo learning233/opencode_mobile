@@ -109,7 +109,8 @@ class ApiEndpoints {
   /// GET workspace diff (`GET /vcs/diff?mode=git|branch&context=...`).
   ///
   /// 注意：OpenCode 后端真实接口路径为 `/vcs/diff`（v1 平路径），
-  /// 返回 VcsFileDiff[]（每项含全文 patch / additions / deletions / status）。
+  /// 返回 SnapshotFileDiff[] 形态的 JSON（每项含全文 patch / additions /
+  /// deletions / status），由 `SnapshotFileDiff.fromJson` 消费。
   static const String vcsDiff = '/vcs/diff';
 
   // ── Filesystem (文件系统) ──────────────────────────────────────

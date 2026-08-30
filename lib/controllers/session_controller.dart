@@ -2345,6 +2345,16 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     for (final id in openedSessionIds.toList()) {
       unawaited(loadMessages(id, force: true, reconcileGenerating: true));
     }
+    // 文件侧补偿：断线窗口内的 file.edited / file.watcher.updated 不会补发，
+    // 无法枚举哪些文件变了，只能整体失效缓存并广播重载，让文件树与已打开
+    // 的编辑器重新拉取（与上方会话消息强制刷新同一恢复哲学）。
+    if (Get.isRegistered<ProjectController>()) {
+      Get.find<ProjectController>().invalidateDirectoryCache();
+    }
+    if (Get.isRegistered<TabletToolController>()) {
+      Get.find<TabletToolController>().invalidateAllFileContent();
+      Get.find<TabletToolController>().fileReconnectTick.value++;
+    }
   }
 
   /// 断网重连后纠正"卡住"的生成态：离线窗口内服务端已跑完但 idle 事件丢失，
@@ -2529,7 +2539,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     if (raw.isEmpty) return;
     if (Get.isRegistered<TabletToolController>()) {
       final ctrl = Get.find<TabletToolController>();
-      ctrl.lastChangedFile.value = raw;
+      ctrl.recordFileChange(raw);
       // 失效对应已打开页签的缓存，避免惰性重建时展示过期内容。SSE 事件作用域
       // 是当前活动目录，故只失效匹配当前 worktree 的页签（同相对路径的其它
       // worktree 页签内容未变，不应被波及）。
@@ -3585,7 +3595,22 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     final sid = event.sessionID;
     if (sid.isEmpty) return;
     final rawList = event.diffs;
-    if (rawList.isEmpty) return;
+    if (rawList.isEmpty) {
+      // 服务端两种路径都会发布空 diff（事件载荷为 {sessionID, diff}，见
+      // event-v2-bridge.ts 的 properties 包装）：summarize 在每回合开始
+      // （prompt.ts step===1）与结束（processor.ts）发布空 diff 作为重置
+      // 信号，revert（revert.ts）发布剩余范围的实际 diff（也可能为空）。
+      // 客户端若忽略空事件，一次 revert 写入的快照将永久非空，
+      // effectiveSessionDiffs 会一直优先命中它，遮蔽后续回合的本地聚合。
+      // 空载荷意味着 SSE 侧快照应清空，回落聚合源；sendPrompt 镜像
+      // cleanup 已先截断 revert 点之后的消息，聚合结果此时是正确的。
+      // 仅在事件确实携带 diff 键时清空（畸形缺键事件维持忽略防误清），
+      // 且只清已存在的 state，不为空事件创建运行时状态。
+      if (event.properties.containsKey('diff')) {
+        sessionRuntimeStates[sid]?.sessionDiffs.clear();
+      }
+      return;
+    }
     final list = rawList
         .whereType<Map>()
         .map((e) => SnapshotFileDiff.fromJson(Map<String, dynamic>.from(e)))
@@ -3598,10 +3623,13 @@ class SessionController extends GetxController with WidgetsBindingObserver {
   /// 获取指定消息的文件变动 Diff（带内存缓存）。
   /// 当 [force] 为 false 时，优先从 [SessionRuntimeState.fetchedMessageDiffs] 返回已缓存数据。
   /// 对于已完成的历史回合，消息 Diff 确定不可变，无需重复发起网络请求。
+  /// [throwOnError] 为 true 时请求失败向上抛出（Review 页需要区分
+  /// 「失败可重试」与「确实无 diff」）；默认 false 维持吞错返回缓存的旧语义。
   Future<List<SnapshotFileDiff>> fetchMessageDiff(
     String sessionId,
     String messageId, {
     bool force = false,
+    bool throwOnError = false,
   }) async {
     if (sessionId.isEmpty || messageId.isEmpty) return const [];
     final state = stateOf(sessionId);
@@ -3652,6 +3680,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       }
     } catch (e) {
       AppLogger.e('fetchMessageDiff failed: $e');
+      if (throwOnError) rethrow;
     }
 
     return state.fetchedMessageDiffs[messageId] ?? const [];

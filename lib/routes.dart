@@ -28,7 +28,6 @@ class AppRoutes {
   static const String home = '/';
   static const String sessionList = '/session_list';
   static const String fileList = '/file_list';
-  static const String fileEditor = '/file_editor';
   static const String settings = '/settings';
   static const String displaySettings = '/display_settings';
   static const String opencodeSettings = '/opencode_settings';

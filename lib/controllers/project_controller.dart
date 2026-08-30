@@ -256,6 +256,11 @@ class ProjectController extends GetxController {
   /// 不得原地修改（增删排序都会污染缓存）。
   final Map<String, List<FileEntry>> directoryCache = {};
 
+  /// 缓存代际：任何失效操作都会递增。[loadDirectory] 在请求发出前记录
+  /// 代际，响应返回后代际已变（期间发生过失效）则跳过写回，避免在途
+  /// 旧响应把过期列表写回已失效的缓存（下次非 force 读取会命中过期数据）。
+  int _directoryCacheGeneration = 0;
+
   /// 始终带 worktree 前缀（null 与空串同为空前缀），保证同一目录
   /// 只会产生一种 key 形态。
   static String dirKey(String path, String? worktree) =>
@@ -274,6 +279,8 @@ class ProjectController extends GetxController {
     if (!force && directoryCache.containsKey(key)) {
       return directoryCache[key]!;
     }
+
+    final generation = _directoryCacheGeneration;
 
     final response = await _client.get(
       ApiEndpoints.fsList,
@@ -297,7 +304,9 @@ class ProjectController extends GetxController {
         return a.name.toLowerCase().compareTo(b.name.toLowerCase());
       });
 
-      directoryCache[key] = list;
+      if (generation == _directoryCacheGeneration) {
+        directoryCache[key] = list;
+      }
       return list;
     } else {
       throw Exception('Server error: ${response.statusCode}');
@@ -306,6 +315,7 @@ class ProjectController extends GetxController {
 
   /// 失效目录缓存。若指定 [path]，只失效对应目录；若未指定，失效对应 [worktree]（或全部）的目录缓存。
   void invalidateDirectoryCache({String? path, String? worktree}) {
+    _directoryCacheGeneration++;
     if (path != null) {
       final effectiveWorktree = worktree ?? activeProject.value?.worktree ?? '';
       directoryCache.remove(dirKey(path, effectiveWorktree));

@@ -21,6 +21,11 @@ class _TabletToolPanelState extends State<TabletToolPanel>
   late TabController _tabController;
   Worker? _tabWorker;
   final Map<String, GlobalKey> _tabKeys = {};
+
+  /// Last tab the file tab bar auto-scrolled to. Prevents every Obx rebuild
+  /// from yanking the horizontal scroll back to the active tab (fighting the
+  /// user's manual scroll); only a *changed* selection triggers ensureVisible.
+  String _lastEnsuredTab = '';
   PageController? _codePageController;
 
   @override
@@ -410,7 +415,10 @@ class _TabletToolPanelState extends State<TabletToolPanel>
       final files = toolCtrl.openedFiles;
       final activeKey = toolCtrl.activeFileKey;
 
-      if (files.isEmpty) return const SizedBox.shrink();
+      if (files.isEmpty) {
+        _lastEnsuredTab = '';
+        return const SizedBox.shrink();
+      }
 
       // Prune keys of closed files; _tabKeys is only ever appended otherwise.
       final keys = files
@@ -418,19 +426,22 @@ class _TabletToolPanelState extends State<TabletToolPanel>
           .toSet();
       _tabKeys.removeWhere((path, _) => !keys.contains(path));
 
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (activeKey.isNotEmpty) {
-          final key = _tabKeys[activeKey];
-          if (key?.currentContext != null) {
-            Scrollable.ensureVisible(
-              key!.currentContext!,
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.easeInOut,
-              alignment: 0.5,
-            );
+      if (activeKey != _lastEnsuredTab) {
+        _lastEnsuredTab = activeKey;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (activeKey.isNotEmpty) {
+            final key = _tabKeys[activeKey];
+            if (key?.currentContext != null) {
+              Scrollable.ensureVisible(
+                key!.currentContext!,
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeInOut,
+                alignment: 0.5,
+              );
+            }
           }
-        }
-      });
+        });
+      }
 
       return Container(
         height: 40,

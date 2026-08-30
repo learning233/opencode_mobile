@@ -19,6 +19,11 @@ class _FilePageState extends State<FilePage> {
   final Map<String, GlobalKey> _tabKeys = {};
   PageController? _pageController;
 
+  /// Last tab the tab bar auto-scrolled to. Prevents every Obx rebuild from
+  /// yanking the horizontal scroll back to the active tab (fighting the
+  /// user's manual scroll); only a *changed* selection triggers ensureVisible.
+  String _lastEnsuredTab = '';
+
   @override
   void initState() {
     super.initState();
@@ -263,6 +268,7 @@ class _FilePageState extends State<FilePage> {
 
       if (files.isEmpty) {
         _tabKeys.clear();
+        _lastEnsuredTab = '';
         return const SizedBox.shrink();
       }
 
@@ -272,19 +278,22 @@ class _FilePageState extends State<FilePage> {
           .toSet();
       _tabKeys.removeWhere((path, _) => !keys.contains(path));
 
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (activeKey.isNotEmpty) {
-          final key = _tabKeys[activeKey];
-          if (key?.currentContext != null) {
-            Scrollable.ensureVisible(
-              key!.currentContext!,
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.easeInOut,
-              alignment: 0.5,
-            );
+      if (activeKey != _lastEnsuredTab) {
+        _lastEnsuredTab = activeKey;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (activeKey.isNotEmpty) {
+            final key = _tabKeys[activeKey];
+            if (key?.currentContext != null) {
+              Scrollable.ensureVisible(
+                key!.currentContext!,
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeInOut,
+                alignment: 0.5,
+              );
+            }
           }
-        }
-      });
+        });
+      }
 
       return Container(
         height: 38,

@@ -78,6 +78,14 @@ class SessionController extends GetxController with WidgetsBindingObserver {
   /// Maps question request IDs → tool-part refs (desktop `_questionRequests`).
   final _questionRequests = <String, QuestionRequestRef>{};
 
+  /// 本地发送在途的会话 ID 集合：从 sendPrompt 置位 `isGenerating=true` 到
+  /// prompt POST 返回（成功或失败）之间该会话在集合内。用于两处竞态防护：
+  /// ① sendPrompt 入口发现同会话在途时改为排队，避免 abort 网络往返窗口或
+  /// stale 结束事件误复位 isGenerating 期间并发开出第二回合（双 POST、双乐观
+  /// 消息）；② SSE 结束事件（session.idle / session.error / status idle）在
+  /// 在途窗口内到达时视为上一回合的迟到事件跳过（详见各 handler 内守卫）。
+  final _localSendInFlight = <String>{};
+
   /// Pending clarifying-question tool part in [sessionId] messages.
   Part? pendingQuestionPartFor(String sessionId) {
     if (sessionId.isEmpty) return null;
@@ -708,6 +716,10 @@ class SessionController extends GetxController with WidgetsBindingObserver {
           }
         }
         unawaited(_refreshSubtaskOwners());
+        // 冷启动/切项目后补拉服务端仍挂起的权限请求（asked 不重放，见
+        // _restorePendingPermissions）。重连路径由 _refreshAfterReconnect 单独
+        // 调用（fetchSessions 可能被同代际去重跳过）。幂等，重复调用无害。
+        unawaited(_restorePendingPermissions());
 
         if (restoreOpened) {
           // Restore opened sessions
@@ -1011,6 +1023,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       openedSessionIds.remove(id);
       _feedbackGeneratingSessions.remove(id);
       clearSubtaskTracking(id);
+      _forgetQuestionRequestsForSession(id);
       _discardPendingPartDeltas(sessionIds: {id});
       _persistOpenedIds();
       if (activeSessionId.value == id) {
@@ -1067,6 +1080,10 @@ class SessionController extends GetxController with WidgetsBindingObserver {
   /// getOrCreateSessionState 会按未打开会话的既有逻辑重建。
   void _releaseSessionState(String id) {
     if (id.isEmpty || _parentSessionIds.containsKey(id)) return;
+    // 会话仍持有待回复的权限请求时保留状态：asked 不重放、loadMessages 也不
+    // 恢复权限，释放会让重开页签后的卡片永久消失（agent 挂起在等待回复上）。
+    // 回复/级联 replied 清槽后再关闭页签即可正常释放。
+    if (sessionRuntimeStates[id]?.pendingPermission.value != null) return;
     _discardPendingPartDeltas(sessionIds: {id});
     sessionRuntimeStates.remove(id);
   }
@@ -1288,10 +1305,12 @@ class SessionController extends GetxController with WidgetsBindingObserver {
           }
         }
 
-        // Batch restore of idle sessions: leftover pending questions are stale.
-        // Skip while generating so a live question is not wiped mid-turn.
+        // Batch restore of idle sessions: leftover pending questions are stale
+        // unless the server still has them pending (live question must survive
+        // a cold start — see _markStaleQuestionsSkipped). Skip while generating
+        // so a live question is not wiped mid-turn.
         if (!state.isGenerating.value) {
-          _markStaleQuestionsSkipped(state);
+          await _markStaleQuestionsSkipped(state);
         }
       }
     } catch (e) {
@@ -1433,6 +1452,27 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     final filesToSend = overrideFiles ?? state.attachedFiles.toList();
     if (text.trim().isEmpty && images.isEmpty && filesToSend.isEmpty) return;
 
+    // 回合互斥：同会话已有本地发送在途（POST 未返回）时，本次发送转为排队，
+    // 待回合结束由 _checkAndSendPendingPrompt 发出。覆盖两类双回合窗口：
+    // sendPendingPromptImmediately 的 abort 网络往返期间（isGenerating 已被
+    // abort 置 false）的用户并发发送、stale 结束事件误复位 isGenerating 后
+    // 的用户发送（后者在途期间 SSE 结束事件被 handler 守卫跳过）。
+    if (_localSendInFlight.contains(sessionId)) {
+      _queuePendingPrompt(
+        state,
+        text,
+        images,
+        filesToSend,
+        overrideAgent: overrideAgent,
+        overrideModel: overrideModel,
+      );
+      if (overrideFiles == null) {
+        state.attachedFiles.clear();
+        state.attachedImages.clear();
+      }
+      return;
+    }
+
     // 发送新消息时自动折叠 changefiles：新回合文件变化不再触发右侧持续刷新，
     // 用户重新展开时（现有 onToggle 会 openReviewSession）再刷新右侧。
     if (state.expandedSection.value == SessionExpandedSection.diff) {
@@ -1441,12 +1481,14 @@ class SessionController extends GetxController with WidgetsBindingObserver {
 
     // 回滚后继续发新消息 = 会话继续：镜像服务端 prompt 时的 revert.cleanup，
     // 丢弃回滚点之后的消息并清除本地截断，否则新消息会被 revertMessageID 隐藏。
+    var didRevertTrim = false;
     if (state.revertMessageID.value.isNotEmpty) {
       final revertIdx = state.messages.indexWhere(
         (m) => m.id == state.revertMessageID.value,
       );
       if (revertIdx != -1) {
         state.messages.removeRange(revertIdx, state.messages.length);
+        didRevertTrim = true;
       }
       state.revertMessageID.value = '';
     }
@@ -1490,6 +1532,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     final selectedModelKey = overrideModel ?? state.selectedModel.value;
     final selectedAgentName = overrideAgent ?? state.selectedAgent.value;
 
+    _localSendInFlight.add(sessionId);
     state.isGenerating.value = true;
     _markFeedbackGenerating(sessionId);
     state.generatingAgent.value = selectedAgentName;
@@ -1652,11 +1695,14 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         ApiEndpoints.sessionPromptAsync(sessionId),
         data: body,
       );
+      _localSendInFlight.remove(sessionId);
     } catch (e) {
+      _localSendInFlight.remove(sessionId);
       AppLogger.e('sendPrompt failed: $e');
       state.isGenerating.value = false;
       state.isRetrying.value = false;
       state.generatingAgent.value = '';
+      state.sessionStatus.value = 'error';
       state.messages.removeWhere((m) => m.id == messageId);
       final errMsg = ErrorFormatter.format(e);
       state.lastError.value = errMsg.isNotEmpty ? errMsg : e.toString();
@@ -1673,6 +1719,11 @@ class SessionController extends GetxController with WidgetsBindingObserver {
             state.pendingPromptAttachedFiles.add(f);
           }
         }
+      }
+      if (didRevertTrim) {
+        // 本地截断已发生但服务端 prompt 失败：服务端的 revert 状态与被截断的
+        // 消息仍在，强刷历史恢复一致，避免本地与服务端 diverge 到下次 reload。
+        unawaited(loadMessages(sessionId, force: true));
       }
     }
   }
@@ -1737,7 +1788,10 @@ class SessionController extends GetxController with WidgetsBindingObserver {
             try {
               await _client.post(ApiEndpoints.sessionAbort(child.id));
               _markRunningToolPartsAborted(childState);
-            } catch (_) {}
+            } catch (e) {
+              // 吞掉异常但留痕：否则 UI 已显示停止而子会话实际仍在运行时无迹可查。
+              AppLogger.e('child abort failed (${child.id}): $e');
+            }
           }),
         );
       }
@@ -1751,8 +1805,14 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       // spinner always stops. Scoped strictly to the aborted session only.
       _markRunningToolPartsAborted(state);
     } catch (e) {
-      state.suppressAbortErrorUntilMs = 0;
       AppLogger.e('abortGeneration failed: $e');
+      // 回滚本地假 idle：POST 失败多半意味着服务端仍在运行。不回滚会让
+      // wasAborted 在 _onSessionStatus 早退吞掉后续所有 running 状态事件，
+      // UI 显示已停止且 stop 按钮消失、无法再次停止。保留抑制窗：若服务端
+      // 其实已中止，随后的 idle / abort error 事件会把状态再次纠正。
+      state.wasAborted.value = false;
+      state.isGenerating.value = true;
+      state.sessionStatus.value = 'running';
     }
   }
 
@@ -2033,6 +2093,47 @@ class SessionController extends GetxController with WidgetsBindingObserver {
 
   // ── Permission ──
 
+  /// 拉取服务端仍在等待回复的权限请求并回填本地卡片状态。
+  ///
+  /// `permission.asked` 只在请求产生时发布一次（服务端 pending 挂起期间不重发），
+  /// 冷启动或 SSE 断线窗口内到达的请求若不主动拉取将永远不可见 —— agent 会
+  /// 一直挂起在等待回复上。服务端 `GET /permission` 返回的 item 结构与 asked
+  /// payload 一致，可直接交给 [PendingPermission.fromEvent]。带代际守卫，
+  /// 切项目后丢弃旧目录的响应。
+  Future<void> _restorePendingPermissions() async {
+    final seq = _sessionFetchSeq;
+    try {
+      final response = await _client.get(ApiEndpoints.permissions);
+      if (seq != _sessionFetchSeq) return;
+      if (response.statusCode != 200) return;
+      final data = response.data;
+      final List rawList;
+      if (data is List) {
+        rawList = data;
+      } else if (data is Map && data['data'] is List) {
+        rawList = data['data'] as List;
+      } else {
+        rawList = [];
+      }
+      for (final item in rawList) {
+        if (item is! Map) continue;
+        final pending = PendingPermission.fromEvent(
+          Map<String, dynamic>.from(item),
+        );
+        if (pending.id.isEmpty || pending.sessionID.isEmpty) continue;
+        // 未打开页签的会话（如后台子会话）也可能持有请求：按需建最小状态，
+        // 让 sessionIdWithPendingPermission 能把卡片上浮到根会话输入区。
+        // pending 数量有界（服务端 pending Map），不会造成状态膨胀。
+        final state = getOrCreateSessionState(pending.sessionID);
+        if (state.pendingPermission.value?.id != pending.id) {
+          state.pendingPermission.value = pending;
+        }
+      }
+    } catch (e) {
+      AppLogger.w('restore pending permissions failed: $e');
+    }
+  }
+
   Future<void> respondPermission(
     String id,
     String action, {
@@ -2050,7 +2151,9 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         ApiEndpoints.permissionReply(id),
         data: {'reply': reply},
       );
-      getOrCreateSessionState(sid).pendingPermission.value = null;
+      // 仅清已存在的状态：在途回复期间状态可能已被释放（页签关闭/切项目），
+      // getOrCreateSessionState 会把它以空壳形式复活（违背代际丢弃设计）。
+      sessionRuntimeStates[sid]?.pendingPermission.value = null;
     } catch (e) {
       AppLogger.e('respondPermission failed: $e');
     }
@@ -2237,6 +2340,8 @@ class SessionController extends GetxController with WidgetsBindingObserver {
   void _refreshAfterReconnect() {
     AppLogger.i('SSE reconnected — refreshing opened sessions');
     unawaited(fetchSessions(restoreOpened: false));
+    // 断线窗口内服务端产生的权限请求不会重发 asked，主动补拉挂起列表。
+    unawaited(_restorePendingPermissions());
     for (final id in openedSessionIds.toList()) {
       unawaited(loadMessages(id, force: true, reconcileGenerating: true));
     }
@@ -2511,6 +2616,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     _feedbackGeneratingSessions.remove(sid);
     openedSessionIds.remove(sid);
     clearSubtaskTracking(sid);
+    _forgetQuestionRequestsForSession(sid);
     // The active session was deleted on the server: re-point to another open
     // session, mirroring the fallback in deleteSession (which the SSE path
     // previously lacked). 没有已打开页签时置空，避免标题/内容错位。
@@ -2529,6 +2635,13 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     final isIdle = st == 'idle' || st.isEmpty;
     final wasRetrying = state.isRetrying.value;
     final retryError = _formatRetryStatusError(event.status);
+
+    if (isIdle && _localSendInFlight.contains(sid)) {
+      // 本地发送在途（POST 未返回）：idle 只能是上一回合的迟到事件，放行会
+      // 误复位 isGenerating 并把队列提前 flush 成并发第二回合。
+      AppLogger.d('skip stale idle status while local send in flight: $sid');
+      return;
+    }
 
     if (state.wasAborted.value && !isIdle) {
       return;
@@ -2569,6 +2682,12 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         ? event.sessionID
         : activeSessionId.value;
     if (sid.isEmpty) return;
+    if (_localSendInFlight.contains(sid)) {
+      // 本地发送在途：idle 只能是上一回合的迟到事件，跳过以免误复位生成态、
+      // 并把队列提前 flush 成与在途 POST 并发的第二回合。
+      AppLogger.d('skip stale session.idle while local send in flight: $sid');
+      return;
+    }
     final state = getOrCreateSessionState(sid);
     final wasRetrying = state.isRetrying.value;
     final wasGenerating =
@@ -2641,6 +2760,19 @@ class SessionController extends GetxController with WidgetsBindingObserver {
 
   void _onSessionError(SseEvent event) {
     final errorSessionId = event.sessionID;
+    final effectiveErrorId = errorSessionId.isNotEmpty
+        ? errorSessionId
+        : activeSessionId.value;
+    if (effectiveErrorId.isNotEmpty &&
+        _localSendInFlight.contains(effectiveErrorId)) {
+      // 本地发送在途：error 只能是上一回合的迟到事件（或失败 prompt 的回声），
+      // 跳过以免误复位生成态、并把队列提前 flush 成并发第二回合。
+      AppLogger.d(
+        'skip stale session.error while local send in flight: '
+        '$effectiveErrorId',
+      );
+      return;
+    }
     final isAbortError = _isAbortError(event.error);
     final isContextOverflowWithAutoCompaction =
         _isContextOverflowError(event.error) && _isAutoCompactionEnabled();
@@ -2700,9 +2832,6 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       }
     }
 
-    final effectiveErrorId = errorSessionId.isNotEmpty
-        ? errorSessionId
-        : activeSessionId.value;
     // Error feedback: skip abort errors (manual abort) and auto-compaction.
     if (!isAbortError && !suppressedAutoCompactionError) {
       _feedbackGeneratingSessions.remove(effectiveErrorId);
@@ -3120,7 +3249,18 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         ? pending.sessionID
         : event.sessionID;
     if (sid.isEmpty) return;
-    getOrCreateSessionState(sid).pendingPermission.value = pending;
+    final targetState = getOrCreateSessionState(sid);
+    final existing = targetState.pendingPermission.value;
+    if (existing != null && existing.id != pending.id) {
+      // 客户端每会话只保留一个待决权限（服务端 pending 是 Map，可同时挂多个），
+      // 覆盖后旧请求不可见不可答。留痕便于排查「卡片少了」类反馈；
+      // 完整多请求队列化见 docs/代码审查.md 遗留问题。
+      AppLogger.w(
+        'permission.asked overwrites pending ${existing.id} '
+        'with ${pending.id} in session $sid',
+      );
+    }
+    targetState.pendingPermission.value = pending;
 
     _notifyFeedback(
       type: FeedbackType.permissionRequested,
@@ -3197,6 +3337,13 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     }
     if (existing == null) return;
     _questionRequests[existing.key] = existing.value.copyWith(partId: part.id);
+  }
+
+  /// 丢弃某会话名下的提问引用。会话被删除后这些引用永久失效，残留会导致
+  /// `questionRequestIDForCallID` 命中已删会话的 requestID 且内存只增不减。
+  void _forgetQuestionRequestsForSession(String sessionId) {
+    if (sessionId.isEmpty) return;
+    _questionRequests.removeWhere((_, ref) => ref.sessionId == sessionId);
   }
 
   void _onQuestionResolved(SseEvent event, {required bool rejected}) {
@@ -3301,16 +3448,65 @@ class SessionController extends GetxController with WidgetsBindingObserver {
   }
 
   /// After batch message load, mark leftover pending questions as skipped.
-  void _markStaleQuestionsSkipped(SessionRuntimeState state) {
+  ///
+  /// 历史 batch load 后 running/pending 的 question part 有两种可能：(a) 服务端
+  /// 仍在等待回答的活跃提问（冷启动时 isGenerating 恒为 false，原有守卫拦不住）
+  /// —— 必须保留，否则提问卡消失、agent 永久挂起；(b) 服务端已无对应 pending
+  /// 的遗留脏数据（如服务端实例重启 finalizer 统一失败后未回写 part）—— 标记
+  /// skipped 让卡片退场。以 `GET /question` 的服务端 pending 列表为准校准
+  /// （按 part.id ↔ 请求 id、part.callID ↔ tool.callID 双路匹配）；拉取失败时
+  /// 保守跳过清理：宁可卡片多留（可手动拒绝），不可误杀活跃提问。
+  Future<void> _markStaleQuestionsSkipped(SessionRuntimeState state) async {
+    final liveRequestIds = <String>{};
+    final liveCallIds = <String>{};
+    try {
+      final response = await _client.get(ApiEndpoints.questions);
+      if (response.statusCode != 200) {
+        AppLogger.w(
+          'mark stale questions: GET /question returned '
+          '${response.statusCode}, skip cleanup',
+        );
+        return;
+      }
+      final data = response.data;
+      final List rawList;
+      if (data is List) {
+        rawList = data;
+      } else if (data is Map && data['data'] is List) {
+        rawList = data['data'] as List;
+      } else {
+        rawList = [];
+      }
+      for (final item in rawList) {
+        if (item is! Map) continue;
+        // 只关心本会话的 pending；callID 全局唯一，跨会话不会误保。
+        final itemSession = item['sessionID']?.toString() ?? '';
+        if (itemSession.isNotEmpty && itemSession != state.sessionId) continue;
+        final id = item['id']?.toString() ?? '';
+        if (id.isNotEmpty) liveRequestIds.add(id);
+        final tool = item['tool'];
+        if (tool is Map) {
+          final callId = tool['callID']?.toString() ?? '';
+          if (callId.isNotEmpty) liveCallIds.add(callId);
+        }
+      }
+    } catch (e) {
+      AppLogger.w('mark stale questions: GET /question failed: $e, skip cleanup');
+      return;
+    }
+
     for (int mi = 0; mi < state.messages.length; mi++) {
       final msg = state.messages[mi];
       var changed = false;
       final newParts = <Part>[];
       for (final part in msg.parts) {
+        final isLiveQuestion = liveRequestIds.contains(part.id) ||
+            liveCallIds.contains(part.callID);
         if (part.type == PartType.tool &&
             part.toolName == 'question' &&
             (part.toolStatus == ToolStateStatus.running ||
-                part.toolStatus == ToolStateStatus.pending)) {
+                part.toolStatus == ToolStateStatus.pending) &&
+            !isLiveQuestion) {
           final modifiedRaw = Map<String, dynamic>.from(part.raw);
           final modifiedState = Map<String, dynamic>.from(
             (part.raw['state'] as Map?) ?? const {},
@@ -3346,12 +3542,24 @@ class SessionController extends GetxController with WidgetsBindingObserver {
 
   void _onPermissionReplied(SseEvent event) {
     final sid = event.sessionID;
-    if (sid.isEmpty) return;
     final requestId =
         event.properties['id']?.toString() ??
         event.properties['requestID']?.toString() ??
         '';
-    final state = getOrCreateSessionState(sid);
+    if (sid.isEmpty) {
+      // 事件缺 sessionID 时按 requestID 全局匹配清槽，避免卡片残留。
+      if (requestId.isEmpty) return;
+      for (final state in sessionRuntimeStates.values) {
+        if (state.pendingPermission.value?.id == requestId) {
+          state.pendingPermission.value = null;
+        }
+      }
+      return;
+    }
+    // 不用 getOrCreateSessionState：状态已被释放（页签关闭）时无需为一条
+    // replied 事件重建空壳；槽位随状态一起消失，本地无需再清。
+    final state = sessionRuntimeStates[sid];
+    if (state == null) return;
     final pending = state.pendingPermission.value;
     if (pending == null) return;
     if (requestId.isEmpty || pending.id == requestId) {

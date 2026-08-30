@@ -277,6 +277,14 @@ class _OpencodeAdvancedPageState extends State<OpencodeAdvancedPage> {
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () async {
+              // 有未保存编辑时不刷新覆盖，避免静默丢弃用户输入。
+              if (_watcherDirty ||
+                  _pluginDirty ||
+                  _instructionDirty ||
+                  _attachmentDirty) {
+                Snack.warning(LocaleKeys.edUnsavedChanges.tr);
+                return;
+              }
               await _settings.fetchGlobalConfig();
               if (!mounted) return;
               setState(_load);

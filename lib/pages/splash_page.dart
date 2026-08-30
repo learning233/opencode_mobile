@@ -91,6 +91,16 @@ class _SplashPageState extends State<SplashPage> {
 
   Future<void> _onConnect() async {
     if (!_formKey.currentState!.validate()) return;
+    // 与连接页统一：补 scheme、剥误填路径；无法解析出 host 时直接提示。
+    final url = normalizeServerUrl(_urlController.text);
+    if (url == null) {
+      setState(() {
+        _isConnecting = false;
+        _errorText = LocaleKeys.connectionValidUrlRequired.tr;
+      });
+      return;
+    }
+    _urlController.text = url;
     final seq = ++_connectSeq;
     setState(() {
       _isConnecting = true;
@@ -98,7 +108,7 @@ class _SplashPageState extends State<SplashPage> {
     });
     try {
       final result = await SidecarManager.instance.updateConnection(
-        _urlController.text,
+        url,
         _usernameController.text,
         _passwordController.text,
       );

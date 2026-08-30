@@ -119,7 +119,10 @@ class _OpencodeModelsPageState extends State<OpencodeModelsPage> {
                   value: _settings.smallModel ?? '',
                   items: modelConfigIds,
                   isLoading: _session.isLoadingModels.value,
-                  onChanged: (v) => _settings.setSmallModel(v),
+                  onChanged: (v) async {
+                    final ok = await _settings.setSmallModel(v);
+                    if (!ok) Snack.error(LocaleKeys.save.tr);
+                  },
                   display: (v) => _modelDisplayName(v, models, providerNames),
                 ),
               ],

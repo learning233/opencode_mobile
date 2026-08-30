@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:image/image.dart' as img;
@@ -63,5 +64,26 @@ List<PickedImage> compressImagesSync(
   return [
     for (final image in images)
       compressImageSync(image, maxDim: maxDim, quality: quality),
+  ];
+}
+
+/// Compress a batch of images and base64-encode them in the same pass.
+///
+/// Encoding is deliberately done here (not on the caller's isolate): several
+/// megabytes of `base64Encode` would otherwise stall the UI thread at send
+/// time. Returns one record per input image, in order, with the (possibly
+/// unchanged) image plus its data-URL-ready base64 string.
+List<({PickedImage image, String base64})> compressAndEncodeImagesSync(
+  List<PickedImage> images, {
+  int maxDim = 1280,
+  int quality = 85,
+}) {
+  return [
+    for (final image in compressImagesSync(
+      images,
+      maxDim: maxDim,
+      quality: quality,
+    ))
+      (image: image, base64: base64Encode(image.bytes)),
   ];
 }

@@ -107,19 +107,15 @@ class _PromptInputState extends State<PromptInput> with WidgetsBindingObserver {
 
   /// 统一发送入口：文本 + 已附图片/文件一并发送，发送后清空附件。
   /// [clearInput] 为 false 时（长按语音直发）不清空输入框。
-  void _submitMessage(String text, {bool clearInput = true}) {
+  Future<void> _submitMessage(String text, {bool clearInput = true}) async {
     final t = text.trim();
     final state = _ctrl.stateOf(widget.sessionId);
     final files = state.attachedFiles.toList();
     final images = state.attachedImages.toList();
     if (t.isEmpty && files.isEmpty && images.isEmpty) return;
     _focusNode.unfocus();
-    _ctrl.sendPrompt(
-      t,
-      images: images,
-      overrideFiles: files.isNotEmpty ? files : null,
-      targetSessionId: widget.sessionId,
-    );
+    // 先按原时序清空输入与附件（乐观上屏），再等待发送结果；
+    // 失败时在下方回填，不在 POST 窗口保留输入以免重复提交。
     if (clearInput) {
       _textController.clear();
       _hasText = false;
@@ -127,6 +123,28 @@ class _PromptInputState extends State<PromptInput> with WidgetsBindingObserver {
     state.attachedFiles.clear();
     state.attachedImages.clear();
     _voiceCtrl.onTextSubmitted(_textController);
+    final ok = await _ctrl.sendPrompt(
+      t,
+      images: images,
+      overrideFiles: files.isNotEmpty ? files : null,
+      targetSessionId: widget.sessionId,
+    );
+    if (ok) return;
+    // 发送失败（排队/重试等成功路径除外）：把内容还给输入框与附件栏，
+    // 避免静默丢失；用户可修改后重发。仅在各自为空时回填，不覆盖新输入。
+    if (_textController.text.trim().isEmpty) {
+      _textController.text = t;
+      _textController.selection = TextSelection.fromPosition(
+        TextPosition(offset: _textController.text.length),
+      );
+      _hasText = true;
+    }
+    if (state.attachedImages.isEmpty && images.isNotEmpty) {
+      state.attachedImages.addAll(images);
+    }
+    if (state.attachedFiles.isEmpty && files.isNotEmpty) {
+      state.attachedFiles.addAll(files);
+    }
   }
 
   /// 语音自动发送：识别到“发送指令”后由 VoiceInputController 回调调用，
@@ -164,15 +182,16 @@ class _PromptInputState extends State<PromptInput> with WidgetsBindingObserver {
       final bytes = await xfile.readAsBytes();
       if (bytes.isEmpty) continue;
       final ext = _extFromPath(xfile.path);
+      // HEIC 专用判断须在 mime 查表之前（表内无 heic，否则永远走通用提示）。
+      if (_unsupportedImageExts.contains(ext)) {
+        Snack.warning(LocaleKeys.mobileImageHeicUnsupported.tr);
+        continue;
+      }
       final mime = _imageMimeByExt[ext];
       if (mime == null) {
         Snack.warning(
           LocaleKeys.mobileImageUnsupportedFormat.trParams({'ext': ext}),
         );
-        continue;
-      }
-      if (_unsupportedImageExts.contains(ext)) {
-        Snack.warning(LocaleKeys.mobileImageHeicUnsupported.tr);
         continue;
       }
       state.attachedImages.add((bytes: bytes, mime: mime, ext: ext));
@@ -217,8 +236,8 @@ class _PromptInputState extends State<PromptInput> with WidgetsBindingObserver {
         return;
       }
       final cleaned = result.trim();
-      // 图片已由识图文本替代，移除附件并回填输入框。
-      state.attachedImages.removeRange(0, state.attachedImages.length);
+      // 仅移除本次送去识图的图片；描述期间新选的图片保留。
+      state.attachedImages.removeWhere((img) => images.contains(img));
       final current = _textController.text;
       if (current.trim().isEmpty) {
         _textController.text = cleaned;
@@ -1528,7 +1547,12 @@ class _ImageChipState extends State<_ImageChip> {
             Positioned.fill(
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(7),
-                child: Image.memory(widget.bytes, fit: BoxFit.cover),
+                // 52px 缩略图无需全分辨率解码，限制缓存尺寸降内存。
+                child: Image.memory(
+                  widget.bytes,
+                  fit: BoxFit.cover,
+                  cacheWidth: 160,
+                ),
               ),
             ),
             Positioned(

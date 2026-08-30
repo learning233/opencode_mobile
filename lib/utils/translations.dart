@@ -1038,6 +1038,7 @@ class LocaleKeys {
   static const mcpLocal = "mcp_local";
   static const mcpRemote = "mcp_remote";
   static const mcpNameRequired = "mcp_name_required";
+  static const mcpNameExists = "mcp_name_exists";
   static const mcpUrlRequired = "mcp_url_required";
   static const mcpCommandRequired = "mcp_command_required";
   static const mcpAddFailed = "mcp_add_failed";
@@ -1062,6 +1063,7 @@ class LocaleKeys {
   static const modelsUpdateVisibilityFailed = "models_update_visibility_failed";
   static const connectionValidUrlRequired = "connection_valid_url_required";
   static const connectionReconnected = "connection_reconnected";
+  static const connectionRefreshFailed = "connection_refresh_failed";
   static const connectionReconnectFailed = "connection_reconnect_failed";
 
   // ── Browser ──
@@ -2192,6 +2194,7 @@ class Messages extends Translations {
     LocaleKeys.mcpLocal: '本地',
     LocaleKeys.mcpRemote: '远程',
     LocaleKeys.mcpNameRequired: '请输入名称',
+    LocaleKeys.mcpNameExists: '已存在同名 MCP 服务器：@name',
     LocaleKeys.mcpUrlRequired: '请输入 URL',
     LocaleKeys.mcpCommandRequired: '请输入命令',
     LocaleKeys.mcpAddFailed: '添加 MCP 失败',
@@ -2216,6 +2219,7 @@ class Messages extends Translations {
     LocaleKeys.modelsUpdateVisibilityFailed: '更新模型可见性失败',
     LocaleKeys.connectionValidUrlRequired: '请输入有效的 http(s) URL',
     LocaleKeys.connectionReconnected: '重新连接成功',
+    LocaleKeys.connectionRefreshFailed: '已连接，但数据刷新失败',
     LocaleKeys.connectionReconnectFailed: '重新连接失败',
 
     // ── Browser ──
@@ -3429,6 +3433,7 @@ class Messages extends Translations {
     LocaleKeys.mcpLocal: 'Local',
     LocaleKeys.mcpRemote: 'Remote',
     LocaleKeys.mcpNameRequired: 'Name is required',
+    LocaleKeys.mcpNameExists: 'MCP server "@name" already exists',
     LocaleKeys.mcpUrlRequired: 'URL is required',
     LocaleKeys.mcpCommandRequired: 'Command is required',
     LocaleKeys.mcpAddFailed: 'Failed to add MCP',
@@ -3455,6 +3460,7 @@ class Messages extends Translations {
         'Failed to update model visibility',
     LocaleKeys.connectionValidUrlRequired: 'Enter a valid http(s) URL',
     LocaleKeys.connectionReconnected: 'Reconnected successfully',
+    LocaleKeys.connectionRefreshFailed: 'Connected, but data refresh failed',
     LocaleKeys.connectionReconnectFailed: 'Failed to reconnect',
 
     // ── Browser ──

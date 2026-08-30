@@ -92,8 +92,9 @@ class _AboutPageState extends State<AboutPage> {
     } catch (_) {
       if (mounted) {
         setState(() {
-          _version = '0.9.8';
-          _buildNumber = '1';
+          // 回退显示「未知」而非一个看似真实的版本号。
+          _version = LocaleKeys.mobileUnknown.tr;
+          _buildNumber = '';
         });
       }
     }

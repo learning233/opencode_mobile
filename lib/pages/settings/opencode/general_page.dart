@@ -44,13 +44,19 @@ class _OpencodeGeneralPageState extends State<OpencodeGeneralPage> {
     _usernameCtrl.text = _settings.username ?? '';
   }
 
+  /// 统一保存反馈：控制器不再抛异常，只以返回值表达成败；失败提示（成功静默）。
+  Future<void> _applyPatch(Future<bool> op) async {
+    final ok = await op;
+    if (!ok) Snack.error(LocaleKeys.save.tr);
+  }
+
   Future<void> _saveUsername() async {
     final value = _usernameCtrl.text.trim();
-    try {
-      await _settings.setUsername(value);
+    final ok = await _settings.setUsername(value);
+    if (ok) {
       _usernameDirty = false;
-    } catch (e) {
-      Snack.error('${LocaleKeys.generalSaveUsernameFailed.tr}: $e');
+    } else {
+      Snack.error(LocaleKeys.generalSaveUsernameFailed.tr);
     }
   }
 
@@ -95,7 +101,7 @@ class _OpencodeGeneralPageState extends State<OpencodeGeneralPage> {
                   value: _settings.shell ?? '',
                   items: shells,
                   isLoading: _settings.isLoadingShells.value,
-                  onChanged: (v) => _settings.setShell(v),
+                  onChanged: (v) => _applyPatch(_settings.setShell(v)),
                   display: (v) =>
                       v.isEmpty ? LocaleKeys.default_.tr : v.split('/').last,
                 );
@@ -108,7 +114,7 @@ class _OpencodeGeneralPageState extends State<OpencodeGeneralPage> {
                   value: _settings.logLevel ?? 'INFO',
                   options: SettingsController.logLevels,
                   labels: const ['Debug', 'Info', 'Warn', 'Error'],
-                  onChanged: (v) => _settings.setLogLevel(v),
+                  onChanged: (v) => _applyPatch(_settings.setLogLevel(v)),
                 );
               }),
               SettingsRow(
@@ -150,7 +156,7 @@ class _OpencodeGeneralPageState extends State<OpencodeGeneralPage> {
                   value: _settings.shareMode ?? 'manual',
                   options: SettingsController.shareModes,
                   labels: const ['Manual', 'Auto', 'Disabled'],
-                  onChanged: (v) => _settings.setShareMode(v),
+                  onChanged: (v) => _applyPatch(_settings.setShareMode(v)),
                 );
               }),
               Obx(() {
@@ -167,8 +173,10 @@ class _OpencodeGeneralPageState extends State<OpencodeGeneralPage> {
                   value: value,
                   options: const ['auto', 'notify', 'off'],
                   labels: const ['Auto', 'Notify', 'Off'],
-                  onChanged: (v) => _settings.setAutoupdate(
-                    v == 'auto' ? true : (v == 'notify' ? 'notify' : false),
+                  onChanged: (v) => _applyPatch(
+                    _settings.setAutoupdate(
+                      v == 'auto' ? true : (v == 'notify' ? 'notify' : false),
+                    ),
                   ),
                 );
               }),
@@ -179,7 +187,7 @@ class _OpencodeGeneralPageState extends State<OpencodeGeneralPage> {
                   desc: LocaleKeys.snapshotTrackingDesc.tr,
                   child: Switch(
                     value: _settings.snapshot ?? true,
-                    onChanged: (v) => _settings.setSnapshot(v),
+                    onChanged: (v) => _applyPatch(_settings.setSnapshot(v)),
                   ),
                 );
               }),
@@ -199,7 +207,7 @@ class _OpencodeGeneralPageState extends State<OpencodeGeneralPage> {
                     onChanged: (v) {
                       final c = Map<String, dynamic>.from(compaction ?? {});
                       c['auto'] = v;
-                      _settings.setCompaction(c);
+                      _applyPatch(_settings.setCompaction(c));
                     },
                   ),
                 );
@@ -214,7 +222,7 @@ class _OpencodeGeneralPageState extends State<OpencodeGeneralPage> {
                     onChanged: (v) {
                       final c = Map<String, dynamic>.from(compaction ?? {});
                       c['prune'] = v;
-                      _settings.setCompaction(c);
+                      _applyPatch(_settings.setCompaction(c));
                     },
                   ),
                 );

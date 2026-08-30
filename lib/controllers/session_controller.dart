@@ -919,22 +919,28 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         'type': 'text',
         'text': prompt,
       });
-      // 识图前先压缩一次（与发送路径一致，1280px / JPEG 85），避免大图
-      // 以原尺寸 base64 上传拖慢识图。
-      var sendImages = images;
+      // 识图前先压缩一次（与发送路径一致，1280px / JPEG 85）避免大图
+      // 以原尺寸 base64 上传拖慢识图；编码与压缩同在后台隔离区完成。
+      List<({PickedImage image, String base64})> sendEncoded = const [];
       if (images.isNotEmpty) {
         try {
-          sendImages = await Isolate.run(() => compressImagesSync(images));
+          sendEncoded = await Isolate.run(
+            () => compressAndEncodeImagesSync(images),
+          );
         } catch (e) {
           AppLogger.e('compress images (vision) failed: $e');
+          sendEncoded = [
+            for (final img in images)
+              (image: img, base64: base64Encode(img.bytes)),
+          ];
         }
       }
-      for (var i = 0; i < sendImages.length; i++) {
-        final img = sendImages[i];
+      for (var i = 0; i < sendEncoded.length; i++) {
+        final img = sendEncoded[i].image;
         partsJson.add({
           'id': _ascendingId('prt'),
           'type': 'file',
-          'url': 'data:${img.mime};base64,${base64Encode(img.bytes)}',
+          'url': 'data:${img.mime};base64,${sendEncoded[i].base64}',
           'mime': img.mime,
           'filename': 'image_${i + 1}.${img.ext}',
         });
@@ -993,6 +999,8 @@ class SessionController extends GetxController with WidgetsBindingObserver {
   static const _visionPollInterval = Duration(milliseconds: 400);
   static const _visionPollTimeout = Duration(seconds: 30);
   static const _visionSseTimeout = Duration(seconds: 20);
+  /// 服务端 image.max_base64_bytes 默认上限（clone/.../image/image.ts）。
+  static const _serverImageBase64Limit = 5 * 1024 * 1024;
 
   Future<String?> _pollVisionReply(String tempId) async {
     final deadline = DateTime.now().add(_visionPollTimeout);
@@ -1000,16 +1008,19 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     var stableCount = 0;
     while (DateTime.now().isBefore(deadline)) {
       await Future<void>.delayed(_visionPollInterval);
-      final text = await _fetchVisionReplyText(tempId);
+      final (text, completed) = await _fetchVisionReply(tempId);
       if (text != null && text.isNotEmpty) {
+        // 服务端 time.completed 标记消息流式结束后即可返回；
+        // 响应缺该标志时退回「连续采样一致」启发式（4 次 = 约 1.2s 无变化，
+        // 避免慢流式模型中途停顿 >400ms 即被误判为已完成而截断）。
+        if (completed) return text;
         if (text == lastText) {
           stableCount++;
         } else {
           stableCount = 1;
           lastText = text;
         }
-        // 连续两次一致视为流式结束。
-        if (stableCount >= 2) return text;
+        if (stableCount >= 4) return text;
       }
     }
     return lastText.isNotEmpty ? lastText : null;
@@ -1437,7 +1448,9 @@ class SessionController extends GetxController with WidgetsBindingObserver {
 
   // ── Send Prompt ──
 
-  Future<void> sendPrompt(
+  /// 返回 false 表示 POST 失败（非排队/空内容场景），调用方可据此把
+  /// 文本与附件回填到输入区，避免发送失败时内容静默丢失。
+  Future<bool> sendPrompt(
     String text, {
     List<PickedImage> images = const [],
     List<String>? overrideFiles,
@@ -1447,10 +1460,12 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     String? overrideAgent,
   }) async {
     final sessionId = targetSessionId ?? activeSessionId.value;
-    if (sessionId.isEmpty) return;
+    if (sessionId.isEmpty) return true;
     final state = getOrCreateSessionState(sessionId);
     final filesToSend = overrideFiles ?? state.attachedFiles.toList();
-    if (text.trim().isEmpty && images.isEmpty && filesToSend.isEmpty) return;
+    if (text.trim().isEmpty && images.isEmpty && filesToSend.isEmpty) {
+      return true;
+    }
 
     // 回合互斥：同会话已有本地发送在途（POST 未返回）时，本次发送转为排队，
     // 待回合结束由 _checkAndSendPendingPrompt 发出。覆盖两类双回合窗口：
@@ -1470,7 +1485,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         state.attachedFiles.clear();
         state.attachedImages.clear();
       }
-      return;
+      return true;
     }
 
     // 发送新消息时自动折叠 changefiles：新回合文件变化不再触发右侧持续刷新，
@@ -1524,10 +1539,12 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         state.attachedFiles.clear();
         state.attachedImages.clear();
       }
-      return;
+      return true;
     }
 
-    if (text.trim().isEmpty && images.isEmpty && filesToSend.isEmpty) return;
+    if (text.trim().isEmpty && images.isEmpty && filesToSend.isEmpty) {
+      return true;
+    }
 
     final selectedModelKey = overrideModel ?? state.selectedModel.value;
     final selectedAgentName = overrideAgent ?? state.selectedAgent.value;
@@ -1573,13 +1590,31 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     // file path (server handles `data:` at prompt.ts). The real MIME is
     // declared so the model receives the correct mediaType; the backend
     // image.normalize will still downscale/re-encode if needed.
+    // 压缩与 base64 编码一起放进后台隔离区：数 MB 的编码在主 isolate 会卡 UI。
     var sendImages = images;
+    var encoded = const <String>[];
     if (images.isNotEmpty) {
-      // image 包是同步纯 Dart 计算，放到后台隔离区批量压缩，避免发送时卡 UI。
       try {
-        sendImages = await Isolate.run(() => compressImagesSync(images));
+        final results = await Isolate.run(
+          () => compressAndEncodeImagesSync(images),
+        );
+        sendImages = [for (final r in results) r.image];
+        encoded = [for (final r in results) r.base64];
       } catch (e) {
         AppLogger.e('compress images failed: $e');
+        // 隔离区失败兜底：主 isolate 用原图原样编码。
+        sendImages = images;
+        encoded = [for (final img in images) base64Encode(img.bytes)];
+      }
+      for (final b64 in encoded) {
+        // 服务端 image.max_base64_bytes 默认 5MB（image/image.ts），超限整条
+        // 消息会被服务端拒绝；此处仅告警留痕，实际阈值以服务端配置为准。
+        if (b64.length > _serverImageBase64Limit) {
+          AppLogger.w(
+            'image attachment base64 size ${b64.length} exceeds server '
+            'default limit (5MB), message may be rejected',
+          );
+        }
       }
     }
 
@@ -1590,7 +1625,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       final imgRaw = {
         'id': partId,
         'type': 'file',
-        'url': 'data:${img.mime};base64,${base64Encode(img.bytes)}',
+        'url': 'data:${img.mime};base64,${encoded[i]}',
         'mime': img.mime,
         'filename': 'image_${i + 1}.${img.ext}',
       };
@@ -1696,6 +1731,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         data: body,
       );
       _localSendInFlight.remove(sessionId);
+      return true;
     } catch (e) {
       _localSendInFlight.remove(sessionId);
       AppLogger.e('sendPrompt failed: $e');
@@ -1725,6 +1761,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         // 消息仍在，强刷历史恢复一致，避免本地与服务端 diverge 到下次 reload。
         unawaited(loadMessages(sessionId, force: true));
       }
+      return false;
     }
   }
 
@@ -2423,8 +2460,8 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     _finishHiddenVision(sessionId, text);
   }
 
-  /// 单次 GET 临时会话消息，取最后一个非空 assistant 文本。
-  Future<String?> _fetchVisionReplyText(String tempId) async {
+  /// 单次 GET 临时会话消息，取最后一个非空 assistant 文本及其完成标志。
+  Future<(String?, bool)> _fetchVisionReply(String tempId) async {
     try {
       final resp = await _client.get(ApiEndpoints.sessionMessages(tempId));
       final List rawMessages;
@@ -2442,17 +2479,25 @@ class SessionController extends GetxController with WidgetsBindingObserver {
             .map((m) => MessageModel.fromJson(Map<String, dynamic>.from(m)))
             .where((m) => m.isChatMessage)
             .toList();
-        final assistant = msgs
-            .where((m) => m.role == MessageRole.assistant)
-            .map((m) => m.content)
-            .where((t) => t.trim().isNotEmpty)
-            .toList();
-        if (assistant.isNotEmpty) return assistant.last.trim();
+        for (final m in msgs.reversed) {
+          if (m.role != MessageRole.assistant) continue;
+          final text = m.content;
+          if (text.trim().isEmpty) continue;
+          // v2 形状消息体在 info 子对象内；time.completed 存在 = 流式已结束。
+          final info = m.raw['info'] is Map ? m.raw['info'] as Map : m.raw;
+          final time = info['time'];
+          final completed = time is Map && time['completed'] != null;
+          return (text.trim(), completed);
+        }
       }
     } catch (e) {
       AppLogger.e('_fetchVisionReplyText error: $e');
     }
-    return null;
+    return (null, false);
+  }
+
+  Future<String?> _fetchVisionReplyText(String tempId) async {
+    return (await _fetchVisionReply(tempId)).$1;
   }
 
   void _finishHiddenVision(String sessionId, String? text) {

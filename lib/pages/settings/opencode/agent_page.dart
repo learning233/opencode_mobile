@@ -92,12 +92,11 @@ class _OpencodeAgentPageState extends State<OpencodeAgentPage> {
     );
     if (result == null || !mounted) return;
 
-    final agentMap = <String, dynamic>{};
-    for (final a in _settings.availableAgents) {
-      agentMap[a.name] = a.toJson();
-    }
-    agentMap[result.name] = result.toJson();
-    final ok = await _settings.setAgentConfig(agentMap);
+    // 服务端 PATCH 为 mergeDeep 深合并，按 agent 单键提交即可新增，
+    // 无需整 map 重建（整 map 也无法真正删除条目）。
+    final ok = await _settings.setAgentConfig({
+      result.name: result.toJson(),
+    });
     if (!mounted) return;
     if (ok) {
       Snack.success(LocaleKeys.agentCreate.tr);
@@ -203,13 +202,13 @@ class _OpencodeAgentPageState extends State<OpencodeAgentPage> {
                         modes: SettingsController.agentModes,
                         modelDisplay: _modelDisplayName,
                         onSave: (updated) async {
-                          final agentMap = <String, dynamic>{};
-                          for (final a in _settings.availableAgents) {
-                            agentMap[a.name] = a.name == updated.name
-                                ? updated.toJson()
-                                : a.toJson();
-                          }
-                          return _settings.setAgentConfig(agentMap);
+                          // 单键深合并提交；重命名时旧名置 hidden（服务端
+                          // 无法删键，fetchAgents 过滤 hidden）。
+                          return _settings.setAgentConfig({
+                            if (updated.name != agent.name)
+                              agent.name: {'hidden': true},
+                            updated.name: updated.toJson(),
+                          });
                         },
                         onDelete: () => _confirmDelete(agent),
                         isSaving: _settings.savingStates.containsKey('agent'),

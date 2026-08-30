@@ -6,6 +6,7 @@ import 'package:get/get.dart';
 import 'package:dio/dio.dart' as dio_pkg;
 
 import '../../../controllers/settings_controller.dart';
+import '../../../utils/app_logger.dart';
 import '../../../utils/translations.dart';
 import '../../../utils/app_theme.dart';
 import '../../../utils/snackbar_utils.dart';
@@ -81,6 +82,9 @@ class _CustomProviderPageState extends State<CustomProviderPage> {
           widget.ctrl.globalConfig.value?['provider']?[widget.editProviderId!];
       if (config is Map<String, dynamic>) {
         _updateFieldsFromJson(config);
+      } else {
+        // globalConfig 尚未拉取时兜底获取一次，避免编辑页拿到空配置。
+        _loadProviderConfig();
       }
     } else {
       final m = _CustomModelRow();
@@ -90,6 +94,23 @@ class _CustomProviderPageState extends State<CustomProviderPage> {
     }
 
     _onFieldChanged();
+  }
+
+  /// 编辑模式进入时 globalConfig 可能尚未拉取（本页可直接导航进入），
+  /// 拉取成功后回填原配置。
+  Future<void> _loadProviderConfig() async {
+    try {
+      await widget.ctrl.fetchGlobalConfig();
+    } catch (e) {
+      AppLogger.w('custom provider: fetch config for edit failed: $e');
+      return;
+    }
+    if (!mounted) return;
+    final config =
+        widget.ctrl.globalConfig.value?['provider']?[widget.editProviderId!];
+    if (config is Map<String, dynamic>) {
+      setState(() => _updateFieldsFromJson(config));
+    }
   }
 
   @override

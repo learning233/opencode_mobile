@@ -118,10 +118,11 @@ class _OpencodeExperimentalPageState extends State<OpencodeExperimentalPage> {
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () async {
-              setState(() {
-                _toolsDirty = false;
-                _timeoutDirty = false;
-              });
+              // 有未保存编辑时不刷新覆盖，避免静默丢弃用户输入。
+              if (_toolsDirty || _timeoutDirty) {
+                Snack.warning(LocaleKeys.edUnsavedChanges.tr);
+                return;
+              }
               await _settings.fetchGlobalConfig();
               if (mounted) _syncFromConfig();
             },

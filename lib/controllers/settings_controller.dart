@@ -390,15 +390,8 @@ class SettingsController extends GetxController {
     return const [];
   }
 
-  Future<bool> setInstructionPaths(List<String> paths) async {
-    try {
-      await patchGlobalConfig({'instructions': paths});
-      return true;
-    } catch (e) {
-      AppLogger.e('setInstructionPaths failed: $e');
-      rethrow;
-    }
-  }
+  Future<bool> setInstructionPaths(List<String> paths) =>
+      patchGlobalConfig({'instructions': paths});
 
   String _parseRemoteFileContent(dynamic data) {
     if (data is Map) {
@@ -439,6 +432,20 @@ class SettingsController extends GetxController {
     }
   }
 
+  /// 404（全新安装尚无全局 AGENTS.md 的常态）返回 null，由调用方置空态；
+  /// 其余错误原样抛出。
+  Future<Response?> _getGlobalRulesFile(String filePath) async {
+    try {
+      return await _client.get(
+        ApiEndpoints.fileContent,
+        queryParameters: {'path': filePath},
+      );
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return null;
+      rethrow;
+    }
+  }
+
   Future<void> fetchGlobalRules() async {
     isLoadingGlobalRules.value = true;
     globalRulesError.value = '';
@@ -449,37 +456,28 @@ class SettingsController extends GetxController {
 
       Response? response;
       try {
-        response = await _client.get(
-          ApiEndpoints.fileContent,
-          queryParameters: {'path': filePath},
-        );
-      } catch (e) {
-        AppLogger.e('fetchGlobalRules fileContent failed: $e');
+        response = await _getGlobalRulesFile(filePath);
+      } on DioException catch (e) {
+        // 404 已转空态；其余多为瞬时网络/服务端错误，重试一次。
+        AppLogger.e('fetchGlobalRules first attempt failed: $e');
+        response = await _getGlobalRulesFile(filePath);
       }
 
-      if (response == null || response.statusCode != 200) {
-        response = await _client.get(
-          ApiEndpoints.fileContent,
-          queryParameters: {'path': filePath},
-        );
-      }
-
-      if (response.statusCode == 200) {
+      if (response != null && response.statusCode == 200) {
         final content = _parseRemoteFileContent(response.data);
         globalRulesContent.value = content;
         hasGlobalRules.value = content.trim().isNotEmpty;
-      } else if (response.statusCode == 404) {
-        globalRulesContent.value = '';
-        hasGlobalRules.value = false;
       } else {
-        globalRulesError.value = 'HTTP ${response.statusCode}';
+        // 404（response == null）= 无全局规则，空态而非错误。
+        globalRulesError.value =
+            response == null ? '' : 'HTTP ${response.statusCode}';
         globalRulesContent.value = '';
         hasGlobalRules.value = false;
       }
     } catch (e) {
       globalRulesContent.value = '';
       hasGlobalRules.value = false;
-      globalRulesError.value = e.toString();
+      globalRulesError.value = maskIpsInText(e.toString());
       AppLogger.e('fetchGlobalRules failed: $e');
     } finally {
       isLoadingGlobalRules.value = false;
@@ -565,9 +563,10 @@ class SettingsController extends GetxController {
     return false;
   }
 
-  Future<void> patchGlobalConfig(Map<String, dynamic> patch) async {
-    await updateGlobalConfig(patch);
-  }
+  /// 透传 [updateGlobalConfig] 的成功与否；内部已吞异常，调用方必须检查返回值
+  /// 并在 false 时保留用户编辑、给出失败反馈（此前结果被丢弃，页面恒显示成功）。
+  Future<bool> patchGlobalConfig(Map<String, dynamic> patch) =>
+      updateGlobalConfig(patch);
 
   Future<void> patchProjectConfig(Map<String, dynamic> patch) async {
     final res = await _client.patch(ApiEndpoints.projectConfig, data: patch);
@@ -617,27 +616,27 @@ class SettingsController extends GetxController {
     }
   }
 
-  Future<void> setShell(String value) => patchGlobalConfig({'shell': value});
+  Future<bool> setShell(String value) => patchGlobalConfig({'shell': value});
 
-  Future<void> setLogLevel(String value) =>
+  Future<bool> setLogLevel(String value) =>
       patchGlobalConfig({'logLevel': value});
 
-  Future<void> setUsername(String value) =>
+  Future<bool> setUsername(String value) =>
       patchGlobalConfig({'username': value});
 
-  Future<void> setShareMode(String value) =>
+  Future<bool> setShareMode(String value) =>
       patchGlobalConfig({'share': value});
 
-  Future<void> setAutoupdate(dynamic value) =>
+  Future<bool> setAutoupdate(dynamic value) =>
       patchGlobalConfig({'autoupdate': value});
 
-  Future<void> setSnapshot(bool value) =>
+  Future<bool> setSnapshot(bool value) =>
       patchGlobalConfig({'snapshot': value});
 
-  Future<void> setCompaction(Map<String, dynamic> value) =>
+  Future<bool> setCompaction(Map<String, dynamic> value) =>
       patchGlobalConfig({'compaction': value});
 
-  Future<void> setSmallModel(String value) =>
+  Future<bool> setSmallModel(String value) =>
       patchGlobalConfig({'small_model': value});
 
   bool isModelVisible(ModelInfo model, List<ModelInfo> allModels) {
@@ -657,23 +656,14 @@ class SettingsController extends GetxController {
   }
 
   Future<void> setModelVisible(ModelInfo model, bool visible) async {
-    final shown = List<String>.from(shownModels);
-    final hidden = List<String>.from(hiddenModels);
-    shown.remove(model.key);
-    hidden.remove(model.key);
-    if (visible) {
-      shown.add(model.key);
-    } else {
-      hidden.add(model.key);
-    }
-    await Global.settings.setShownModels(shown);
-    await Global.settings.setHiddenModels(hidden);
+    // 两个 key 的读-改-写在存储层入队串行化，防快速连点互覆。
+    await Global.settings.setModelVisibility(model.key, visible);
     shownModelsRx
       ..clear()
-      ..addAll(shown);
+      ..addAll(Global.settings.shownModels);
     hiddenModelsRx
       ..clear()
-      ..addAll(hidden);
+      ..addAll(Global.settings.hiddenModels);
   }
 
   List<ModelInfo>? _defaultKeysCacheModels;
@@ -813,22 +803,15 @@ class SettingsController extends GetxController {
       }
     } catch (e) {
       skills.clear();
-      skillsError.value = e.toString();
+      skillsError.value = maskIpsInText(e.toString());
       AppLogger.e('fetchSkills failed: $e');
     } finally {
       skillsLoading.value = false;
     }
   }
 
-  Future<bool> setSkillsConfig(Map<String, dynamic> value) async {
-    try {
-      await patchGlobalConfig({'skills': value});
-      return true;
-    } catch (e) {
-      AppLogger.e('setSkillsConfig failed: $e');
-      rethrow;
-    }
-  }
+  Future<bool> setSkillsConfig(Map<String, dynamic> value) =>
+      patchGlobalConfig({'skills': value});
 
   Future<void> fetchAgents() async {
     isLoadingAgents.value = true;
@@ -871,7 +854,7 @@ class SettingsController extends GetxController {
         availableAgents.clear();
       }
     } catch (e) {
-      agentsError.value = e.toString();
+      agentsError.value = maskIpsInText(e.toString());
       AppLogger.e('fetchAgents failed: $e');
       try {
         final fallback = _agentsFromConfig();
@@ -911,25 +894,21 @@ class SettingsController extends GetxController {
     const key = 'agent';
     savingStates[key] = true;
     try {
-      await patchGlobalConfig({'agent': value});
+      final ok = await patchGlobalConfig({'agent': value});
       await fetchAgents();
-      return true;
-    } catch (e) {
-      AppLogger.e('setAgentConfig failed: $e');
-      return false;
+      return ok;
     } finally {
       savingStates.remove(key);
     }
   }
 
+  /// 服务端 PATCH /global/config 是 mergeDeep 深度合并，无法删除 map 键
+  /// （整键重建提交也只会保留缺失项）。Agent 配置支持 `hidden` 布尔字段，
+  /// 客户端与 fetchAgents 均过滤 hidden，故删除 = 置 hidden:true。
   Future<bool> deleteAgent(String name) async {
-    final agentMap = <String, dynamic>{};
-    for (final a in availableAgents) {
-      if (a.name != name) {
-        agentMap[a.name] = a.toJson();
-      }
-    }
-    return setAgentConfig(agentMap);
+    return setAgentConfig({
+      name: {'hidden': true},
+    });
   }
 
   // ── Permissions ───────────────────────────────────────────────
@@ -937,9 +916,8 @@ class SettingsController extends GetxController {
   final savedPermissions = <Map<String, dynamic>>[].obs;
   final savedPermissionsLoading = false.obs;
 
-  Future<void> setPermission(Map<String, dynamic> value) async {
-    await patchGlobalConfig({'permission': value});
-  }
+  Future<bool> setPermission(Map<String, dynamic> value) =>
+      patchGlobalConfig({'permission': value});
 
   Future<void> fetchSavedPermissions() async {
     savedPermissionsLoading.value = true;
@@ -1045,7 +1023,7 @@ class SettingsController extends GetxController {
       }
     } catch (e) {
       commands.clear();
-      commandsError.value = e.toString();
+      commandsError.value = maskIpsInText(e.toString());
       AppLogger.e('fetchCommands failed: $e');
     } finally {
       isLoadingCommands.value = false;
@@ -1053,14 +1031,9 @@ class SettingsController extends GetxController {
   }
 
   Future<bool> setCommandConfig(Map<String, dynamic> value) async {
-    try {
-      await patchGlobalConfig({'command': value});
-      await fetchCommands();
-      return true;
-    } catch (e) {
-      AppLogger.e('setCommandConfig failed: $e');
-      return false;
-    }
+    final ok = await patchGlobalConfig({'command': value});
+    await fetchCommands();
+    return ok;
   }
 
   /// Built-in commands shipped by the server. Read-only in Settings because
@@ -1146,15 +1119,8 @@ class SettingsController extends GetxController {
     return true;
   }
 
-  Future<bool> setFormattersEnabled(bool enabled) async {
-    try {
-      await patchGlobalConfig({'formatter': enabled});
-      return true;
-    } catch (e) {
-      AppLogger.e('setFormattersEnabled failed: $e');
-      return false;
-    }
-  }
+  Future<bool> setFormattersEnabled(bool enabled) =>
+      patchGlobalConfig({'formatter': enabled});
 
   Future<void> fetchFormatters() async {
     formattersLoading.value = true;
@@ -1183,7 +1149,7 @@ class SettingsController extends GetxController {
       }
     } catch (e) {
       formatters.clear();
-      formattersError.value = e.toString();
+      formattersError.value = maskIpsInText(e.toString());
       AppLogger.e('fetchFormatters failed: $e');
     } finally {
       formattersLoading.value = false;
@@ -1319,7 +1285,7 @@ class SettingsController extends GetxController {
       final list = referenceEntriesFromConfig(referenceConfig);
       references.assignAll(list);
       if (list.isEmpty) {
-        referencesError.value = e.toString();
+        referencesError.value = maskIpsInText(e.toString());
       }
       AppLogger.e('fetchReferences failed: $e');
     } finally {
@@ -1328,14 +1294,9 @@ class SettingsController extends GetxController {
   }
 
   Future<bool> setReferenceConfig(Map<String, dynamic> value) async {
-    try {
-      await patchGlobalConfig({'references': value});
-      await fetchReferences();
-      return true;
-    } catch (e) {
-      AppLogger.e('setReferenceConfig failed: $e');
-      return false;
-    }
+    final ok = await patchGlobalConfig({'references': value});
+    await fetchReferences();
+    return ok;
   }
 
   // ── Advanced / Experimental ───────────────────────────────────
@@ -1355,52 +1316,25 @@ class SettingsController extends GetxController {
     return raw is Map ? Map<String, dynamic>.from(raw) : null;
   }
 
-  Future<bool> setWatcherConfig(Map<String, dynamic> value) async {
-    try {
-      await patchGlobalConfig({'watcher': value});
-      return true;
-    } catch (e) {
-      AppLogger.e('setWatcherConfig failed: $e');
-      return false;
-    }
-  }
+  Future<bool> setWatcherConfig(Map<String, dynamic> value) =>
+      patchGlobalConfig({'watcher': value});
 
-  Future<bool> setPluginConfig(List<dynamic> value) async {
-    try {
-      await patchGlobalConfig({'plugin': value});
-      return true;
-    } catch (e) {
-      AppLogger.e('setPluginConfig failed: $e');
-      return false;
-    }
-  }
+  Future<bool> setPluginConfig(List<dynamic> value) =>
+      patchGlobalConfig({'plugin': value});
 
-  Future<bool> setAttachmentConfig(Map<String, dynamic> value) async {
-    try {
-      await patchGlobalConfig({'attachment': value});
-      return true;
-    } catch (e) {
-      AppLogger.e('setAttachmentConfig failed: $e');
-      return false;
-    }
-  }
+  Future<bool> setAttachmentConfig(Map<String, dynamic> value) =>
+      patchGlobalConfig({'attachment': value});
 
   Future<bool> setExperimental(Map<String, dynamic> patch) async {
-    try {
-      final next = Map<String, dynamic>.from(experimental ?? {});
-      patch.forEach((key, value) {
-        if (value == null) {
-          next.remove(key);
-        } else {
-          next[key] = value;
-        }
-      });
-      await patchGlobalConfig({'experimental': next});
-      return true;
-    } catch (e) {
-      AppLogger.e('setExperimental failed: $e');
-      return false;
-    }
+    final next = Map<String, dynamic>.from(experimental ?? {});
+    patch.forEach((key, value) {
+      if (value == null) {
+        next.remove(key);
+      } else {
+        next[key] = value;
+      }
+    });
+    return patchGlobalConfig({'experimental': next});
   }
 
   /// LSP master switch: `false` disables; map/true/null enables.
@@ -1423,40 +1357,26 @@ class SettingsController extends GetxController {
     return false;
   }
 
-  Future<bool> setLspEnabled(bool enabled) async {
-    try {
-      if (enabled) {
-        final map = lspConfigMap;
-        if (map.isEmpty) {
-          await patchGlobalConfig({'lsp': true});
-        } else {
-          await patchGlobalConfig({'lsp': map});
-        }
-      } else {
-        await patchGlobalConfig({'lsp': false});
+  Future<bool> setLspEnabled(bool enabled) {
+    if (enabled) {
+      final map = lspConfigMap;
+      if (map.isEmpty) {
+        return patchGlobalConfig({'lsp': true});
       }
-      return true;
-    } catch (e) {
-      AppLogger.e('setLspEnabled failed: $e');
-      return false;
+      return patchGlobalConfig({'lsp': map});
     }
+    return patchGlobalConfig({'lsp': false});
   }
 
-  Future<bool> setLspServerDisabled(String id, bool disabled) async {
-    try {
-      final map = Map<String, dynamic>.from(lspConfigMap);
-      final existing = map[id];
-      final entry = existing is Map
-          ? Map<String, dynamic>.from(existing)
-          : <String, dynamic>{};
-      entry['disabled'] = disabled;
-      map[id] = entry;
-      await patchGlobalConfig({'lsp': map});
-      return true;
-    } catch (e) {
-      AppLogger.e('setLspServerDisabled failed: $e');
-      return false;
-    }
+  Future<bool> setLspServerDisabled(String id, bool disabled) {
+    final map = Map<String, dynamic>.from(lspConfigMap);
+    final existing = map[id];
+    final entry = existing is Map
+        ? Map<String, dynamic>.from(existing)
+        : <String, dynamic>{};
+    entry['disabled'] = disabled;
+    map[id] = entry;
+    return patchGlobalConfig({'lsp': map});
   }
 
   Future<void> fetchLsp() async {
@@ -1514,6 +1434,7 @@ class SettingsController extends GetxController {
             final name =
                 item['name']?.toString() ?? item['id']?.toString() ?? '';
             if (name.isEmpty) continue;
+            if (_isMcpRemovedByDisable(item, mcpConfig[name])) continue;
             list.add(
               McpServerStatus.fromEntry(
                 name,
@@ -1525,6 +1446,7 @@ class SettingsController extends GetxController {
           final map = Map<String, dynamic>.from(data);
           map.forEach((key, value) {
             if (key == 'data' || key == 'location') return;
+            if (_isMcpRemovedByDisable(value, mcpConfig[key])) return;
             list.add(
               McpServerStatus.fromEntry(
                 key,
@@ -1539,11 +1461,19 @@ class SettingsController extends GetxController {
         mcpError.value = 'HTTP ${response.statusCode}';
       }
     } catch (e) {
-      mcpError.value = e.toString();
+      mcpError.value = maskIpsInText(e.toString());
       AppLogger.e('fetchMcpServers failed: $e');
     } finally {
       mcpLoading.value = false;
     }
+  }
+
+  /// 删除 MCP 实际是置 enabled:false（服务端 PATCH 深合并无法删键），
+  /// 服务端/配置任一侧标记禁用即从列表剔除。
+  bool _isMcpRemovedByDisable(dynamic status, dynamic config) {
+    if (status is Map && status['enabled'] == false) return true;
+    if (config is Map && config['enabled'] == false) return true;
+    return false;
   }
 
   dynamic _mergeMcpConfig(dynamic status, dynamic config) {
@@ -1659,9 +1589,16 @@ class SettingsController extends GetxController {
         }
       }
 
-      await patchGlobalConfig({
-        'mcp': {name: config},
+      // enabled:true 显式带上：同名条目此前可能被「删除」（enabled:false）
+      // 禁用过，PATCH 深合并下显式置 true 才能重新启用。
+      final ok = await patchGlobalConfig({
+        'mcp': {
+          name: {...config, 'enabled': true},
+        },
       });
+      if (!ok) {
+        throw Exception('update mcp config failed');
+      }
       try {
         await _client.post(ApiEndpoints.mcpConnect(name));
       } catch (e) {
@@ -1676,24 +1613,22 @@ class SettingsController extends GetxController {
     }
   }
 
+  /// 服务端 PATCH 为 mergeDeep 深度合并，无法删除 mcp map 键：整键重建会保留
+  /// 缺失项、置 null（{'mcp': null}）被 schema 拒绝整包 400。MCP 条目支持
+  /// enabled 布尔字段，删除 = 断开 + 置 enabled:false，fetchMcpServers 过滤之。
   Future<bool> removeMcpServer(String name) async {
     mcpActionInProgress.add('remove_$name');
     try {
       try {
         await _client.post(ApiEndpoints.mcpDisconnect(name));
       } catch (_) {}
-      final raw = globalConfig.value?['mcp'];
-      final map = raw is Map
-          ? Map<String, dynamic>.from(raw)
-          : <String, dynamic>{};
-      map.remove(name);
-      if (map.isEmpty) {
-        await patchGlobalConfig({'mcp': null});
-      } else {
-        await patchGlobalConfig({'mcp': map});
-      }
+      final ok = await patchGlobalConfig({
+        'mcp': {
+          name: {'enabled': false},
+        },
+      });
       await fetchMcpServers();
-      return true;
+      return ok;
     } catch (e) {
       AppLogger.e('removeMcpServer failed: $e');
       return false;
@@ -1725,7 +1660,7 @@ class SettingsController extends GetxController {
       registryNextCursor.value = result.nextCursor;
     } catch (e) {
       if (seq != _registryRequestSeq) return;
-      registryError.value = e.toString();
+      registryError.value = maskIpsInText(e.toString());
       AppLogger.e('searchRegistry failed: $e');
     } finally {
       if (seq == _registryRequestSeq) isLoadingRegistry.value = false;
@@ -1746,7 +1681,7 @@ class SettingsController extends GetxController {
       registryServers.addAll(result.servers);
       registryNextCursor.value = result.nextCursor;
     } catch (e) {
-      if (seq == _registryRequestSeq) registryError.value = e.toString();
+      if (seq == _registryRequestSeq) registryError.value = maskIpsInText(e.toString());
     } finally {
       if (seq == _registryRequestSeq) isLoadingRegistry.value = false;
     }
@@ -1872,9 +1807,6 @@ class SettingsController extends GetxController {
               );
             }),
           );
-          if (connectedIds.isNotEmpty) {
-            await Global.addRegisteredProviders(connectedIds);
-          }
         }
       }
     } catch (e) {
@@ -1909,6 +1841,7 @@ class SettingsController extends GetxController {
       final envName = envMatch?.group(1)?.trim();
       final rawKey = apiKey.trim();
 
+      var authWritten = false;
       if (rawKey.isNotEmpty && envName == null) {
         final authResponse = await _client.put(
           ApiEndpoints.authSet(providerId),
@@ -1919,6 +1852,7 @@ class SettingsController extends GetxController {
             authResponse.statusCode != 204) {
           return false;
         }
+        authWritten = true;
       }
 
       final currentProviders = globalConfig.value?['provider'] is Map
@@ -1934,7 +1868,20 @@ class SettingsController extends GetxController {
         'provider': currentProviders,
         'disabled_providers': disabled,
       });
-      if (!ok) return false;
+      if (!ok) {
+        // 回滚：PATCH 失败时删除本次 PUT 的凭据，避免留下没有 provider
+        // 配置的无主 key（PUT 已覆盖旧 key，旧凭据本就不可恢复）。
+        if (authWritten) {
+          try {
+            await _client.delete(ApiEndpoints.authRemove(providerId));
+          } catch (e) {
+            AppLogger.w(
+              'addCustomProviderRaw: rollback auth for $providerId failed: $e',
+            );
+          }
+        }
+        return false;
+      }
       await _disposeBackendInstances();
       return true;
     } catch (e) {
@@ -1944,6 +1891,8 @@ class SettingsController extends GetxController {
   }
 
   /// Disconnect a provider: remove credentials and suppress via config.
+  /// 已知服务端限制：provider 条目从 config map 移除后经 mergeDeep 深合并仍会
+  /// 保留（无法真正删除），此处靠 disabled_providers 数组抑制其生效。
   Future<void> disconnectProvider(String providerId) async {
     try {
       try {
@@ -1966,7 +1915,6 @@ class SettingsController extends GetxController {
       });
 
       await _disposeBackendInstances();
-      await Global.removeRegisteredProvider(providerId);
     } catch (e) {
       AppLogger.e('disconnectProvider failed: $e');
       rethrow;
@@ -1984,7 +1932,6 @@ class SettingsController extends GetxController {
           response.statusCode == 204) {
         await _disposeBackendInstances();
         await fetchProviders();
-        await Global.addRegisteredProvider(providerId);
         return true;
       }
     } catch (e) {
@@ -2061,7 +2008,6 @@ class SettingsController extends GetxController {
     if (ok) {
       await _disposeBackendInstances();
       await fetchProviders();
-      await Global.addRegisteredProvider(providerId);
     }
     return ok;
   }

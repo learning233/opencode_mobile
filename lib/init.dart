@@ -200,25 +200,6 @@ class Global {
   static Future<void> setSavedThinkingLevel(String? level) =>
       settings.setSavedThinkingLevel(level);
 
-  static Set<String> get registeredProviders => settings.registeredProviders;
-  static Future<void> addRegisteredProvider(String id) async {
-    final set = registeredProviders;
-    set.add(id);
-    await settings.setRegisteredProviders(set);
-  }
-
-  static Future<void> addRegisteredProviders(Iterable<String> ids) async {
-    final set = registeredProviders;
-    set.addAll(ids);
-    await settings.setRegisteredProviders(set);
-  }
-
-  static Future<void> removeRegisteredProvider(String id) async {
-    final set = registeredProviders;
-    set.remove(id);
-    await settings.setRegisteredProviders(set);
-  }
-
   static String? get lastProjectId => settings.lastProjectId;
   static set lastProjectId(String? v) => settings.setLastProjectId(v);
 

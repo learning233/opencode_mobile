@@ -7,6 +7,7 @@ import '../../../controllers/settings_controller.dart';
 import '../../../utils/app_theme.dart';
 import '../../../utils/snackbar_utils.dart';
 import '../../../utils/translations.dart';
+import '../../../utils/url_utils.dart';
 import '../../../widgets/settings/settings.dart';
 
 class OpencodeMcpPage extends StatefulWidget {
@@ -69,7 +70,7 @@ class _OpencodeMcpPageState extends State<OpencodeMcpPage> {
       }
     } catch (e) {
       if (mounted) {
-        Snack.error('MCP ${server.name}: $e');
+        Snack.error('MCP ${server.name}: ${maskIpsInText('$e')}');
       }
     }
   }
@@ -195,7 +196,8 @@ class _OpencodeMcpPageState extends State<OpencodeMcpPage> {
     } catch (e) {
       if (mounted) {
         Snack.error(
-          '${LocaleKeys.mcpAuthFailed.trParams({'name': server.name})}: $e',
+          '${LocaleKeys.mcpAuthFailed.trParams({'name': server.name})}: '
+          '${maskIpsInText('$e')}',
         );
       }
     } finally {
@@ -249,7 +251,7 @@ class _OpencodeMcpPageState extends State<OpencodeMcpPage> {
         );
       }
     } catch (e) {
-      if (mounted) Snack.error('$e');
+      if (mounted) Snack.error(maskIpsInText('$e'));
     }
   }
 
@@ -444,9 +446,41 @@ class _OpencodeMcpPageState extends State<OpencodeMcpPage> {
                           onPressed: saving
                               ? null
                               : () async {
-                                  final name = nameCtrl.text.trim();
-                                  if (name.isEmpty) {
+                                  // 名称规范化（将拼入 /mcp/$name/... URL 路径），
+                                  // 并拒绝重名：服务端 PATCH 深合并会在重名时
+                                  // 把新旧配置融合成 hybrid 条目。
+                                  final sanitized = SettingsController
+                                      .sanitizeServerName(nameCtrl.text);
+                                  if (sanitized.isEmpty) {
                                     Snack.error(LocaleKeys.mcpNameRequired.tr);
+                                    return;
+                                  }
+                                  final configMcp =
+                                      _settings.globalConfig.value?['mcp'];
+                                  // 已被「删除」（enabled:false）的同名条目不算
+                                  // 重名，允许重新添加（createMcpServer 会带上
+                                  // enabled:true 重新启用）。
+                                  final existing = <String>{
+                                    ..._settings.mcpServers.map(
+                                      (s) => s.name,
+                                    ),
+                                    if (configMcp is Map)
+                                      ...configMcp.keys
+                                          .map((k) => k.toString())
+                                          .where(
+                                            (k) =>
+                                                !(configMcp[k] is Map &&
+                                                    (configMcp[k]
+                                                            as Map)['enabled'] ==
+                                                        false),
+                                          ),
+                                  };
+                                  if (existing.contains(sanitized)) {
+                                    Snack.error(
+                                      LocaleKeys.mcpNameExists.trParams({
+                                        'name': sanitized,
+                                      }),
+                                    );
                                     return;
                                   }
                                   if (isRemote) {
@@ -471,7 +505,7 @@ class _OpencodeMcpPageState extends State<OpencodeMcpPage> {
                                       if (k.isNotEmpty) env[k] = e.v.text;
                                     }
                                     await _settings.createMcpServer(
-                                      name: name,
+                                      name: sanitized,
                                       transport: isRemote ? 'remote' : 'local',
                                       command: isRemote
                                           ? null
@@ -490,7 +524,8 @@ class _OpencodeMcpPageState extends State<OpencodeMcpPage> {
                                     if (ctx.mounted) Navigator.pop(ctx);
                                   } catch (e) {
                                     Snack.error(
-                                      '${LocaleKeys.mcpAddFailed.tr}: $e',
+                                      '${LocaleKeys.mcpAddFailed.tr}: '
+                                      '${maskIpsInText('$e')}',
                                     );
                                   } finally {
                                     if (ctx.mounted) {

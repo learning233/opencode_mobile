@@ -80,6 +80,8 @@ class _OpencodeDeveloperPageState extends State<OpencodeDeveloperPage> {
       ),
     );
     if (confirmed != true || !mounted) return;
+    // 已知服务端限制：PATCH /global/config 为 mergeDeep 深合并且 command 条目
+    // 无禁用字段，移除的 command 键会被保留，重进页面后可能重新出现。
     final cfg = Map<String, dynamic>.from(_settings.commandConfig ?? {});
     cfg.remove(name);
     final ok = await _settings.setCommandConfig(cfg);
@@ -134,6 +136,8 @@ class _OpencodeDeveloperPageState extends State<OpencodeDeveloperPage> {
     final current = _settings.references.toList();
     if (index < 0 || index >= current.length) return;
     current.removeAt(index);
+    // 已知服务端限制：references 为 map，mergeDeep 深合并会保留被移除的键
+    // （Entry 虽有 hidden 字段但客户端未接），删除后重进页面可能重新出现。
     final next = SettingsController.referenceConfigFromEntries(current);
     final ok = await _settings.setReferenceConfig(next);
     if (!mounted) return;

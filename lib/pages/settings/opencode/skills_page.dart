@@ -97,21 +97,19 @@ class _OpencodeSkillsPageState extends State<OpencodeSkillsPage> {
   }
 
   Future<void> _saveSources() async {
-    try {
-      await _settings.setSkillsConfig({
-        'paths': List<String>.from(_paths),
-        'urls': List<String>.from(_urls),
-      });
-      if (mounted) {
-        setState(() => _dirty = false);
-        Snack.success(LocaleKeys.skillsSaveSources.tr);
-        await _settings.fetchSkills();
-      }
-    } catch (e) {
-      if (mounted) {
-        Snack.error('${LocaleKeys.skillSaveFailed.tr}: $e');
-      }
+    final ok = await _settings.setSkillsConfig({
+      'paths': List<String>.from(_paths),
+      'urls': List<String>.from(_urls),
+    });
+    if (!mounted) return;
+    if (!ok) {
+      // 保留 dirty 与未保存编辑，用户可重试。
+      Snack.error(LocaleKeys.skillSaveFailed.tr);
+      return;
     }
+    setState(() => _dirty = false);
+    Snack.success(LocaleKeys.skillsSaveSources.tr);
+    await _settings.fetchSkills();
   }
 
   Future<void> _refresh() async {

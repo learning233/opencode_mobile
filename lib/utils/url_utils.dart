@@ -9,6 +9,22 @@ String normalizeWebUrl(String urlInput) {
   return input;
 }
 
+/// 规范化 opencode 服务器地址输入：trim、无 scheme 时补 `http://`（本地服务
+/// 不会是 https）、剥离路径/查询/锚点——opencode serve 挂载在根路径，误填
+/// `http://host:4096/api/health` 之类的整路径会导致健康检查 404。
+/// 返回 null 表示无法解析出有效 host（如 `http://` 单独存在）。
+String? normalizeServerUrl(String urlInput) {
+  var input = urlInput.trim();
+  if (input.isEmpty) return null;
+  if (!RegExp(r'^https?://', caseSensitive: false).hasMatch(input)) {
+    input = 'http://$input';
+  }
+  final uri = Uri.tryParse(input);
+  if (uri == null || uri.host.isEmpty) return null;
+  final port = uri.hasPort ? ':${uri.port}' : '';
+  return '${uri.scheme.toLowerCase()}://${uri.host}$port';
+}
+
 /// Slash-insensitive comparison key for URL dedup: same as [normalizeWebUrl]
 /// but with a single trailing `/` stripped, so `http://host:port` and
 /// `http://host:port/` (e.g. a preview page that redirects with a trailing

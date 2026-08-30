@@ -229,12 +229,11 @@ class _OpencodeRulesPageState extends State<OpencodeRulesPage> {
                             final paths = List<String>.from(
                               _settings.instructionPaths,
                             )..remove(p);
-                            try {
-                              await _settings.setInstructionPaths(paths);
-                            } catch (e) {
-                              if (mounted) {
-                                Snack.error('$e');
-                              }
+                            final ok = await _settings.setInstructionPaths(
+                              paths,
+                            );
+                            if (!ok && mounted) {
+                              Snack.error(LocaleKeys.save.tr);
                             }
                           },
                         ),
@@ -258,12 +257,11 @@ class _OpencodeRulesPageState extends State<OpencodeRulesPage> {
                           );
                           if (current.contains(path)) return;
                           current.add(path);
-                          try {
-                            await _settings.setInstructionPaths(current);
-                          } catch (e) {
-                            if (mounted) {
-                              Snack.error('$e');
-                            }
+                          final ok = await _settings.setInstructionPaths(
+                            current,
+                          );
+                          if (!ok && mounted) {
+                            Snack.error(LocaleKeys.save.tr);
                           }
                         },
                       ),

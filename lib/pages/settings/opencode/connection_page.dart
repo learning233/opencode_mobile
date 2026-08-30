@@ -47,12 +47,13 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
   }
 
   Future<void> _saveAndReconnect() async {
-    final url = _urlCtrl.text.trim();
-    if (url.isEmpty ||
-        !(url.startsWith('http://') || url.startsWith('https://'))) {
+    // 规范化：补 scheme、剥误填的路径（opencode serve 挂载在根路径）。
+    final url = normalizeServerUrl(_urlCtrl.text);
+    if (url == null) {
       Snack.error(LocaleKeys.connectionValidUrlRequired.tr);
       return;
     }
+    _urlCtrl.text = url;
     setState(() => _saving = true);
     try {
       final result = await SidecarManager.instance.updateConnection(
@@ -71,11 +72,23 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
         }
         return;
       }
-      await Get.find<ProjectController>().refreshAfterConnect();
+      // 连接与持久化已成功；此后刷新失败≠重连失败，分开提示但仍进主页。
+      String? refreshError;
+      try {
+        await Get.find<ProjectController>().refreshAfterConnect();
+      } catch (e) {
+        refreshError = maskIpsInText('$e');
+      }
       Get.find<SessionController>().initializeAfterConnect();
       await _settings.checkHealth();
       if (mounted) {
-        Snack.success(LocaleKeys.connectionReconnected.tr);
+        if (refreshError != null) {
+          Snack.error(
+            '${LocaleKeys.connectionRefreshFailed.tr}: $refreshError',
+          );
+        } else {
+          Snack.success(LocaleKeys.connectionReconnected.tr);
+        }
         _navigatedAway = true;
         Get.offNamed(AppRoutes.home);
       }

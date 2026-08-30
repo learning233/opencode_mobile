@@ -346,7 +346,9 @@ class _ImageAttachmentThumbnail extends StatelessWidget {
           borderRadius: BorderRadius.circular(7.5),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 220, maxHeight: 220),
-            child: Image.memory(bytes, fit: BoxFit.contain),
+            // 缩略图无需全分辨率解码（点击预览另有全尺寸入口），
+            // 限制缓存尺寸避免长会话多图时内存放大。
+            child: Image.memory(bytes, fit: BoxFit.contain, cacheWidth: 440),
           ),
         ),
       ),

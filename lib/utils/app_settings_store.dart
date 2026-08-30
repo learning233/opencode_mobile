@@ -41,7 +41,6 @@ class AppSettingsStore {
   static const _savedModelId = 'saved_model_id';
   static const _visionModelKey = 'vision_model_key';
   static const _savedThinkingLevel = 'saved_thinking_level';
-  static const _registeredProviders = 'registered_providers';
   static const _notificationEnabled = 'notification_enabled';
   static const _cardVisibility = 'card_visibility';
   static const _shownModels = 'shown_models';
@@ -300,16 +299,6 @@ class AppSettingsStore {
     return _prefs.remove(_savedThinkingLevel);
   }
 
-  Set<String> get registeredProviders {
-    final raw = _prefs.getStringList(_registeredProviders);
-    if (raw == null) return {};
-    return raw.toSet();
-  }
-
-  Future<void> setRegisteredProviders(Set<String> ids) async {
-    await _prefs.setStringList(_registeredProviders, ids.toList());
-  }
-
   bool get notificationEnabled => _prefs.getBool(_notificationEnabled) ?? true;
   Future<void> setNotificationEnabled(bool value) =>
       _prefs.setBool(_notificationEnabled, value);
@@ -317,13 +306,27 @@ class AppSettingsStore {
   /// Client-side model visibility (matches desktop prefs).
   List<String> get shownModels =>
       _prefs.getStringList(_shownModels) ?? const [];
-  Future<void> setShownModels(List<String> models) =>
-      _prefs.setStringList(_shownModels, models);
 
   List<String> get hiddenModels =>
       _prefs.getStringList(_hiddenModels) ?? const [];
-  Future<void> setHiddenModels(List<String> models) =>
-      _prefs.setStringList(_hiddenModels, models);
+
+  /// 模型可见性切换涉及 shown/hidden 两个 key 的读-改-写，入队串行化，
+  /// 避免快速连续切换两个模型时后写覆盖先写。
+  Future<void> setModelVisibility(String modelKey, bool visible) {
+    return _enqueuePrefsWrite(() async {
+      final shown = _prefs.getStringList(_shownModels) ?? const [];
+      final hidden = _prefs.getStringList(_hiddenModels) ?? const [];
+      final shownNext = shown.where((m) => m != modelKey).toList();
+      final hiddenNext = hidden.where((m) => m != modelKey).toList();
+      if (visible) {
+        shownNext.add(modelKey);
+      } else {
+        hiddenNext.add(modelKey);
+      }
+      await _prefs.setStringList(_shownModels, shownNext);
+      await _prefs.setStringList(_hiddenModels, hiddenNext);
+    });
+  }
 
   /// Client-side hidden projects (normalized worktree paths, drawer-only).
   List<String> get hiddenProjects =>

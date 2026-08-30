@@ -53,6 +53,11 @@ class SessionRuntimeState {
   /// being non-empty, because SSE can pre-populate messages for a not-yet-opened
   /// session and must not block the first history fetch.
   bool hasLoadedHistory = false;
+
+  /// 重连后标记「历史可能过期」：SSE 自动重连的补偿只强刷当前激活页签，
+  /// 其余打开页签置此标记，切到该页签时经 loadMessages 懒加载守卫重新拉取，
+  /// 避免一次断线触发 N 个全量请求（见 _refreshAfterReconnect）。
+  bool needsReloadAfterReconnect = false;
   final sessionDiffs = <SnapshotFileDiff>[].obs;
 
   /// Expanded status section (todo/diff/none). Written by the SessionStatusStack

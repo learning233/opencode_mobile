@@ -603,7 +603,7 @@ class _CustomProviderPageState extends State<CustomProviderPage> {
     if (!mounted) return;
     setState(() => _saving = false);
     if (ok) {
-      await widget.ctrl.fetchProviders();
+      await widget.ctrl.fetchProviders(force: true);
       if (!mounted) return;
       Get.back();
     } else {

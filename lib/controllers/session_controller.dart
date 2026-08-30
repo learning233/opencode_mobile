@@ -1198,13 +1198,16 @@ class SessionController extends GetxController with WidgetsBindingObserver {
   }) async {
     if (sessionId.isEmpty) return;
     final seq = _sessionFetchSeq;
+    final reloadState = stateOf(sessionId);
+    final flaggedReload = reloadState.needsReloadAfterReconnect;
     // Lazy guard: don't re-fetch sessions whose history is already loaded.
     // selectSession fires on every PageView swipe, so an unconditional reload
     // would both spam the server and clobber in-flight streaming / optimistic
     // messages with a stale snapshot (desktop parity: only fetch once). Uses a
     // dedicated flag instead of messages.isNotEmpty because SSE may pre-populate
     // messages for a not-yet-opened session, which must not skip the first fetch.
-    if (!force && stateOf(sessionId).hasLoadedHistory) return;
+    // 重连标脏（needsReloadAfterReconnect）强制一次重拉并纠正生成态。
+    if (!force && reloadState.hasLoadedHistory && !flaggedReload) return;
     // Fire the todo fetch concurrently with the full-history GET below so its
     // ~one round-trip of latency is hidden behind the much slower message fetch
     // instead of running serially after it. SSE todoUpdated also populates
@@ -1237,6 +1240,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         // API may return newest-first; keep chronological for the timeline.
         final state = stateOf(sessionId);
         state.hasLoadedHistory = true;
+        state.needsReloadAfterReconnect = false;
         // 全量历史是权威数据：清空流式通道，避免通道里的旧累计值在后续
         // 全量 part 对齐/落库时覆盖服务端历史。
         state.streamingPartText.clear();
@@ -1251,7 +1255,9 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         }
         // 断网重连兜底：离线期间错过的 idle 事件会让 isGenerating 残留 true，
         // 依据刚拉取到的历史判定回合是否已收尾并纠正（详见 _reconcileGeneratingAfterReconnect）。
-        if (reconcileGenerating) {
+        // 重连标脏触发的重拉同样需要纠正（该页签没经过 _refreshAfterReconnect
+        // 的强刷路径）。
+        if (reconcileGenerating || flaggedReload) {
           _reconcileGeneratingAfterReconnect(state);
         }
         // Detect if the session is currently executing/generating on the server
@@ -1323,9 +1329,11 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         // Batch restore of idle sessions: leftover pending questions are stale
         // unless the server still has them pending (live question must survive
         // a cold start — see _markStaleQuestionsSkipped). Skip while generating
-        // so a live question is not wiped mid-turn.
+        // so a live question is not wiped mid-turn. 异步发起：GET /question 的
+        // 一个 RTT 不必阻塞 loadMessages 返回（内部自带错误兜底，失败保守
+        // 跳过清理）。
         if (!state.isGenerating.value) {
-          await _markStaleQuestionsSkipped(state);
+          unawaited(_markStaleQuestionsSkipped(state));
         }
       }
     } catch (e) {
@@ -2379,20 +2387,34 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     _sseClient!.connect();
   }
 
-  /// Refresh local state after an SSE reconnect: force-reload the messages of
-  /// every opened session (heals content missed/truncated while disconnected)
-  /// and refresh the session list without touching the user's opened tabs.
+  /// Refresh local state after an SSE reconnect. Only the ACTIVE session is
+  /// force-reloaded (it is on screen); other opened tabs are marked stale
+  /// ([SessionRuntimeState.needsReloadAfterReconnect]) and re-fetched lazily
+  /// when the user switches to them, so one drop no longer triggers a burst of
+  /// N full-history requests. The session list refresh and pending-permission
+  /// restore stay eager (correctness compensation, cheap).
   void _refreshAfterReconnect() {
     AppLogger.i('SSE reconnected — refreshing opened sessions');
     unawaited(fetchSessions(restoreOpened: false));
     // 断线窗口内服务端产生的权限请求不会重发 asked，主动补拉挂起列表。
     unawaited(_restorePendingPermissions());
+    final activeId = activeSessionId.value;
     for (final id in openedSessionIds.toList()) {
-      unawaited(loadMessages(id, force: true, reconcileGenerating: true));
+      if (id == activeId) {
+        unawaited(loadMessages(id, force: true, reconcileGenerating: true));
+        continue;
+      }
+      final st = sessionRuntimeStates[id];
+      if (st != null) {
+        // 先按本地已有消息纠正卡住的生成态（离线窗口内错过的 idle），
+        // 再标脏：切到该页签时 loadMessages 拉全量并再次纠正。
+        _reconcileGeneratingAfterReconnect(st);
+        st.needsReloadAfterReconnect = true;
+      }
     }
     // 文件侧补偿：断线窗口内的 file.edited / file.watcher.updated 不会补发，
     // 无法枚举哪些文件变了，只能整体失效缓存并广播重载，让文件树与已打开
-    // 的编辑器重新拉取（与上方会话消息强制刷新同一恢复哲学）。
+    // 的编辑器重新拉取（失效本身廉价，重载按需发生）。
     if (Get.isRegistered<ProjectController>()) {
       Get.find<ProjectController>().invalidateDirectoryCache();
     }

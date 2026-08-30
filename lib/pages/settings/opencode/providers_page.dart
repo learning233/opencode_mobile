@@ -38,9 +38,9 @@ class _OpencodeProvidersPageState extends State<OpencodeProvidersPage> {
     super.dispose();
   }
 
-  Future<void> _refresh() async {
+  Future<void> _refresh({bool force = false}) async {
     await Future.wait([
-      _settings.fetchProviders(),
+      _settings.fetchProviders(force: force),
       _settings.fetchGlobalConfig(),
     ]);
   }
@@ -52,7 +52,7 @@ class _OpencodeProvidersPageState extends State<OpencodeProvidersPage> {
       builder: (_) => ProviderAuthSheet(providerId: provider.id),
     );
     if (result == true) {
-      await _refresh();
+      await _refresh(force: true);
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       FocusScope.of(context).unfocus();
@@ -91,7 +91,7 @@ class _OpencodeProvidersPageState extends State<OpencodeProvidersPage> {
     setState(() => _disconnecting.add(provider.id));
     try {
       await _settings.disconnectProvider(provider.id);
-      await _refresh();
+      await _refresh(force: true);
     } catch (_) {
     } finally {
       if (mounted) setState(() => _disconnecting.remove(provider.id));
@@ -107,7 +107,10 @@ class _OpencodeProvidersPageState extends State<OpencodeProvidersPage> {
           style: const TextStyle(fontSize: 16),
         ),
         actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _refresh),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () => _refresh(force: true),
+          ),
         ],
       ),
       body: Obx(() {

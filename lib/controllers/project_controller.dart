@@ -256,6 +256,9 @@ class ProjectController extends GetxController {
   /// 不得原地修改（增删排序都会污染缓存）。
   final Map<String, List<FileEntry>> directoryCache = {};
 
+  /// directoryCache 容量兜底：单项目长会话内浏览大量目录时 FIFO 淘汰。
+  static const int _directoryCacheMaxEntries = 256;
+
   /// 缓存代际：任何失效操作都会递增。[loadDirectory] 在请求发出前记录
   /// 代际，响应返回后代际已变（期间发生过失效）则跳过写回，避免在途
   /// 旧响应把过期列表写回已失效的缓存（下次非 force 读取会命中过期数据）。
@@ -305,6 +308,11 @@ class ProjectController extends GetxController {
       });
 
       if (generation == _directoryCacheGeneration) {
+        // 容量兜底：单项目长会话内浏览大量目录时防止无界增长（LinkedHashMap
+        // 保持插入序，FIFO 淘汰最早写入的条目；失效/清空逻辑不受影响）。
+        while (directoryCache.length >= _directoryCacheMaxEntries) {
+          directoryCache.remove(directoryCache.keys.first);
+        }
         directoryCache[key] = list;
       }
       return list;

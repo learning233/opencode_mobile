@@ -22,6 +22,12 @@ final RegExp _thinkingTagPattern = RegExp(
   caseSensitive: false,
 );
 
+/// file:// 附件图片的 provider 缓存：同一路径复用同一 MemoryImage 实例，
+/// 滚动往返（State 销毁重建）命中 Flutter ImageCache，跳过重复 IO + 解码
+/// （data: URI 路径已有磁盘缓存兜底）。FIFO 上限防无界增长。
+final Map<String, MemoryImage> _fileImageProviderCache = {};
+const int _fileImageCacheLimit = 32;
+
 /// Renders a single message [Part] — aligned with desktop MessagePartWidget.
 class MessagePartWidget extends StatelessWidget {
   final Part part;
@@ -176,6 +182,9 @@ class _FileAttachmentState extends State<_FileAttachment> {
   bool _isImage = false;
   Uint8List? _imageBytes;
 
+  /// file:// 路径图片的缓存 provider（命中时替代 _imageBytes 渲染路径）。
+  MemoryImage? _fileImage;
+
   @override
   void initState() {
     super.initState();
@@ -187,6 +196,7 @@ class _FileAttachmentState extends State<_FileAttachment> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.part.fileUrl != widget.part.fileUrl) {
       _imageBytes = null;
+      _fileImage = null;
       _detectAndLoad();
     }
   }
@@ -244,11 +254,25 @@ class _FileAttachmentState extends State<_FileAttachment> {
     if (!url.startsWith('file://')) return;
     try {
       final path = Uri.parse(url).toFilePath();
+      // provider 缓存命中：跳过 IO 与解码（State 滚出视口销毁、滚回重建时
+      // 会重新走 initState 加载，未缓存前每次都重复 readAsBytes）。
+      final cached = _fileImageProviderCache[path];
+      if (cached != null) {
+        if (!mounted) return;
+        setState(() => _fileImage = cached);
+        return;
+      }
       final file = File(path);
       if (!await file.exists()) return;
       final bytes = await file.readAsBytes();
       if (!mounted) return;
-      setState(() => _imageBytes = bytes);
+      final provider = MemoryImage(bytes);
+      if (_fileImageProviderCache.length >= _fileImageCacheLimit) {
+        _fileImageProviderCache.remove(_fileImageProviderCache.keys.first);
+      }
+      _fileImageProviderCache[path] = provider;
+      if (!mounted) return;
+      setState(() => _fileImage = provider);
     } catch (e) {
       AppLogger.e('_FileAttachment load image failed: $e');
     }
@@ -256,9 +280,14 @@ class _FileAttachmentState extends State<_FileAttachment> {
 
   @override
   Widget build(BuildContext context) {
-    final bytes = _imageBytes;
-    if (_isImage && bytes != null) {
-      return _ImageAttachmentThumbnail(bytes: bytes);
+    if (_isImage) {
+      if (_fileImage != null) {
+        return _ImageAttachmentThumbnail(image: _fileImage);
+      }
+      final bytes = _imageBytes;
+      if (bytes != null) {
+        return _ImageAttachmentThumbnail(bytes: bytes);
+      }
     }
     return _buildFileRow(context);
   }
@@ -299,11 +328,19 @@ class _FileAttachmentState extends State<_FileAttachment> {
 
 /// Renders a sent image attachment as a thumbnail with tap-to-zoom preview.
 class _ImageAttachmentThumbnail extends StatelessWidget {
-  final Uint8List bytes;
+  /// data: URI 路径的原始字节；file:// 路径改走缓存的 [image] provider。
+  final Uint8List? bytes;
+  final MemoryImage? image;
 
-  const _ImageAttachmentThumbnail({required this.bytes});
+  const _ImageAttachmentThumbnail({this.bytes, this.image})
+    : assert(bytes != null || image != null, 'bytes or image must be provided');
 
   void _showPreview(BuildContext context) {
+    // 解码宽度按屏幕物理分辨率封顶（见 build 内预览分支的注释）。
+    final previewWidth =
+        (MediaQuery.sizeOf(context).width *
+                MediaQuery.devicePixelRatioOf(context))
+            .round();
     showDialog<void>(
       context: context,
       builder: (ctx) => Dialog(
@@ -319,7 +356,21 @@ class _ImageAttachmentThumbnail extends StatelessWidget {
                   minScale: 0.5,
                   maxScale: 4,
                   child: Center(
-                    child: Image.memory(bytes, fit: BoxFit.contain),
+                    // 预览按屏幕物理分辨率限制解码宽度：保持 1:1 观感的同时
+                    // 避免全尺寸位图的内存尖峰（放大超过 1x 后略糊，可接受）。
+                    child: image != null
+                        ? Image(
+                            // Image 主构造器无 cacheWidth，用 ResizeImage
+                            // 限制解码尺寸（内部 provider 实例不变，同尺寸
+                            // 解码仍命中 ImageCache）。
+                            image: ResizeImage(image!, width: previewWidth),
+                            fit: BoxFit.contain,
+                          )
+                        : Image.memory(
+                            bytes!,
+                            fit: BoxFit.contain,
+                            cacheWidth: previewWidth,
+                          ),
                   ),
                 ),
               ),
@@ -358,7 +409,12 @@ class _ImageAttachmentThumbnail extends StatelessWidget {
             constraints: const BoxConstraints(maxWidth: 220, maxHeight: 220),
             // 缩略图无需全分辨率解码（点击预览另有全尺寸入口），
             // 限制缓存尺寸避免长会话多图时内存放大。
-            child: Image.memory(bytes, fit: BoxFit.contain, cacheWidth: 440),
+            child: image != null
+                ? Image(
+                    image: ResizeImage(image!, width: 440),
+                    fit: BoxFit.contain,
+                  )
+                : Image.memory(bytes!, fit: BoxFit.contain, cacheWidth: 440),
           ),
         ),
       ),
@@ -377,8 +433,7 @@ class _StreamingTextMarkdown extends StatefulWidget {
   const _StreamingTextMarkdown({required this.part, required this.sessionId});
 
   @override
-  State<_StreamingTextMarkdown> createState() =>
-      _StreamingTextMarkdownState();
+  State<_StreamingTextMarkdown> createState() => _StreamingTextMarkdownState();
 }
 
 class _StreamingTextMarkdownState extends State<_StreamingTextMarkdown> {
@@ -401,8 +456,8 @@ class _StreamingTextMarkdownState extends State<_StreamingTextMarkdown> {
 
   void _attach() {
     try {
-      final state = Get.find<SessionController>()
-          .sessionRuntimeStates[widget.sessionId];
+      final state =
+          Get.find<SessionController>().sessionRuntimeStates[widget.sessionId];
       if (state == null) {
         _rx = null;
         return;

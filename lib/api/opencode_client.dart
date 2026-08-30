@@ -21,6 +21,12 @@ class OpenCodeClient {
 
   String? activeDirectory;
 
+  /// Basic auth header 按凭据缓存：拦截器对每个请求重算 base64 纯属浪费，
+  /// 凭据仅在连接配置变化时更新（SidecarManager.updateConnection）。
+  String? _cachedAuthHeader;
+  String? _cachedAuthUser;
+  String? _cachedAuthPassword;
+
   OpenCodeClient._internal()
     : dio = Dio(
         BaseOptions(
@@ -50,10 +56,14 @@ class OpenCodeClient {
           }
           options.baseUrl = manager.baseUrl;
           if (manager.password.isNotEmpty) {
-            final token = base64Encode(
-              utf8.encode('${manager.username}:${manager.password}'),
-            );
-            options.headers['Authorization'] = 'Basic $token';
+            if (_cachedAuthUser != manager.username ||
+                _cachedAuthPassword != manager.password) {
+              _cachedAuthUser = manager.username;
+              _cachedAuthPassword = manager.password;
+              _cachedAuthHeader =
+                  'Basic ${base64Encode(utf8.encode('${manager.username}:${manager.password}'))}';
+            }
+            options.headers['Authorization'] = _cachedAuthHeader;
           }
 
           if (options.extra['noAutoDirectory'] == true) {

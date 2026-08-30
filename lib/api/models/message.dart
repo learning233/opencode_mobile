@@ -230,14 +230,19 @@ class Part {
     return {};
   }
 
+  /// [toolOutput] 的 JSON 编码缓存（Part 不可变，更新即整体替换实例）。
+  String? _toolOutputJson;
+
   /// The output produced by the tool, from `raw['state']['output']`.
   /// If the output is a [Map] it is JSON-encoded; a [String] is returned as-is.
+  /// Map 输出的编码结果按实例缓存（Part 不可变，更新即整体替换），工具卡片
+  /// 每次 build 访问大 output 时不再重复 jsonEncode。
   String get toolOutput {
     final s = raw['state'];
     if (s is Map) {
       final output = s['output'];
       if (output is String) return output;
-      if (output is Map) return jsonEncode(output);
+      if (output is Map) return _toolOutputJson ??= jsonEncode(output);
     }
     return '';
   }

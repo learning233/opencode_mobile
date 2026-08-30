@@ -1793,7 +1793,20 @@ class SettingsController extends GetxController {
     return false;
   }
 
-  Future<void> fetchProviders() async {
+  /// providers 列表的短 TTL 缓存：设置页 4 个页面各自在打开时拉取，来回切
+  /// tab 期间 30s 内复用同一份。所有「变更后刷新」的调用方必须传 force: true
+  /// （enableProvider / saveProviderKey / connectProvider / 删除与自定义
+  /// provider 流程均已带 force）。
+  static const Duration _providersCacheTtl = Duration(seconds: 30);
+  DateTime? _providersFetchedAt;
+
+  Future<void> fetchProviders({bool force = false}) async {
+    if (!force &&
+        providers.isNotEmpty &&
+        _providersFetchedAt != null &&
+        DateTime.now().difference(_providersFetchedAt!) < _providersCacheTtl) {
+      return;
+    }
     isLoadingProviders.value = true;
     try {
       final response = await _client.get(ApiEndpoints.providers);
@@ -1833,6 +1846,7 @@ class SettingsController extends GetxController {
               );
             }),
           );
+          _providersFetchedAt = DateTime.now();
         }
       }
     } catch (e) {
@@ -1853,7 +1867,7 @@ class SettingsController extends GetxController {
     if (!currentDisabled.remove(providerId)) return;
     await updateGlobalConfig({'disabled_providers': currentDisabled});
     await _disposeBackendInstances();
-    await fetchProviders();
+    await fetchProviders(force: true);
   }
 
   /// Adds a custom provider using a raw configuration Map directly.
@@ -1941,6 +1955,7 @@ class SettingsController extends GetxController {
       });
 
       await _disposeBackendInstances();
+      await fetchProviders(force: true);
     } catch (e) {
       AppLogger.e('disconnectProvider failed: $e');
       rethrow;
@@ -1957,7 +1972,7 @@ class SettingsController extends GetxController {
           response.statusCode == 201 ||
           response.statusCode == 204) {
         await _disposeBackendInstances();
-        await fetchProviders();
+        await fetchProviders(force: true);
         return true;
       }
     } catch (e) {
@@ -1979,7 +1994,7 @@ class SettingsController extends GetxController {
       if (url != null && url.isNotEmpty) {
         await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
       }
-      await fetchProviders();
+      await fetchProviders(force: true);
     } catch (e) {
       AppLogger.e('SettingsController: connectProvider error $e');
     }
@@ -2033,7 +2048,7 @@ class SettingsController extends GetxController {
     final ok = response.statusCode == 200 || response.statusCode == 204;
     if (ok) {
       await _disposeBackendInstances();
-      await fetchProviders();
+      await fetchProviders(force: true);
     }
     return ok;
   }

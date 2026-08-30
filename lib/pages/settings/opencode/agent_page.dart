@@ -66,10 +66,10 @@ class _OpencodeAgentPageState extends State<OpencodeAgentPage> {
     return const ['low', 'medium', 'high'];
   }
 
-  Future<void> _refresh() async {
+  Future<void> _refresh({bool force = false}) async {
     await Future.wait([
       _settings.fetchAgents(),
-      _settings.fetchProviders(),
+      _settings.fetchProviders(force: force),
       _settings.fetchGlobalConfig(),
       _session.fetchModels(),
     ]);
@@ -145,7 +145,10 @@ class _OpencodeAgentPageState extends State<OpencodeAgentPage> {
           style: const TextStyle(fontSize: 16),
         ),
         actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _refresh),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () => _refresh(force: true),
+          ),
         ],
       ),
       body: Obx(() {

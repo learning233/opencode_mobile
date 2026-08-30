@@ -167,32 +167,20 @@ MarkdownStyleSheet _styleSheetFor(ThemeData theme, bool isDark) {
     blockquoteDecoration: BoxDecoration(
       color: isDark ? const Color(0xFF181A22) : const Color(0xFFF6F8FA),
       border: Border(
-        left: BorderSide(
-          color: primary.withValues(alpha: 0.6),
-          width: 3,
-        ),
+        left: BorderSide(color: primary.withValues(alpha: 0.6), width: 3),
       ),
     ),
     blockquotePadding: const EdgeInsets.only(left: 12, top: 4, bottom: 4),
     listIndent: 22,
     tableBorder: TableBorder.symmetric(
-      inside: BorderSide(
-        color: divider.withValues(alpha: 0.2),
-        width: 0.5,
-      ),
-      outside: BorderSide(
-        color: divider.withValues(alpha: 0.35),
-        width: 0.5,
-      ),
+      inside: BorderSide(color: divider.withValues(alpha: 0.2), width: 0.5),
+      outside: BorderSide(color: divider.withValues(alpha: 0.35), width: 0.5),
     ),
     tableHead: bodyText?.copyWith(fontWeight: FontWeight.bold, fontSize: 12),
     tableBody: bodyText?.copyWith(fontSize: 12),
     horizontalRuleDecoration: BoxDecoration(
       border: Border(
-        top: BorderSide(
-          color: divider.withValues(alpha: 0.5),
-          width: 0.5,
-        ),
+        top: BorderSide(color: divider.withValues(alpha: 0.5), width: 0.5),
       ),
     ),
   );

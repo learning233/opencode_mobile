@@ -23,15 +23,28 @@ class VadSettingsSheet extends StatefulWidget {
 
 class _VadSettingsSheetState extends State<VadSettingsSheet> {
   late final TextEditingController _commandCtrl;
+  late final FocusNode _commandFocus;
 
   @override
   void initState() {
     super.initState();
     _commandCtrl = TextEditingController(text: Global.voiceSendCommandRx.value);
+    // 发送口令只在提交/失焦时落库，输入过程中只留在本地控制器，
+    // 避免每个按键触发一次 SharedPreferences 全量写。
+    _commandFocus = FocusNode();
+    _commandFocus.addListener(() {
+      if (!_commandFocus.hasFocus) _commitVoiceSendCommand();
+    });
+  }
+
+  void _commitVoiceSendCommand() {
+    final v = _commandCtrl.text.trim();
+    if (v != Global.voiceSendCommand) Global.voiceSendCommand = v;
   }
 
   @override
   void dispose() {
+    _commandFocus.dispose();
     _commandCtrl.dispose();
     super.dispose();
   }
@@ -109,7 +122,8 @@ class _VadSettingsSheetState extends State<VadSettingsSheet> {
                       const SizedBox(height: 6),
                       TextField(
                         controller: _commandCtrl,
-                        onChanged: (v) => Global.voiceSendCommand = v,
+                        focusNode: _commandFocus,
+                        onSubmitted: (_) => _commitVoiceSendCommand(),
                         decoration: InputDecoration(
                           isDense: true,
                           hintText: LocaleKeys.voiceSendCommandHint.tr,
@@ -179,7 +193,9 @@ class _VadSettingsSheetState extends State<VadSettingsSheet> {
                     max: 0.9,
                     divisions: 16,
                     label: threshold.toStringAsFixed(2),
-                    onChanged: (v) => Global.vadThreshold = double.parse(
+                    onChanged: (v) => Global.vadThresholdRx.value =
+                        double.parse(v.toStringAsFixed(2)),
+                    onChangeEnd: (v) => Global.vadThreshold = double.parse(
                       v.toStringAsFixed(2),
                     ),
                   ),
@@ -197,7 +213,9 @@ class _VadSettingsSheetState extends State<VadSettingsSheet> {
                     max: 3.0,
                     divisions: 29,
                     label: '${minSilence.toStringAsFixed(1)}s',
-                    onChanged: (v) => Global.vadMinSilenceDuration =
+                    onChanged: (v) => Global.vadMinSilenceDurationRx.value =
+                        double.parse(v.toStringAsFixed(1)),
+                    onChangeEnd: (v) => Global.vadMinSilenceDuration =
                         double.parse(v.toStringAsFixed(1)),
                   ),
                 ),
@@ -214,7 +232,9 @@ class _VadSettingsSheetState extends State<VadSettingsSheet> {
                     max: 2.0,
                     divisions: 39,
                     label: '${minSpeech.toStringAsFixed(2)}s',
-                    onChanged: (v) => Global.vadMinSpeechDuration =
+                    onChanged: (v) => Global.vadMinSpeechDurationRx.value =
+                        double.parse(v.toStringAsFixed(2)),
+                    onChangeEnd: (v) => Global.vadMinSpeechDuration =
                         double.parse(v.toStringAsFixed(2)),
                   ),
                 ),
@@ -231,7 +251,9 @@ class _VadSettingsSheetState extends State<VadSettingsSheet> {
                     max: 30.0,
                     divisions: 28,
                     label: '${maxSpeech.toStringAsFixed(0)}s',
-                    onChanged: (v) => Global.vadMaxSpeechDuration =
+                    onChanged: (v) => Global.vadMaxSpeechDurationRx.value =
+                        double.parse(v.toStringAsFixed(0)),
+                    onChangeEnd: (v) => Global.vadMaxSpeechDuration =
                         double.parse(v.toStringAsFixed(0)),
                   ),
                 ),
@@ -248,7 +270,8 @@ class _VadSettingsSheetState extends State<VadSettingsSheet> {
                     max: 1000,
                     divisions: 20,
                     label: '${speechPad}ms',
-                    onChanged: (v) => Global.vadSpeechPadMs = v.round(),
+                    onChanged: (v) => Global.vadSpeechPadMsRx.value = v.round(),
+                    onChangeEnd: (v) => Global.vadSpeechPadMs = v.round(),
                   ),
                 ),
               ],

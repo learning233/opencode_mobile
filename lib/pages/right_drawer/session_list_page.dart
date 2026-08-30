@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../controllers/session_controller.dart';
@@ -16,6 +18,13 @@ class _SessionListPageState extends State<SessionListPage> {
   final _searchCtrl = TextEditingController();
   final _query = ''.obs;
   final _loading = false.obs;
+  Timer? _searchDebounce;
+
+  // 排序缓存：sessions 是原地变更的同一 RxList 实例，实例身份判不出内容
+  // 变化，改用 O(n) 元素身份指纹——指纹不变（如仅搜索词变化触发的重建）
+  // 直接复用上次排序结果，省掉重复 O(n log n) 排序。
+  List<SessionModel>? _sortedCache;
+  int _sortedCacheFingerprint = 0;
 
   SessionController get _ctrl => Get.find<SessionController>();
 
@@ -27,6 +36,7 @@ class _SessionListPageState extends State<SessionListPage> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -38,13 +48,33 @@ class _SessionListPageState extends State<SessionListPage> {
     _loading.value = false;
   }
 
-  List<SessionModel> _filtered(List<SessionModel> all) {
+  void _onSearchChanged(String v) {
+    // 搜索输入 200ms debounce：等输入停顿再触发列表重排/过滤。
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 200), () {
+      _query.value = v;
+    });
+  }
+
+  List<SessionModel> _sorted(List<SessionModel> sessions) {
+    var fingerprint = sessions.length;
+    for (final s in sessions) {
+      fingerprint = fingerprint * 31 + identityHashCode(s);
+    }
+    final cached = _sortedCache;
+    if (cached != null && fingerprint == _sortedCacheFingerprint) return cached;
+    final sorted = sessions.toList();
+    sorted.sort((a, b) => b.time.updated.compareTo(a.time.updated));
+    _sortedCache = sorted;
+    _sortedCacheFingerprint = fingerprint;
+    return sorted;
+  }
+
+  List<SessionModel> _filtered() {
+    final sorted = _sorted(_ctrl.sessions);
     final q = _query.value.trim().toLowerCase();
-    // `all` is already a fresh copy from the caller (sessions.toList()), so
-    // sort in place instead of copying again.
-    all.sort((a, b) => b.time.updated.compareTo(a.time.updated));
-    if (q.isEmpty) return all;
-    return all.where((s) {
+    if (q.isEmpty) return sorted;
+    return sorted.where((s) {
       final name = s.displayName.toLowerCase();
       return name.contains(q) || s.id.toLowerCase().contains(q);
     }).toList();
@@ -150,13 +180,14 @@ class _SessionListPageState extends State<SessionListPage> {
                   return IconButton(
                     icon: const Icon(Icons.clear, size: 18),
                     onPressed: () {
+                      _searchDebounce?.cancel();
                       _searchCtrl.clear();
                       _query.value = '';
                     },
                   );
                 }),
               ),
-              onChanged: (v) => _query.value = v,
+              onChanged: _onSearchChanged,
             ),
           ),
           Expanded(
@@ -182,7 +213,7 @@ class _SessionListPageState extends State<SessionListPage> {
                   ),
                 );
               }
-              final list = _filtered(_ctrl.sessions.toList());
+              final list = _filtered();
               if (list.isEmpty) {
                 return Center(
                   child: Text(

@@ -4,9 +4,8 @@ import '../../utils/app_logger.dart';
 // ── SSE Event types mirrored from the OpenCode SDK ──
 
 /// Represents a single Server-Sent Event (SSE) received from the
-/// OpenCode sidecar.  Contains the raw wire data and parsed fields
-/// (id, type, properties) plus typed convenience accessors that align
-/// with the SDK event schema.
+/// OpenCode sidecar.  Contains the parsed fields (id, type, properties)
+/// plus typed convenience accessors that align with the SDK event schema.
 class SseEvent {
   /// Unique event identifier (from the `id:` line or decoded JSON body).
   final String id;
@@ -16,9 +15,6 @@ class SseEvent {
 
   /// Parsed JSON properties map carried by the event.
   final Map<String, dynamic> properties;
-
-  /// The raw, unparsed SSE text as received from the server.
-  final String rawData;
 
   /// Reusable empty map to avoid allocations in typed getters.
   static const _emptyMap = <String, dynamic>{};
@@ -30,7 +26,6 @@ class SseEvent {
     required this.id,
     required this.type,
     required this.properties,
-    required this.rawData,
   });
 
   /// Parses a raw SSE payload string into an [SseEvent].
@@ -42,7 +37,6 @@ class SseEvent {
     String id = '';
     String eventType = '';
     Map<String, dynamic> properties = {};
-    String rawData = data;
 
     final lines = data.split('\n');
     final buf = StringBuffer();
@@ -88,7 +82,6 @@ class SseEvent {
       id: id,
       type: eventType,
       properties: properties,
-      rawData: rawData,
     );
   }
 

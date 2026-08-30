@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/cupertino.dart';
@@ -109,9 +110,12 @@ class _AudioPlayerViewState extends State<AudioPlayerView> {
           }
         }
 
-        final Uint8List bytes = base64Decode(
-          base64Content.replaceAll(RegExp(r'\s+'), ''),
+        // 数 MB base64 的正则清洗 + 解码放后台 isolate，打开大附件不占 UI 线程。
+        final Uint8List bytes = await Isolate.run(
+          () => base64Decode(base64Content.replaceAll(RegExp(r'\s+'), '')),
         );
+        // isolate 解码期间可能已有更新的请求完成或页面已销毁，丢弃过期结果。
+        if (seq != _requestSeq || !mounted) return;
 
         if (widget.filePath.isNotEmpty &&
             Get.isRegistered<TabletToolController>()) {

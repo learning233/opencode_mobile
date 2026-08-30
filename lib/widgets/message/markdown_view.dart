@@ -255,6 +255,15 @@ class _MarkdownCodeBlock extends StatefulWidget {
 final Highlight _globalHighlight = Highlight();
 final Set<String> _registeredLanguages = {};
 
+/// 高亮结果全局缓存：长会话滚动会销毁/重建不可见 item 的 State，State 级
+/// 缓存随之丢失，滚回视口就要全量重高亮。key 与 State 级判重字段一致；
+/// 按插入序 FIFO 淘汰，超长代码不缓存防内存放大（同 tool_call_detector
+/// 的既有模式）。只缓存真正跑过高亮的条目，纯文本 span 构建本身零成本。
+typedef _CodeSpanKey = (String, String?, bool, bool);
+final Map<_CodeSpanKey, TextSpan> _globalCodeSpanCache = {};
+const int _globalCodeSpanCacheLimit = 256;
+const int _globalCodeSpanCacheMaxCodeLength = 20000;
+
 /// Sub-language grammars referenced by a registered top-level grammar.
 /// re_highlight resolves these by name at highlight time, so they must be
 /// registered before use or that region degrades to plain text.
@@ -567,6 +576,15 @@ class _MarkdownCodeBlockState extends State<_MarkdownCodeBlock> {
       return _cachedCodeSpan!;
     }
 
+    // State 级缓存 miss 后查全局缓存：State 被滚动销毁重建时仍可复用
+    // 高亮结果，避免长会话滚回视口就全量重高亮。
+    final globalKey = (widget.code, langId, isDark, widget.highlightEnabled);
+    final globalSpan = _globalCodeSpanCache[globalKey];
+    if (globalSpan != null) {
+      _cacheStateSpan(globalSpan, isDark);
+      return globalSpan;
+    }
+
     TextSpan codeSpan;
     if (canHighlight) {
       try {
@@ -593,12 +611,23 @@ class _MarkdownCodeBlockState extends State<_MarkdownCodeBlock> {
       codeSpan = TextSpan(text: widget.code);
     }
 
-    _cachedCodeSpan = codeSpan;
+    _cacheStateSpan(codeSpan, isDark);
+    if (canHighlight &&
+        widget.code.length <= _globalCodeSpanCacheMaxCodeLength) {
+      if (_globalCodeSpanCache.length >= _globalCodeSpanCacheLimit) {
+        _globalCodeSpanCache.remove(_globalCodeSpanCache.keys.first);
+      }
+      _globalCodeSpanCache[globalKey] = codeSpan;
+    }
+    return codeSpan;
+  }
+
+  void _cacheStateSpan(TextSpan span, bool isDark) {
+    _cachedCodeSpan = span;
     _cachedCode = widget.code;
     _cachedLangId = _langId;
     _cachedIsDark = isDark;
     _cachedHighlightEnabled = widget.highlightEnabled;
-    return codeSpan;
   }
 }
 

@@ -4,6 +4,7 @@ import '../../api/models/message.dart';
 import '../../controllers/session_controller.dart';
 import '../../init.dart';
 import '../../utils/app_theme.dart';
+import '../../utils/translations.dart';
 import '../../widgets/message/message_bubble.dart';
 
 /// Mobile chat timeline — ported from desktop `MessageTimeline`.
@@ -255,13 +256,18 @@ class _ChatViewState extends State<ChatView> {
                 }
 
                 if (msgs.isEmpty && !showThinking) {
+                  final isLoading = !state.hasLoadedHistory.value;
                   return Center(
                     child: Text(
-                      'Start a conversation',
+                      isLoading
+                          ? LocaleKeys.chatLoadingMessages.tr
+                          : LocaleKeys.chatStartConversation.tr,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(
-                          context,
-                        ).textTheme.bodySmall?.color?.withValues(alpha: 0.5),
+                        color: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.color
+                            ?.withValues(alpha: 0.5),
                       ),
                     ),
                   );

@@ -52,7 +52,7 @@ class SessionRuntimeState {
   /// for this session. Guards the lazy re-fetch separately from [messages]
   /// being non-empty, because SSE can pre-populate messages for a not-yet-opened
   /// session and must not block the first history fetch.
-  bool hasLoadedHistory = false;
+  final hasLoadedHistory = false.obs;
 
   /// 重连后标记「历史可能过期」：SSE 自动重连的补偿只强刷当前激活页签，
   /// 其余打开页签置此标记，切到该页签时经 loadMessages 懒加载守卫重新拉取，

@@ -1207,7 +1207,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     // dedicated flag instead of messages.isNotEmpty because SSE may pre-populate
     // messages for a not-yet-opened session, which must not skip the first fetch.
     // 重连标脏（needsReloadAfterReconnect）强制一次重拉并纠正生成态。
-    if (!force && reloadState.hasLoadedHistory && !flaggedReload) return;
+    if (!force && reloadState.hasLoadedHistory.value && !flaggedReload) return;
     // Fire the todo fetch concurrently with the full-history GET below so its
     // ~one round-trip of latency is hidden behind the much slower message fetch
     // instead of running serially after it. SSE todoUpdated also populates
@@ -1239,7 +1239,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
             .toList();
         // API may return newest-first; keep chronological for the timeline.
         final state = stateOf(sessionId);
-        state.hasLoadedHistory = true;
+        state.hasLoadedHistory.value = true;
         state.needsReloadAfterReconnect = false;
         // 全量历史是权威数据：清空流式通道，避免通道里的旧累计值在后续
         // 全量 part 对齐/落库时覆盖服务端历史。
@@ -1338,6 +1338,10 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       }
     } catch (e) {
       AppLogger.e('loadMessages failed: $e');
+    } finally {
+      if (seq == _sessionFetchSeq) {
+        stateOf(sessionId).hasLoadedHistory.value = true;
+      }
     }
   }
 

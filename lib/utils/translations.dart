@@ -621,6 +621,8 @@ class LocaleKeys {
   static const chatManualCompact = "chat_manual_compact";
   static const chatQuickPhrases = "chat_quick_phrases";
   static const chatSelectSessionFirst = "chat_select_session_first";
+  static const chatLoadingMessages = "chat_loading_messages";
+  static const chatStartConversation = "chat_start_conversation";
   static const chatWaitGenerationToCompact = "chat_wait_generation_to_compact";
   static const chatForkFailed = "chat_fork_failed";
   static const chatManualCompactCompleted = "chat_manual_compact_completed";
@@ -1776,6 +1778,8 @@ class Messages extends Translations {
     LocaleKeys.chatManualCompact: '手动压缩',
     LocaleKeys.chatQuickPhrases: '常用语',
     LocaleKeys.chatSelectSessionFirst: '请先选择一个会话',
+    LocaleKeys.chatLoadingMessages: '正在加载消息...',
+    LocaleKeys.chatStartConversation: '开启对话',
     LocaleKeys.chatWaitGenerationToCompact: '当前会话正在生成，完成后再压缩',
     LocaleKeys.chatManualCompactCompleted: '手动压缩完成',
     LocaleKeys.chatContextCompaction: '上下文压缩',
@@ -2947,6 +2951,8 @@ class Messages extends Translations {
     LocaleKeys.chatManualCompact: 'Manual Compact',
     LocaleKeys.chatQuickPhrases: 'Quick Phrases',
     LocaleKeys.chatSelectSessionFirst: 'Please select a session first',
+    LocaleKeys.chatLoadingMessages: 'Loading messages...',
+    LocaleKeys.chatStartConversation: 'Start a conversation',
     LocaleKeys.chatWaitGenerationToCompact:
         'Active session is generating, wait until it finishes to compact',
     LocaleKeys.chatManualCompactCompleted: 'Manual compaction completed',

@@ -213,7 +213,7 @@ class _FileListPageState extends State<FileListPage> {
                 ),
                 const SizedBox(height: 12),
                 FilledButton.tonal(
-                  onPressed: _loadDirectory,
+                  onPressed: () => _loadDirectory(force: true),
                   child: Text(LocaleKeys.retry.tr),
                 ),
               ],

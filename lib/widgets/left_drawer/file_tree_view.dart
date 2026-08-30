@@ -98,27 +98,32 @@ class _FileTreeViewState extends State<FileTreeView> {
     }
   }
 
+  void _refreshTree({bool force = true}) {
+    _refreshDebounce?.cancel();
+    if (!mounted) return;
+    if (Get.isRegistered<ProjectController>()) {
+      final projectWorktree =
+          Get.find<ProjectController>().activeProject.value?.worktree;
+      Get.find<ProjectController>().invalidateDirectoryCache(
+        worktree: projectWorktree,
+      );
+    }
+    _dirCache.clear();
+    // 记录当前已展开的目录，清缓存后一并重载，避免展开子树渲染空白。
+    final expandedDirs = _expanded.entries
+        .where((e) => e.value && e.key != _currentRoot)
+        .map((e) => e.key)
+        .toList();
+    _loadDirectory(_currentRoot, force: force);
+    for (final dir in expandedDirs) {
+      _loadDirectory(dir, force: force);
+    }
+  }
+
   void _scheduleRefresh() {
     _refreshDebounce?.cancel();
     _refreshDebounce = Timer(const Duration(milliseconds: 300), () {
-      if (!mounted) return;
-      if (Get.isRegistered<ProjectController>()) {
-        final projectWorktree =
-            Get.find<ProjectController>().activeProject.value?.worktree;
-        Get.find<ProjectController>().invalidateDirectoryCache(
-          worktree: projectWorktree,
-        );
-      }
-      _dirCache.clear();
-      // 记录当前已展开的目录，清缓存后一并重载，避免展开子树渲染空白。
-      final expandedDirs = _expanded.entries
-          .where((e) => e.value && e.key != _currentRoot)
-          .map((e) => e.key)
-          .toList();
-      _loadDirectory(_currentRoot, force: true);
-      for (final dir in expandedDirs) {
-        _loadDirectory(dir, force: true);
-      }
+      _refreshTree(force: true);
     });
   }
 
@@ -278,10 +283,7 @@ class _FileTreeViewState extends State<FileTreeView> {
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
             tooltip: LocaleKeys.retry.tr,
-            onPressed: () {
-              _dirCache.clear();
-              _loadDirectory(_currentRoot);
-            },
+            onPressed: () => _refreshTree(force: true),
           ),
         ),
         const Divider(height: 1, indent: 16, endIndent: 16),
@@ -338,7 +340,7 @@ class _FileTreeViewState extends State<FileTreeView> {
     return Padding(
       padding: padding,
       child: InkWell(
-        onTap: () => _loadDirectory(dir),
+        onTap: () => _loadDirectory(dir, force: true),
         child: Text(
           'Error: ${row.error} (Tap to retry)',
           style: const TextStyle(fontSize: 11, color: Colors.red),

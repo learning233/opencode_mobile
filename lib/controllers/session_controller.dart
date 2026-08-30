@@ -2387,6 +2387,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
           ctrl.invalidateFileContent(f.path, worktree: f.worktree);
         }
       }
+      ctrl.invalidateFileContent(raw, worktree: currentWorktree);
       ctrl.fileChangeTick.value++;
     }
   }

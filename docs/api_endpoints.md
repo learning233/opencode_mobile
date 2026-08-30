@@ -170,7 +170,7 @@
 
 | 路径 | 方法 | 描述 | 响应 | 版本 | 状态 |
 |------|------|------|------|------|------|
-| `/api/event` | GET | 订阅当前实例的 SSE 事件流 | **SSE 流**: `V2Event`（含 `server.connected` 等事件类型） | v2 | active |
+| `/api/event` | GET | 订阅当前实例的 SSE 事件流。**客户端实际使用 v1 `/event`（`lib/api/endpoints.dart`，与 desktop 桌面端对齐，有意选择），不走此 v2 端点** | **SSE 流**: `V2Event`（含 `server.connected` 等事件类型） | v2 | active |
 
 ### `session.diff` 事件语义（服务端实证，clone/opencode 源码）
 

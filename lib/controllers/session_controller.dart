@@ -247,11 +247,37 @@ class SessionController extends GetxController with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) return;
     // 允许后台联网时 SSE 可能仍保持连接，因此按实际状态判断是否恢复：
-    // 只有确实断线才触发重连；凭据失败时重连无意义，交给用户处理。
+    // 只有确实断线才触发重连。
     final sse = _sseClient;
-    if (sse == null || sse.isConnected || sse.isCredentialFailed) return;
+    if (sse == null || sse.isConnected) return;
+    if (sse.isCredentialFailed) {
+      // 凭据失败是实例级永久停摆，connect() 会拒绝；回前台时探测一次凭据
+      // 是否已被用户修复（如服务端改回了密码），修复则重建 SSE。
+      _reviveCredentialFailedSse();
+      return;
+    }
     AppLogger.i('App resumed — SSE not connected, reconnecting');
     sse.connect();
+  }
+
+  /// SSE 因 401/403 停摆后的恢复路径：用一次轻量 HTTP 请求验证当前凭据。
+  /// 探测通过则重建 SSE 客户端（_connectSse 的守卫会把凭据失败的旧连接判定为
+  /// 不健康，从而创建新实例），并按断线重连的逻辑刷新会话数据，补上停摆窗口
+  /// 内丢失的事件。凭据仍无效时，这次 401 会经 OpenCodeClient.unauthorized
+  /// 触发全局提示。
+  Future<void> _reviveCredentialFailedSse() async {
+    try {
+      final response = await _client.get(
+        ApiEndpoints.projects,
+        skipDirectory: true,
+      );
+      if (response.statusCode != 200) return;
+      AppLogger.i('Credentials recovered — rebuilding SSE connection');
+      _connectSse();
+      _refreshAfterReconnect();
+    } catch (e) {
+      AppLogger.d('Credential probe after SSE auth failure failed: $e');
+    }
   }
 
   String getSessionName(String id) {

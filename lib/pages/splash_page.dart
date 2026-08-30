@@ -26,6 +26,11 @@ class _SplashPageState extends State<SplashPage> {
   bool _navigatedAway = false;
   String? _errorText;
 
+  /// 连接运行代号：Edit settings 取消或发起新连接时递增。
+  /// [_onConnected] 是先检查后长await的流程，仅靠 _autoConnecting 布尔位
+  /// 挡不住"检查已通过、取消发生在网络刷新途中"的窗口，用代号判定过期。
+  int _connectSeq = 0;
+
   @override
   void initState() {
     super.initState();
@@ -54,6 +59,7 @@ class _SplashPageState extends State<SplashPage> {
       _autoConnecting = true;
       _errorText = null;
     });
+    final seq = _connectSeq;
     try {
       final result = await SidecarManager.instance.updateConnection(
         url,
@@ -61,9 +67,9 @@ class _SplashPageState extends State<SplashPage> {
         password,
       );
       // 用户已点击 Edit settings 取消自动连接时，忽略在途结果，不得跳转主页。
-      if (!mounted || !_autoConnecting) return;
+      if (!mounted || !_autoConnecting || seq != _connectSeq) return;
       if (result.success) {
-        await _onConnected();
+        await _onConnected(seq);
       } else {
         setState(() {
           _autoConnecting = false;
@@ -85,6 +91,7 @@ class _SplashPageState extends State<SplashPage> {
 
   Future<void> _onConnect() async {
     if (!_formKey.currentState!.validate()) return;
+    final seq = ++_connectSeq;
     setState(() {
       _isConnecting = true;
       _errorText = null;
@@ -97,7 +104,7 @@ class _SplashPageState extends State<SplashPage> {
       );
       if (!mounted) return;
       if (result.success) {
-        await _onConnected();
+        await _onConnected(seq);
       } else {
         setState(() {
           _isConnecting = false;
@@ -115,10 +122,14 @@ class _SplashPageState extends State<SplashPage> {
     }
   }
 
-  Future<void> _onConnected() async {
+  Future<void> _onConnected(int seq) async {
+    // 每个网络/导航步骤前复查代号：用户在流程中途点了 Edit settings（或
+    // 发起了新连接）时立即放弃，不得在已停止的 manager 上继续刷新并跳主页。
+    if (seq != _connectSeq) return;
     await Get.find<ProjectController>().refreshAfterConnect();
+    if (seq != _connectSeq) return;
     Get.find<SessionController>().initializeAfterConnect();
-    if (!mounted) return;
+    if (!mounted || seq != _connectSeq) return;
     _navigatedAway = true;
     Get.offNamed(AppRoutes.home);
   }
@@ -149,6 +160,7 @@ class _SplashPageState extends State<SplashPage> {
               const SizedBox(height: 24),
               TextButton(
                 onPressed: () {
+                  _connectSeq++;
                   SidecarManager.instance.stop();
                   setState(() => _autoConnecting = false);
                 },

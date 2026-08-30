@@ -68,6 +68,9 @@ class SseEvent {
         }
       } catch (_) {
         try {
+          AppLogger.w(
+            'SSE event failed strict jsonDecode, using lossy fallback parser',
+          );
           final decoded = _parseJsonWithDuplicates(body);
           if (decoded is Map<String, dynamic>) {
             id = decoded['id'] as String? ?? id;
@@ -254,9 +257,18 @@ dynamic _parseJsonValue(String s) {
   if (s == 'true') return true;
   if (s == 'false') return false;
   if (s.startsWith('"')) return s.substring(1, s.length - 1);
-  if (s.startsWith('{') || s.startsWith('[')) {
+  if (s.startsWith('{')) {
     try {
       return _parseJsonWithDuplicates(s);
+    } catch (_) {
+      return s;
+    }
+  }
+  // 数组必须走标准 jsonDecode：_parseJsonWithDuplicates 只识别 `"key":` 形态，
+  // 对数组会静默返回空 Map，丢失全部元素。
+  if (s.startsWith('[')) {
+    try {
+      return jsonDecode(s);
     } catch (_) {
       return s;
     }

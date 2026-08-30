@@ -10,7 +10,9 @@ class OpenCodeClient {
   factory OpenCodeClient() => _instance;
 
   /// 全局凭据失效信号：HTTP 侧任意请求收到 401/403 时置 true。
-  /// 消费端（连接页/引导回登录）监听此标志并调用 [resetUnauthorized] 恢复。
+  /// 消费端是 OpenCodeApp（lib/app.dart）：提示用户检查凭据后调用
+  /// [resetUnauthorized] 复位；SSE 侧凭据失败见 SseClient.isCredentialFailed，
+  /// 两者作用域不同。
   static final RxBool unauthorized = false.obs;
 
   static void resetUnauthorized() => unauthorized.value = false;

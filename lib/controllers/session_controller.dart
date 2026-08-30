@@ -999,6 +999,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
   static const _visionPollInterval = Duration(milliseconds: 400);
   static const _visionPollTimeout = Duration(seconds: 30);
   static const _visionSseTimeout = Duration(seconds: 20);
+
   /// 服务端 image.max_base64_bytes 默认上限（clone/.../image/image.ts）。
   static const _serverImageBase64Limit = 5 * 1024 * 1024;
 
@@ -3546,7 +3547,9 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         }
       }
     } catch (e) {
-      AppLogger.w('mark stale questions: GET /question failed: $e, skip cleanup');
+      AppLogger.w(
+        'mark stale questions: GET /question failed: $e, skip cleanup',
+      );
       return;
     }
 
@@ -3555,7 +3558,8 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       var changed = false;
       final newParts = <Part>[];
       for (final part in msg.parts) {
-        final isLiveQuestion = liveRequestIds.contains(part.id) ||
+        final isLiveQuestion =
+            liveRequestIds.contains(part.id) ||
             liveCallIds.contains(part.callID);
         if (part.type == PartType.tool &&
             part.toolName == 'question' &&

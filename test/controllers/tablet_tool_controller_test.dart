@@ -135,19 +135,22 @@ void main() {
       },
     );
 
-    test('invalidateAllFileContent clears both caches and resets accounting', () {
-      final ctrl = TabletToolController(contentCacheMaxBytes: 100);
-      ctrl.cacheFileContent('a', 'x' * 30);
-      ctrl.cacheFileContent('b', 'x' * 30);
-      ctrl.cacheBinaryContent('a', Uint8List.fromList(List.filled(50, 1)));
-      ctrl.invalidateAllFileContent();
-      expect(ctrl.cachedContent('a'), isNull);
-      expect(ctrl.cachedContent('b'), isNull);
-      expect(ctrl.cachedBinaryContent('a'), isNull);
-      // 字节计数随清空归零：若未归零（120 字节残留），这条会被预算淘汰。
-      ctrl.cacheFileContent('c', 'x' * 30);
-      expect(ctrl.cachedContent('c'), isNotNull);
-    });
+    test(
+      'invalidateAllFileContent clears both caches and resets accounting',
+      () {
+        final ctrl = TabletToolController(contentCacheMaxBytes: 100);
+        ctrl.cacheFileContent('a', 'x' * 30);
+        ctrl.cacheFileContent('b', 'x' * 30);
+        ctrl.cacheBinaryContent('a', Uint8List.fromList(List.filled(50, 1)));
+        ctrl.invalidateAllFileContent();
+        expect(ctrl.cachedContent('a'), isNull);
+        expect(ctrl.cachedContent('b'), isNull);
+        expect(ctrl.cachedBinaryContent('a'), isNull);
+        // 字节计数随清空归零：若未归零（120 字节残留），这条会被预算淘汰。
+        ctrl.cacheFileContent('c', 'x' * 30);
+        expect(ctrl.cachedContent('c'), isNotNull);
+      },
+    );
   });
 
   group('TabletToolController cross-worktree tabs', () {

@@ -8,8 +8,7 @@ import '../services/voice_input_service.dart';
 import '../utils/snackbar_utils.dart';
 import '../utils/translations.dart';
 
-class VoiceInputController extends GetxController
-    with WidgetsBindingObserver {
+class VoiceInputController extends GetxController with WidgetsBindingObserver {
   final isListening = false.obs;
   final isContinuousMode = false.obs;
   final isLongPressMode = false.obs;

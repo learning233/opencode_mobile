@@ -41,10 +41,7 @@ class _OpenCodeAppState extends State<OpenCodeApp> {
     if (now.difference(_lastAuthNoticeAt) < const Duration(seconds: 10)) return;
     _lastAuthNoticeAt = now;
     AppLogger.e('HTTP credentials rejected — prompting user');
-    Snack.error(
-      LocaleKeys.mobileSseAuthFailed.tr,
-      title: 'OpenCode',
-    );
+    Snack.error(LocaleKeys.mobileSseAuthFailed.tr, title: 'OpenCode');
   }
 
   @override

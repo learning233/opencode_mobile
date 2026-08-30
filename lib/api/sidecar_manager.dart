@@ -51,7 +51,12 @@ class SidecarManager {
     AppLogger.i(
       'Connecting to remote Sidecar at [${maskIpsInText(newUrl)}] as $newUser',
     );
-    final result = await _pollHealthCheck(newUrl, newUser, newPass, cancelToken);
+    final result = await _pollHealthCheck(
+      newUrl,
+      newUser,
+      newPass,
+      cancelToken,
+    );
     if (generation != _generation) {
       AppLogger.w(
         'updateConnection superseded by a newer connect/stop, discarding result',

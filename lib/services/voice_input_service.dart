@@ -424,7 +424,9 @@ class VoiceInputService {
       final soFile = File('${dir.path}/libonnxruntime.so');
       debugPrint('VoiceInputService: ensuring libonnxruntime.so asset...');
       await _copyAssetIfNeeded('onnx/libonnxruntime.so', soFile);
-      debugPrint('VoiceInputService: libonnxruntime.so ready at ${soFile.path}');
+      debugPrint(
+        'VoiceInputService: libonnxruntime.so ready at ${soFile.path}',
+      );
     }
 
     return {

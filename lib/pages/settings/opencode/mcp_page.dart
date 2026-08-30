@@ -449,8 +449,10 @@ class _OpencodeMcpPageState extends State<OpencodeMcpPage> {
                                   // 名称规范化（将拼入 /mcp/$name/... URL 路径），
                                   // 并拒绝重名：服务端 PATCH 深合并会在重名时
                                   // 把新旧配置融合成 hybrid 条目。
-                                  final sanitized = SettingsController
-                                      .sanitizeServerName(nameCtrl.text);
+                                  final sanitized =
+                                      SettingsController.sanitizeServerName(
+                                        nameCtrl.text,
+                                      );
                                   if (sanitized.isEmpty) {
                                     Snack.error(LocaleKeys.mcpNameRequired.tr);
                                     return;
@@ -461,9 +463,7 @@ class _OpencodeMcpPageState extends State<OpencodeMcpPage> {
                                   // 重名，允许重新添加（createMcpServer 会带上
                                   // enabled:true 重新启用）。
                                   final existing = <String>{
-                                    ..._settings.mcpServers.map(
-                                      (s) => s.name,
-                                    ),
+                                    ..._settings.mcpServers.map((s) => s.name),
                                     if (configMcp is Map)
                                       ...configMcp.keys
                                           .map((k) => k.toString())

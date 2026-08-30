@@ -91,10 +91,7 @@ class VcsController extends GetxController {
     }
   }
 
-  Future<void> fetchVcsInfo({
-    String? worktree,
-    required int requestSeq,
-  }) async {
+  Future<void> fetchVcsInfo({String? worktree, required int requestSeq}) async {
     try {
       final response = await _client.get(
         ApiEndpoints.vcsInfo,

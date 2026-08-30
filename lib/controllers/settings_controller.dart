@@ -469,8 +469,9 @@ class SettingsController extends GetxController {
         hasGlobalRules.value = content.trim().isNotEmpty;
       } else {
         // 404（response == null）= 无全局规则，空态而非错误。
-        globalRulesError.value =
-            response == null ? '' : 'HTTP ${response.statusCode}';
+        globalRulesError.value = response == null
+            ? ''
+            : 'HTTP ${response.statusCode}';
         globalRulesContent.value = '';
         hasGlobalRules.value = false;
       }
@@ -1705,7 +1706,8 @@ class SettingsController extends GetxController {
       registryServers.addAll(result.servers);
       registryNextCursor.value = result.nextCursor;
     } catch (e) {
-      if (seq == _registryRequestSeq) registryError.value = maskIpsInText(e.toString());
+      if (seq == _registryRequestSeq)
+        registryError.value = maskIpsInText(e.toString());
     } finally {
       if (seq == _registryRequestSeq) isLoadingRegistry.value = false;
     }

@@ -636,10 +636,7 @@ class PtyController extends GetxController with WidgetsBindingObserver {
     var deleted = false;
     try {
       await _client
-          .delete(
-            ApiEndpoints.ptyDetailV2(ptyId),
-            directory: session.directory,
-          )
+          .delete(ApiEndpoints.ptyDetailV2(ptyId), directory: session.directory)
           .timeout(const Duration(seconds: 5));
       deleted = true;
     } catch (e) {
@@ -647,10 +644,7 @@ class PtyController extends GetxController with WidgetsBindingObserver {
     }
 
     if (!deleted) {
-      Snack.error(
-        LocaleKeys.terminalDeleteFailed.tr,
-        title: session.title,
-      );
+      Snack.error(LocaleKeys.terminalDeleteFailed.tr, title: session.title);
       return;
     }
 

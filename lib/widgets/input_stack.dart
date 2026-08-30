@@ -37,8 +37,9 @@ class _SessionStatusStackState extends State<SessionStatusStack> {
       // 读取 expandedSection 使 Obx 对其变化响应；展开状态按会话存储，
       // sendPrompt 可折叠 changefiles，切换 session 逻辑可读取。
       final expanded = state.expandedSection.value;
-      // Touch messages so GetX tracks pending question / permission updates.
-      state.messages.length;
+      // E3：不再 touch messages——pendingQuestionInTree 已短路为 per-state
+      // 惰性布尔（hasPendingQuestion）+ 权限槽（pendingPermission）遍历，
+      // 流式/工具高峰期的列表整表替换不再重建本 Obx，pending 状态变化才重建。
       final hasQuestion = ctrl.pendingQuestionInTree(widget.sessionId) != null;
       final hasPermission =
           ctrl.sessionIdWithPendingPermission(widget.sessionId) != null;
@@ -541,8 +542,9 @@ class PendingQuestionCard extends StatelessWidget {
     final ctrl = Get.find<SessionController>();
 
     return Obx(() {
-      // Touch messages so requiresAction / pending part rebuilds.
-      ctrl.stateOf(sessionId).messages.length;
+      // E3：pendingQuestionInTree 先走 per-state 惰性布尔短路，仅当树内确有
+      // 挂起问题时才做一次全量扫描取 part（此时回合被阻塞，事件低频）；
+      // 本 Obx 不再注册 messages 依赖。
       final part = ctrl.pendingQuestionInTree(sessionId);
       if (part == null) return const SizedBox.shrink();
 

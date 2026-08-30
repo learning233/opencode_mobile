@@ -472,13 +472,20 @@ class SessionController extends GetxController with WidgetsBindingObserver {
 
   /// First pending `question` tool part within [rootId]'s session tree (root
   /// first, then descendant subtasks recursively). Returns null when none.
+  ///
+  /// E3：先读每层会话的 [SessionRuntimeState.hasPendingQuestion] 惰性布尔做
+  /// 短路（Obx 调用时由此只注册布尔依赖，不再注册 messages），布尔为 true
+  /// 才做该会话的 O(messages×parts) 全量扫描取 part。
   Part? pendingQuestionInTree(String rootId, [Set<String>? visited]) {
     if (rootId.isEmpty) return null;
     final set = visited ?? <String>{};
     if (!set.add(rootId)) return null;
-    final rootPending = pendingQuestionPartFor(rootId);
-    if (rootPending != null) return rootPending;
-    for (final child in getOrCreateSessionState(rootId).childSessions) {
+    final state = getOrCreateSessionState(rootId);
+    if (state.hasPendingQuestion.value) {
+      final rootPending = pendingQuestionPartFor(rootId);
+      if (rootPending != null) return rootPending;
+    }
+    for (final child in state.childSessions) {
       final childPending = pendingQuestionInTree(child.id, set);
       if (childPending != null) return childPending;
     }
@@ -569,6 +576,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       }
     }
     rootState.messageSubtaskDiffs.refresh();
+    rootState.partsVersion++;
   }
 
   // ── Persist openedSessionIds ──
@@ -1254,6 +1262,8 @@ class SessionController extends GetxController with WidgetsBindingObserver {
           cached.map((json) => MessageModel.fromJson(json)).toList(),
         );
         reloadState.hasLoadedHistory.value = true;
+        reloadState.partsVersion++;
+        reloadState.rescanHasPendingQuestion();
       }
     }
     // Fire the todo fetch concurrently with the full-history GET below so its
@@ -1297,6 +1307,8 @@ class SessionController extends GetxController with WidgetsBindingObserver {
           // 全量 part 对齐/落库时覆盖服务端历史。
           state.streamingPartText.clear();
           state.messages.assignAll(msgs);
+          state.partsVersion++;
+          state.rescanHasPendingQuestion();
           unawaited(
             SessionCacheStore.instance.save(
               sessionId,
@@ -2020,6 +2032,10 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         parts: newParts,
         raw: msg.raw,
       );
+      state.partsVersion++;
+      // 运行中的 tool part（可能是挂起 question）被标记 error：布尔为 true
+      // 时重扫兜底。
+      if (state.hasPendingQuestion.value) state.rescanHasPendingQuestion();
     }
   }
 
@@ -3339,6 +3355,9 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       parts: newParts,
       raw: state.messages[idx].raw,
     );
+    state.partsVersion++;
+    // 删除的可能是挂起的 question part：布尔为 true 时重扫兜底。
+    if (state.hasPendingQuestion.value) state.rescanHasPendingQuestion();
   }
 
   void _onSessionCompacted(SseEvent event) {
@@ -3413,6 +3432,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
 
       if (part.type == PartType.tool && part.toolName == 'question') {
         _rememberQuestionToolPart(part, sid);
+        _refreshPendingQuestionOnPartUpdate(state, part);
       }
 
       unawaited(_registerSubtaskOwner(sid, part));
@@ -3451,6 +3471,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
           raw: const {'role': 'assistant'},
         ),
       );
+      state.partsVersion++;
       _syncStreamingPartText(state, part);
       return;
     }
@@ -3489,6 +3510,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       parts: existingParts,
       raw: state.messages[idx].raw,
     );
+    state.partsVersion++;
     _syncStreamingPartText(state, part);
   }
 
@@ -3543,6 +3565,48 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     return a == b;
   }
 
+  /// E3：question part 更新后增量维护 [SessionRuntimeState.hasPendingQuestion]，
+  /// 让输入区/指示点只 touch 布尔而非全量扫描 messages。
+  void _refreshPendingQuestionOnPartUpdate(
+    SessionRuntimeState state,
+    Part part,
+  ) {
+    final status = part.toolStatus;
+    if (status == ToolStateStatus.running ||
+        status == ToolStateStatus.pending) {
+      if (!state.hasPendingQuestion.value) {
+        state.hasPendingQuestion.value = true;
+      }
+      return;
+    }
+    // 终态：树内可能还有其他挂起的 question part，仅在布尔为 true 时重扫。
+    if (state.hasPendingQuestion.value) state.rescanHasPendingQuestion();
+  }
+
+  /// E3：消息整表替换/新增后的公共维护 —— bump diff 版本号 + pending
+  /// question 布尔增量更新（新消息带挂起 question 置 true；否则布尔为 true
+  /// 时重扫兜底，替换可能终止了原先挂起的 part）。
+  void _afterMessageUpsert(SessionRuntimeState state, MessageModel msg) {
+    state.partsVersion++;
+    if (_messageHasPendingQuestion(msg)) {
+      state.hasPendingQuestion.value = true;
+    } else if (state.hasPendingQuestion.value) {
+      state.rescanHasPendingQuestion();
+    }
+  }
+
+  static bool _messageHasPendingQuestion(MessageModel msg) {
+    for (final part in msg.parts) {
+      if (part.type == PartType.tool &&
+          part.toolName == 'question' &&
+          (part.toolStatus == ToolStateStatus.running ||
+              part.toolStatus == ToolStateStatus.pending)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   void _onMessageUpdated(SseEvent event) {
     final sid = event.sessionID;
     if (sid.isEmpty) return;
@@ -3590,9 +3654,11 @@ class SessionController extends GetxController with WidgetsBindingObserver {
               _syncStreamingPartText(state, p);
             }
           }
+          _afterMessageUpsert(state, msg);
         }
       } else {
         state.messages.add(msg);
+        _afterMessageUpsert(state, msg);
       }
     } catch (e) {
       AppLogger.e('_onMessageUpdated failed: $e');
@@ -3607,6 +3673,9 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     final mid = event.properties['messageID']?.toString() ?? '';
     if (mid.isNotEmpty) {
       state.messages.removeWhere((m) => m.id == mid);
+      state.partsVersion++;
+      // 删除可能移除了挂起的 question part：布尔为 true 时重扫兜底。
+      if (state.hasPendingQuestion.value) state.rescanHasPendingQuestion();
     }
   }
 
@@ -3784,6 +3853,9 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         parts: parts,
         raw: msg.raw,
       );
+      state.partsVersion++;
+      // 本地已把该 question 置终态：布尔为 true 时重扫（可能还有其他挂起）。
+      if (state.hasPendingQuestion.value) state.rescanHasPendingQuestion();
       return;
     }
   }
@@ -3908,6 +3980,9 @@ class SessionController extends GetxController with WidgetsBindingObserver {
           parts: newParts,
           raw: msg.raw,
         );
+        state.partsVersion++;
+        // 挂起 question 被标记 skipped（终态）：布尔为 true 时重扫兜底。
+        if (state.hasPendingQuestion.value) state.rescanHasPendingQuestion();
       }
     }
   }

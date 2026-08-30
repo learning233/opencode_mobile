@@ -386,6 +386,28 @@ class VoiceInputService {
     }
   }
 
+  /// 从 bundle 拷贝 [assetPath] 到 [targetFile]（若目标不存在或长度与资产
+  /// 不一致）。仅判断 exists() 的话，历史拷贝被中途杀死留下的截断文件
+  /// （如 libonnxruntime.so）会永驻本地，Rust 侧加载损坏文件持续报错。
+  Future<void> _copyAssetIfNeeded(String assetPath, File targetFile) async {
+    final byteData = await rootBundle.load(assetPath);
+    final expectedLen = byteData.lengthInBytes;
+    if (await targetFile.exists()) {
+      final actualLen = await targetFile.length();
+      if (actualLen == expectedLen) return;
+      debugPrint(
+        'VoiceInputService: $assetPath copy corrupted '
+        '(${actualLen}B != ${expectedLen}B), recopying',
+      );
+    }
+    await targetFile.writeAsBytes(
+      byteData.buffer.asUint8List(
+        byteData.offsetInBytes,
+        byteData.lengthInBytes,
+      ),
+    );
+  }
+
   Future<Map<String, String>> _prepareAssetPaths() async {
     final dir = await getApplicationSupportDirectory();
     final modelFile = await getModelFile();
@@ -395,40 +417,14 @@ class VoiceInputService {
     if (!await modelFile.exists() || (await modelFile.length()) == 0) {
       throw StateError('语音识别模型未下载');
     }
-    if (!await vocabFile.exists()) {
-      final byteData = await rootBundle.load('assets/sensevoice/tokens.txt');
-      await vocabFile.writeAsBytes(
-        byteData.buffer.asUint8List(
-          byteData.offsetInBytes,
-          byteData.lengthInBytes,
-        ),
-      );
-    }
-    if (!await vadFile.exists()) {
-      final byteData = await rootBundle.load('assets/vad_stream.onnx');
-      await vadFile.writeAsBytes(
-        byteData.buffer.asUint8List(
-          byteData.offsetInBytes,
-          byteData.lengthInBytes,
-        ),
-      );
-    }
+    await _copyAssetIfNeeded('assets/sensevoice/tokens.txt', vocabFile);
+    await _copyAssetIfNeeded('assets/vad_stream.onnx', vadFile);
 
     if (Platform.isAndroid) {
       final soFile = File('${dir.path}/libonnxruntime.so');
-      if (!await soFile.exists()) {
-        debugPrint('VoiceInputService: copying libonnxruntime.so asset...');
-        final byteData = await rootBundle.load('onnx/libonnxruntime.so');
-        await soFile.writeAsBytes(
-          byteData.buffer.asUint8List(
-            byteData.offsetInBytes,
-            byteData.lengthInBytes,
-          ),
-        );
-        debugPrint(
-          'VoiceInputService: copied libonnxruntime.so to ${soFile.path}',
-        );
-      }
+      debugPrint('VoiceInputService: ensuring libonnxruntime.so asset...');
+      await _copyAssetIfNeeded('onnx/libonnxruntime.so', soFile);
+      debugPrint('VoiceInputService: libonnxruntime.so ready at ${soFile.path}');
     }
 
     return {

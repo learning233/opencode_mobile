@@ -996,6 +996,9 @@ class LocaleKeys {
   static const terminalNew = "terminal_new";
   static const terminalTitle = "terminal_title";
   static const terminalSessionEnded = "terminal_session_ended";
+  static const terminalConnectionLost = "terminal_connection_lost";
+  static const terminalConnectionTimeout = "terminal_connection_timeout";
+  static const terminalDeleteFailed = "terminal_delete_failed";
 
   // ── Tablet tool panel ──
   static const tabletCodeTab = "tablet_code_tab";
@@ -2146,6 +2149,9 @@ class Messages extends Translations {
     LocaleKeys.terminalNew: '新建终端',
     LocaleKeys.terminalTitle: '终端',
     LocaleKeys.terminalSessionEnded: '终端会话已结束',
+    LocaleKeys.terminalConnectionLost: '连接已断开',
+    LocaleKeys.terminalConnectionTimeout: '连接超时',
+    LocaleKeys.terminalDeleteFailed: '远端终端删除失败，可能仍在运行',
     LocaleKeys.terminalCommandLabel: '命令',
     LocaleKeys.terminalCommandRequired: '请输入命令',
     LocaleKeys.terminalNeedSession: '请先创建并连接终端',
@@ -3376,6 +3382,10 @@ class Messages extends Translations {
     LocaleKeys.terminalNew: 'New Terminal',
     LocaleKeys.terminalTitle: 'Terminal',
     LocaleKeys.terminalSessionEnded: 'Terminal session ended',
+    LocaleKeys.terminalConnectionLost: 'Connection lost',
+    LocaleKeys.terminalConnectionTimeout: 'Connection timeout',
+    LocaleKeys.terminalDeleteFailed:
+        'Failed to delete remote terminal, it may still be running',
     LocaleKeys.terminalCommandLabel: 'Command',
     LocaleKeys.terminalCommandRequired: 'Enter a command',
     LocaleKeys.terminalNeedSession: 'Create and connect a terminal first',

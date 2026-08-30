@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:dio/dio.dart' show DioException;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:kterm/kterm.dart';
@@ -11,6 +12,7 @@ import '../api/sidecar_manager.dart';
 import '../controllers/project_controller.dart';
 import '../init.dart';
 import '../utils/app_logger.dart';
+import '../utils/snackbar_utils.dart';
 import '../utils/translations.dart';
 import '../utils/url_utils.dart';
 
@@ -25,7 +27,6 @@ class PtySession {
   final RxBool connected;
   final RxBool error = false.obs;
   final RxString errorMsg = ''.obs;
-  String lastCursor = '';
   Timer? resizeTimer;
   StreamSubscription? _streamSub;
   int autoReconnectCount = 0;
@@ -81,13 +82,17 @@ class PtyController extends GetxController with WidgetsBindingObserver {
 
   int _fetchSeq = 0;
 
+  Worker? _projectWorker;
+
   @override
   void onInit() {
     super.onInit();
     WidgetsBinding.instance.addObserver(this);
     try {
       if (Get.isRegistered<ProjectController>()) {
-        ever(Get.find<ProjectController>().activeProject, (project) {
+        _projectWorker = ever(Get.find<ProjectController>().activeProject, (
+          project,
+        ) {
           if (project != null) {
             _onProjectChanged(project.worktree);
           }
@@ -107,7 +112,11 @@ class PtyController extends GetxController with WidgetsBindingObserver {
             !session.endedByShell) {
           session.autoReconnectCount = 0;
           session.autoReconnectTimer?.cancel();
-          reconnectPty(session);
+          unawaited(
+            reconnectPty(session).catchError((Object e) {
+              AppLogger.w('PTY resume-reconnect failed (${session.id}): $e');
+            }),
+          );
         }
       }
     }
@@ -269,7 +278,6 @@ class PtyController extends GetxController with WidgetsBindingObserver {
     String ptyId, {
     required String directory,
     String? customTitle,
-    String? initialCursor,
     // fetchSessions 批量 attach 时置 false，由 fetch 自身的 seq 保护逻辑
     // 统一决定 activePtyId，避免过期请求的 attach 覆盖当前激活项。
     bool activate = true,
@@ -293,6 +301,13 @@ class PtyController extends GetxController with WidgetsBindingObserver {
             : '';
       }
     } catch (e) {
+      // 凭据失败（401/403）：全局 unauthorized 提示已由 dio 拦截器触发
+      // （OpenCodeApp 消费），这里终止 attach，不再对错误凭据盲目建连重试。
+      final code = e is DioException ? e.response?.statusCode : null;
+      if (code == 401 || code == 403) {
+        AppLogger.w('PTY ticket auth failed ($ptyId): $code');
+        return null;
+      }
       AppLogger.w('Fetch ticket error ($ptyId): ${maskIpsInText('$e')}');
     }
 
@@ -309,8 +324,6 @@ class PtyController extends GetxController with WidgetsBindingObserver {
       if (directory.isNotEmpty) 'directory': directory,
       if (directory.isNotEmpty) 'location[directory]': directory,
       if (ticket.isNotEmpty) 'ticket': ticket,
-      if (initialCursor != null && initialCursor.isNotEmpty)
-        'cursor': initialCursor,
     };
 
     final wsUri = Uri(
@@ -335,6 +348,14 @@ class PtyController extends GetxController with WidgetsBindingObserver {
     final channel = IOWebSocketChannel.connect(
       wsUri,
       headers: wsHeaders.isNotEmpty ? wsHeaders : null,
+      // 心跳：移动网络下 NAT/防火墙会静默回收空闲 TCP，无 ping 的死连接上
+      // 输入会静默丢失且 UI 毫无感知（connected 仍为 true）。pong 超时后库
+      // 会以 goingAway 关闭连接，触发 onError/onDone 走错误视图 + 自动重连。
+      // （web_socket_channel 默认 pingInterval 为 null，即禁用心跳。）
+      pingInterval: const Duration(seconds: 20),
+      // 握手超时由库内直接中止整个连接（含 TCP），避免仅靠外层 ready.timeout
+      // 时底层握手仍挂在后台。
+      connectTimeout: const Duration(seconds: 10),
     );
 
     final focusNode = FocusNode();
@@ -432,10 +453,17 @@ class PtyController extends GetxController with WidgetsBindingObserver {
           onTimeout: () {
             AppLogger.w('PTY WebSocket ready timeout ($ptyId)');
             connected.value = false;
+            // 中止被超时抛弃的连接：不取消订阅的话，晚到完成的握手会让服务端
+            // 回放数据继续写入错误视图下的 Terminal，socket 与远端 PTY 也长期悬挂。
+            unawaited(session?._streamSub?.cancel());
+            session?._streamSub = null;
+            try {
+              channel.sink.close();
+            } catch (_) {}
             final s = session;
             if (s != null) {
               s.error.value = true;
-              s.errorMsg.value = 'Connection timeout';
+              s.errorMsg.value = LocaleKeys.terminalConnectionTimeout.tr;
               _scheduleAutoReconnect(s);
             }
           },
@@ -457,7 +485,7 @@ class PtyController extends GetxController with WidgetsBindingObserver {
           final s = session;
           if (s != null) {
             s.error.value = true;
-            s.errorMsg.value = 'Connection lost';
+            s.errorMsg.value = LocaleKeys.terminalConnectionLost.tr;
             _scheduleAutoReconnect(s);
           }
         });
@@ -468,26 +496,17 @@ class PtyController extends GetxController with WidgetsBindingObserver {
           if (data is List<int>) {
             final bytes = data;
             if (bytes.isNotEmpty && bytes[0] == 0) {
-              // 0x00 prefix indicates a WS Control Frame (matches opencode-mobile)
-              try {
-                final text = utf8.decode(bytes.sublist(1));
-                final map = jsonDecode(text);
-                if (map is Map) {
-                  final c = map['cursor'];
-                  if (c != null) {
-                    // 后端 metaFrame 为 { cursor: <number> }，保存用于重连续传。
-                    session?.lastCursor = c.toString();
-                  }
-                }
-              } catch (_) {}
-              return; // Do NOT render control frame to terminal output
-            } else {
-              final text = utf8.decode(bytes);
-              if (text.isNotEmpty) {
-                session?.terminal.write(text);
-              }
+              // 0x00 前缀为 WS 控制帧（协议保留通道，见 core/src/pty/protocol.ts），
+              // 不渲染到终端输出。
               return;
             }
+            // allowMalformed：防御性兜底，避免个别字节损坏抛 FormatException
+            // 打断整帧输出（onData 内异常不会进入本订阅的 onError）。
+            final text = utf8.decode(bytes, allowMalformed: true);
+            if (text.isNotEmpty) {
+              session?.terminal.write(text);
+            }
+            return;
           }
 
           if (data is String) {
@@ -506,19 +525,30 @@ class PtyController extends GetxController with WidgetsBindingObserver {
         final s = session;
         if (s != null) {
           s.error.value = true;
-          s.errorMsg.value = 'Connection lost';
+          s.errorMsg.value = LocaleKeys.terminalConnectionLost.tr;
           _scheduleAutoReconnect(s);
         }
       },
       onDone: () {
-        AppLogger.i('PTY WebSocket closed ($ptyId)');
+        AppLogger.i(
+          'PTY WebSocket closed ($ptyId, closeCode: ${channel.closeCode})',
+        );
         connected.value = false;
-        // 优雅关闭（如进程 exit 后服务端发 CloseEvent）也要进入错误视图，
-        // 否则 UI 停在无限转圈、无重试入口。但若此前已因网络错误置 error，
-        // 保留"连接失败"文案，避免被"会话已结束"覆盖误导用户。
+        // 关闭也要进入错误视图，否则 UI 停在无限转圈、无重试入口。
+        // 后端关闭语义（已对照源码 packages/opencode/src/server/routes/instance/
+        // httpapi/handlers/pty.ts + websocket-tracker.ts）：
+        //   1000 = shell 进程退出（onEnd）；4404 = 会话不存在/已退出
+        //     （Pty.NotFoundError / Pty.ExitedError）—— 两者均判定"会话已结束"，
+        //     重连无意义，不调度自动重连；
+        //   1001 = server closing（服务端关闭/连接数上限）；其余 code 与无
+        //     close frame（null，TCP 异常断开）—— 网络问题，走自动重连，
+        //     避免被误判"会话已结束"并永久熔断重连。
+        // 若此前已因网络错误置 error，保留"连接失败"文案并继续重连调度。
+        final code = channel.closeCode;
+        final terminalClose = code == 1000 || code == 4404;
         final s = session;
         if (s != null) {
-          if (!s.error.value) {
+          if (!s.error.value && terminalClose) {
             s.endedByShell = true;
             s.error.value = true;
             s.errorMsg.value = LocaleKeys.terminalSessionEnded.tr;
@@ -599,15 +629,33 @@ class PtyController extends GetxController with WidgetsBindingObserver {
     // 计算在过滤列表中的位置，作为下一个激活项的依据（过滤开启时
     // filteredSessions 与 sessions 的索引/顺序不一致）。
     final filteredIdx = filteredSessions.indexWhere((s) => s.id == ptyId);
+
+    // 先删远端再移除本地：DELETE 失败时远端 PTY 仍在运行，若先删本地，
+    // 下次 fetchSessions 会把它当存活项重新 attach，已关闭的终端"复活"。
+    // 超时兜底 5s：dio 默认 receiveTimeout 60s，会拖住关闭动作。
+    var deleted = false;
+    try {
+      await _client
+          .delete(
+            ApiEndpoints.ptyDetailV2(ptyId),
+            directory: session.directory,
+          )
+          .timeout(const Duration(seconds: 5));
+      deleted = true;
+    } catch (e) {
+      AppLogger.w('PTY delete failed ($ptyId): ${maskIpsInText('$e')}');
+    }
+
+    if (!deleted) {
+      Snack.error(
+        LocaleKeys.terminalDeleteFailed.tr,
+        title: session.title,
+      );
+      return;
+    }
+
     session.dispose();
     sessions.removeAt(idx);
-
-    try {
-      await _client.delete(
-        ApiEndpoints.ptyDetailV2(ptyId),
-        directory: session.directory,
-      );
-    } catch (_) {}
 
     final list = filteredSessions;
     if (list.isNotEmpty) {
@@ -636,7 +684,11 @@ class PtyController extends GetxController with WidgetsBindingObserver {
     session.autoReconnectTimer?.cancel();
     session.autoReconnectTimer = Timer(Duration(seconds: delaySeconds), () {
       if (!session.connected.value && sessions.contains(session)) {
-        reconnectPty(session);
+        unawaited(
+          reconnectPty(session).catchError((Object e) {
+            AppLogger.w('PTY auto-reconnect failed (${session.id}): $e');
+          }),
+        );
       }
     });
   }
@@ -655,15 +707,22 @@ class PtyController extends GetxController with WidgetsBindingObserver {
       // UI 闪现出"新建终端"空态页。旧会话保持显示错误视图，直到新会话入列后
       // 同一帧内再清理同 id 旧项（含重连失败残留的重复项），同时透传 oldTitle 避免标题编号自增。
       // 注意：重连时 _attachToSession 会创建全新的 Terminal 实例（缓冲区初始为空），
-      // 故不能传 initialCursor/lastCursor，需要后端全量回放历史输出以还原终端画面。
+      // 需要后端全量回放历史输出以还原终端画面。
+      // activate: false——后台终端自动重连成功时不得把用户正在查看的其他页签
+      // 切走；重连自身会话时 activePtyId 本就指向它，无需置位。
       final newSession = await _attachToSession(
         id,
         directory: directory,
         customTitle: oldTitle,
+        activate: false,
       );
+      if (newSession == null) {
+        // attach 被终止（如凭据失败 401/403）：保留旧会话的错误视图供手动重试。
+        return;
+      }
       // 携带旧会话的重试计数，让 autoReconnectCount>=3 的上限跨会话生效，
       // 避免每次重连新建 count=0 会话导致无限重试。
-      newSession?.autoReconnectCount = session.autoReconnectCount;
+      newSession.autoReconnectCount = session.autoReconnectCount;
       for (final old in sessions.where((s) => s.id == id).toList()) {
         if (!identical(old, newSession)) {
           old.dispose();
@@ -678,6 +737,7 @@ class PtyController extends GetxController with WidgetsBindingObserver {
   @override
   void onClose() {
     WidgetsBinding.instance.removeObserver(this);
+    _projectWorker?.dispose();
     for (final s in sessions) {
       s.dispose();
     }

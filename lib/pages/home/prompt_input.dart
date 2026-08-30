@@ -77,6 +77,9 @@ class _PromptInputState extends State<PromptInput> with WidgetsBindingObserver {
     if (_voiceCtrl.autoSendHandler == _handleAutoSend) {
       _voiceCtrl.autoSendHandler = null;
     }
+    // 本输入框销毁（会话关闭/PageView 回收远页）时解除语音目标绑定；
+    // 若单点录音仍在向本输入框写入，一并停止，避免结果无人消费、麦克风空转。
+    unawaited(_voiceCtrl.detachTarget(_textController));
     _voiceTargetWorker?.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _textController.dispose();

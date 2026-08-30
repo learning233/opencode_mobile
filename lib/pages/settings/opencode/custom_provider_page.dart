@@ -48,6 +48,10 @@ class _CustomProviderPageState extends State<CustomProviderPage> {
   bool _isUpdatingFromJson = false;
   bool _isUpdatingFromFields = false;
 
+  /// 编辑模式且配置拉取在途时为 true，抑制字段→JSON 重建，
+  /// 防止空字段抢先填入 JSON 编辑框。
+  bool _loadingInitialConfig = false;
+
   static const _debounceDuration = Duration(milliseconds: 300);
   Timer? _fieldsDebounce;
   Timer? _jsonDebounce;
@@ -77,13 +81,16 @@ class _CustomProviderPageState extends State<CustomProviderPage> {
     _jsonCtrl.addListener(_onJsonChanged);
 
     if (widget.editProviderId != null) {
-      _providerIdCtrl.text = widget.editProviderId!;
       final config =
           widget.ctrl.globalConfig.value?['provider']?[widget.editProviderId!];
       if (config is Map<String, dynamic>) {
+        _providerIdCtrl.text = widget.editProviderId!;
         _updateFieldsFromJson(config);
       } else {
         // globalConfig 尚未拉取时兜底获取一次，避免编辑页拿到空配置。
+        // 抑制标志须在 _providerIdCtrl 赋值前置位：赋值会同步触发监听。
+        _loadingInitialConfig = true;
+        _providerIdCtrl.text = widget.editProviderId!;
         _loadProviderConfig();
       }
     } else {
@@ -103,14 +110,26 @@ class _CustomProviderPageState extends State<CustomProviderPage> {
       await widget.ctrl.fetchGlobalConfig();
     } catch (e) {
       AppLogger.w('custom provider: fetch config for edit failed: $e');
+      _finishInitialConfigLoad();
       return;
     }
-    if (!mounted) return;
+    if (!mounted) {
+      _loadingInitialConfig = false;
+      return;
+    }
     final config =
         widget.ctrl.globalConfig.value?['provider']?[widget.editProviderId!];
     if (config is Map<String, dynamic>) {
       setState(() => _updateFieldsFromJson(config));
     }
+    _finishInitialConfigLoad();
+  }
+
+  /// 回填（或拉取失败）后解除抑制并按当前字段重建一次 JSON：
+  /// 抑制期间字段监听被吞，需显式触发。
+  void _finishInitialConfigLoad() {
+    _loadingInitialConfig = false;
+    if (mounted) _rebuildJsonFromFields();
   }
 
   @override
@@ -132,7 +151,7 @@ class _CustomProviderPageState extends State<CustomProviderPage> {
   }
 
   void _onFieldChanged() {
-    if (_isUpdatingFromJson) return;
+    if (_isUpdatingFromJson || _loadingInitialConfig) return;
     _fieldsDebounce?.cancel();
     _fieldsDebounce = Timer(_debounceDuration, _rebuildJsonFromFields);
   }

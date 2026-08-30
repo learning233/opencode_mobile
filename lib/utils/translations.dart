@@ -9,6 +9,8 @@ class LocaleKeys {
   static const cancel = "common_cancel";
   static const save = "common_save";
   static const delete = "common_delete";
+  static const saveFailed = "common_save_failed";
+  static const deleteFailed = "common_delete_failed";
   static const close = "common_close";
   static const retry = "common_retry";
   static const search = "common_search";
@@ -1157,6 +1159,8 @@ class Messages extends Translations {
     LocaleKeys.cancel: '取消',
     LocaleKeys.save: '保存',
     LocaleKeys.delete: '删除',
+    LocaleKeys.saveFailed: '保存失败',
+    LocaleKeys.deleteFailed: '删除失败',
     LocaleKeys.close: '关闭',
     LocaleKeys.retry: '重试',
     LocaleKeys.search: '搜索',
@@ -2301,6 +2305,8 @@ class Messages extends Translations {
     LocaleKeys.cancel: 'Cancel',
     LocaleKeys.save: 'Save',
     LocaleKeys.delete: 'Delete',
+    LocaleKeys.saveFailed: 'Save failed',
+    LocaleKeys.deleteFailed: 'Delete failed',
     LocaleKeys.close: 'Close',
     LocaleKeys.retry: 'Retry',
     LocaleKeys.search: 'Search',

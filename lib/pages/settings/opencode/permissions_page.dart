@@ -79,7 +79,7 @@ class _OpencodePermissionsPageState extends State<OpencodePermissionsPage> {
         updated[t] = value;
       }
       final ok = await _settings.setPermission(updated);
-      if (!ok && mounted) Snack.error(LocaleKeys.save.tr);
+      if (!ok && mounted) Snack.error(LocaleKeys.saveFailed.tr);
     } finally {
       _saving = false;
     }
@@ -118,7 +118,7 @@ class _OpencodePermissionsPageState extends State<OpencodePermissionsPage> {
       final updated = Map<String, dynamic>.from(_settings.permission ?? {});
       updated[tool] = value;
       final ok = await _settings.setPermission(updated);
-      if (!ok && mounted) Snack.error(LocaleKeys.save.tr);
+      if (!ok && mounted) Snack.error(LocaleKeys.saveFailed.tr);
     } finally {
       _saving = false;
     }
@@ -326,7 +326,7 @@ class _OpencodePermissionsPageState extends State<OpencodePermissionsPage> {
                                 id,
                               );
                               if (!ok && mounted) {
-                                Snack.error(LocaleKeys.delete.tr);
+                                Snack.error(LocaleKeys.deleteFailed.tr);
                               }
                             },
                     ),

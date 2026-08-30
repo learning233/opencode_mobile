@@ -121,7 +121,7 @@ class _OpencodeModelsPageState extends State<OpencodeModelsPage> {
                   isLoading: _session.isLoadingModels.value,
                   onChanged: (v) async {
                     final ok = await _settings.setSmallModel(v);
-                    if (!ok) Snack.error(LocaleKeys.save.tr);
+                    if (!ok) Snack.error(LocaleKeys.saveFailed.tr);
                   },
                   display: (v) => _modelDisplayName(v, models, providerNames),
                 ),

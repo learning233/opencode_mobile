@@ -47,7 +47,7 @@ class _OpencodeGeneralPageState extends State<OpencodeGeneralPage> {
   /// 统一保存反馈：控制器不再抛异常，只以返回值表达成败；失败提示（成功静默）。
   Future<void> _applyPatch(Future<bool> op) async {
     final ok = await op;
-    if (!ok) Snack.error(LocaleKeys.save.tr);
+    if (!ok) Snack.error(LocaleKeys.saveFailed.tr);
   }
 
   Future<void> _saveUsername() async {

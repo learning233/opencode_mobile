@@ -53,7 +53,7 @@ class _OpencodeDeveloperPageState extends State<OpencodeDeveloperPage> {
     if (ok) {
       Snack.success(LocaleKeys.save.tr);
     } else {
-      Snack.error(LocaleKeys.save.tr);
+      Snack.error(LocaleKeys.saveFailed.tr);
     }
   }
 
@@ -89,7 +89,7 @@ class _OpencodeDeveloperPageState extends State<OpencodeDeveloperPage> {
     if (ok) {
       Snack.success(LocaleKeys.delete.tr);
     } else {
-      Snack.error(LocaleKeys.delete.tr);
+      Snack.error(LocaleKeys.deleteFailed.tr);
     }
   }
 
@@ -128,7 +128,7 @@ class _OpencodeDeveloperPageState extends State<OpencodeDeveloperPage> {
     if (ok) {
       Snack.success(LocaleKeys.save.tr);
     } else {
-      Snack.error(LocaleKeys.save.tr);
+      Snack.error(LocaleKeys.saveFailed.tr);
     }
   }
 
@@ -144,7 +144,7 @@ class _OpencodeDeveloperPageState extends State<OpencodeDeveloperPage> {
     if (ok) {
       Snack.success(LocaleKeys.delete.tr);
     } else {
-      Snack.error(LocaleKeys.delete.tr);
+      Snack.error(LocaleKeys.deleteFailed.tr);
     }
   }
 
@@ -190,7 +190,7 @@ class _OpencodeDeveloperPageState extends State<OpencodeDeveloperPage> {
                     onChanged: (v) async {
                       final ok = await _settings.setFormattersEnabled(v);
                       if (!ok && mounted) {
-                        Snack.error(LocaleKeys.save.tr);
+                        Snack.error(LocaleKeys.saveFailed.tr);
                       }
                     },
                   ),

@@ -82,7 +82,7 @@ class _OpencodeLspPageState extends State<OpencodeLspPage> {
                     onChanged: (v) async {
                       final ok = await _settings.setLspEnabled(v);
                       if (!ok && mounted) {
-                        Snack.error(LocaleKeys.save.tr);
+                        Snack.error(LocaleKeys.saveFailed.tr);
                       }
                     },
                   ),
@@ -120,7 +120,7 @@ class _OpencodeLspPageState extends State<OpencodeLspPage> {
                                 disabled,
                               );
                               if (!ok && mounted) {
-                                Snack.error(LocaleKeys.save.tr);
+                                Snack.error(LocaleKeys.saveFailed.tr);
                               }
                             },
                           ),

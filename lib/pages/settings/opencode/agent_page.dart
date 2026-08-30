@@ -94,8 +94,9 @@ class _OpencodeAgentPageState extends State<OpencodeAgentPage> {
 
     // 服务端 PATCH 为 mergeDeep 深合并，按 agent 单键提交即可新增，
     // 无需整 map 重建（整 map 也无法真正删除条目）。
+    // 同名重建时旧配置残留 hidden:true，需显式置 false 才能重新可见。
     final ok = await _settings.setAgentConfig({
-      result.name: result.toJson(),
+      result.name: {...result.toJson(), 'hidden': false},
     });
     if (!mounted) return;
     if (ok) {
@@ -129,7 +130,7 @@ class _OpencodeAgentPageState extends State<OpencodeAgentPage> {
     if (ok) {
       Snack.success(LocaleKeys.delete.tr);
     } else {
-      Snack.error(LocaleKeys.delete.tr);
+      Snack.error(LocaleKeys.deleteFailed.tr);
     }
   }
 
@@ -203,11 +204,15 @@ class _OpencodeAgentPageState extends State<OpencodeAgentPage> {
                         modelDisplay: _modelDisplayName,
                         onSave: (updated) async {
                           // 单键深合并提交；重命名时旧名置 hidden（服务端
-                          // 无法删键，fetchAgents 过滤 hidden）。
+                          // 无法删键，fetchAgents 过滤 hidden）。新名显式
+                          // hidden:false，防止撞上历史软删除的同名条目。
                           return _settings.setAgentConfig({
                             if (updated.name != agent.name)
                               agent.name: {'hidden': true},
-                            updated.name: updated.toJson(),
+                            updated.name: {
+                              ...updated.toJson(),
+                              'hidden': false,
+                            },
                           });
                         },
                         onDelete: () => _confirmDelete(agent),
@@ -351,7 +356,7 @@ class _AgentExpansionTileState extends State<_AgentExpansionTile> {
       });
       Snack.success(LocaleKeys.save.tr);
     } else {
-      Snack.error(LocaleKeys.save.tr);
+      Snack.error(LocaleKeys.saveFailed.tr);
     }
   }
 

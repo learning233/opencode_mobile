@@ -534,11 +534,32 @@ class SettingsController extends GetxController {
     return ok;
   }
 
+  /// 与服务端 PATCH /global/config 的 mergeDeep 语义保持一致：
+  /// patch 常是 agent/permission/mcp 等二级命名空间的子集，浅层覆盖
+  /// 会把同级其余项清空，故乐观更新需逐层合并。
+  static Map<String, dynamic> _deepMergeConfig(
+    Map<String, dynamic> base,
+    Map<String, dynamic> patch,
+  ) {
+    final merged = Map<String, dynamic>.from(base);
+    patch.forEach((key, value) {
+      final current = merged[key];
+      if (value is Map && current is Map) {
+        merged[key] = _deepMergeConfig(
+          Map<String, dynamic>.from(current),
+          Map<String, dynamic>.from(value),
+        );
+      } else {
+        merged[key] = value;
+      }
+    });
+    return merged;
+  }
+
   Future<bool> _doUpdateGlobalConfig(Map<String, dynamic> patch) async {
     final originalConfig = globalConfig.value;
     if (originalConfig != null) {
-      globalConfig.value = Map<String, dynamic>.from(originalConfig)
-        ..addAll(patch);
+      globalConfig.value = _deepMergeConfig(originalConfig, patch);
     }
 
     try {
@@ -547,8 +568,11 @@ class SettingsController extends GetxController {
         data: patch,
       );
       if (response.statusCode == 200 || response.statusCode == 204) {
-        if (response.statusCode == 200 && response.data is Map) {
-          globalConfig.value = Map<String, dynamic>.from(response.data as Map);
+        final updated = response.statusCode == 200
+            ? _configMapFromResponse(response.data)
+            : null;
+        if (updated != null) {
+          globalConfig.value = updated;
         } else {
           await fetchGlobalConfig();
         }

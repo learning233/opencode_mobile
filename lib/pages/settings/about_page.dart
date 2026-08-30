@@ -112,7 +112,10 @@ class _AboutPageState extends State<AboutPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final displayVersion = _buildNumber.isNotEmpty
+    // PackageInfo 读取失败时 _version 已是「未知」文案，不再拼 'v' 前缀。
+    final displayVersion = _version == LocaleKeys.mobileUnknown.tr
+        ? _version
+        : _buildNumber.isNotEmpty
         ? 'v$_version+$_buildNumber'
         : 'v$_version';
 

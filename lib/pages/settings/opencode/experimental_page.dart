@@ -58,7 +58,7 @@ class _OpencodeExperimentalPageState extends State<OpencodeExperimentalPage> {
     final ok = await _settings.setExperimental({key: value});
     if (!mounted) return;
     if (!ok) {
-      Snack.error(LocaleKeys.save.tr);
+      Snack.error(LocaleKeys.saveFailed.tr);
     }
   }
 
@@ -75,7 +75,7 @@ class _OpencodeExperimentalPageState extends State<OpencodeExperimentalPage> {
       setState(() => _timeoutDirty = false);
       Snack.success(LocaleKeys.save.tr);
     } else {
-      Snack.error(LocaleKeys.save.tr);
+      Snack.error(LocaleKeys.saveFailed.tr);
     }
   }
 
@@ -88,7 +88,7 @@ class _OpencodeExperimentalPageState extends State<OpencodeExperimentalPage> {
       setState(() => _toolsDirty = false);
       Snack.success(LocaleKeys.save.tr);
     } else {
-      Snack.error(LocaleKeys.save.tr);
+      Snack.error(LocaleKeys.saveFailed.tr);
     }
   }
 

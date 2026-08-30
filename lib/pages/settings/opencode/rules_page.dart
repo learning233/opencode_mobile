@@ -233,7 +233,7 @@ class _OpencodeRulesPageState extends State<OpencodeRulesPage> {
                               paths,
                             );
                             if (!ok && mounted) {
-                              Snack.error(LocaleKeys.save.tr);
+                              Snack.error(LocaleKeys.saveFailed.tr);
                             }
                           },
                         ),
@@ -261,7 +261,7 @@ class _OpencodeRulesPageState extends State<OpencodeRulesPage> {
                             current,
                           );
                           if (!ok && mounted) {
-                            Snack.error(LocaleKeys.save.tr);
+                            Snack.error(LocaleKeys.saveFailed.tr);
                           }
                         },
                       ),

@@ -108,7 +108,7 @@ class _OpencodeAdvancedPageState extends State<OpencodeAdvancedPage> {
     if (ok) {
       Snack.success(LocaleKeys.save.tr);
     } else {
-      Snack.error(LocaleKeys.save.tr);
+      Snack.error(LocaleKeys.saveFailed.tr);
     }
   }
 
@@ -119,7 +119,7 @@ class _OpencodeAdvancedPageState extends State<OpencodeAdvancedPage> {
     if (ok) {
       Snack.success(LocaleKeys.save.tr);
     } else {
-      Snack.error(LocaleKeys.save.tr);
+      Snack.error(LocaleKeys.saveFailed.tr);
     }
   }
 
@@ -130,7 +130,7 @@ class _OpencodeAdvancedPageState extends State<OpencodeAdvancedPage> {
     if (ok) {
       Snack.success(LocaleKeys.save.tr);
     } else {
-      Snack.error(LocaleKeys.save.tr);
+      Snack.error(LocaleKeys.saveFailed.tr);
     }
   }
 
@@ -159,7 +159,7 @@ class _OpencodeAdvancedPageState extends State<OpencodeAdvancedPage> {
     if (ok) {
       Snack.success(LocaleKeys.save.tr);
     } else {
-      Snack.error(LocaleKeys.save.tr);
+      Snack.error(LocaleKeys.saveFailed.tr);
     }
   }
 

@@ -7,6 +7,7 @@ import '../controllers/project_controller.dart';
 import '../controllers/session_controller.dart';
 import '../init.dart';
 import '../models/cloud_workspace_config.dart';
+import '../models/e2b_sandbox_info.dart';
 import '../routes.dart';
 import '../services/e2b_workspace_service.dart';
 import '../utils/app_logger.dart';
@@ -14,6 +15,7 @@ import '../utils/translations.dart';
 import '../utils/url_utils.dart';
 import 'settings/opencode/cloud_workspace_launch_dialog.dart';
 import 'settings/opencode/cloud_workspace_sheet.dart';
+import 'settings/opencode/e2b_sandbox_picker_sheet.dart';
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
@@ -312,6 +314,22 @@ class _SplashPageState extends State<SplashPage> {
       });
     } finally {
       if (mounted && !_navigatedAway) setState(() => _isConnecting = false);
+    }
+  }
+
+  Future<void> _onSelectAndSwitchSandbox(E2bSandboxInfo sb) async {
+    await Global.settings.updateCloudWorkspaceConfig((curr) {
+      return curr.copyWith(
+        activeSandboxId: sb.sandboxId,
+        activeSandboxUrl: sb.endpointUrl,
+        activeSandboxStatus: sb.state,
+      );
+    });
+    if (mounted) {
+      setState(() {
+        _errorText = null;
+        _cloudHint = null;
+      });
     }
   }
 
@@ -617,27 +635,98 @@ class _SplashPageState extends State<SplashPage> {
             ),
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Text(
-                    sandboxId,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.cloud_outlined,
+                              color: theme.colorScheme.primary,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                sandboxId,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (config.activeSandboxUrl != null) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            _maskedUrl(config.activeSandboxUrl!),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ],
                     ),
-                    overflow: TextOverflow.ellipsis,
                   ),
-                  if (config.activeSandboxUrl != null) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      _maskedUrl(config.activeSandboxUrl!),
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: theme.colorScheme.onSurfaceVariant,
+                  const SizedBox(width: 8),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.all(4),
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
+                        iconSize: 20,
+                        icon: const Icon(Icons.add_circle_outline),
+                        tooltip: LocaleKeys.e2bNewSandbox.tr,
+                        onPressed: isBusy
+                            ? null
+                            : () async {
+                                await CloudWorkspaceSheet.show(
+                                  context,
+                                  onLaunch: (cfg) =>
+                                      CloudWorkspaceLaunchDialog.show(
+                                    context,
+                                    config: cfg,
+                                  ),
+                                );
+                                if (mounted) setState(() {});
+                              },
                       ),
-                    ),
-                  ],
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.all(4),
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
+                        iconSize: 20,
+                        icon: const Icon(Icons.list_alt),
+                        tooltip: LocaleKeys.e2bSandboxList.tr,
+                        onPressed: isBusy
+                            ? null
+                            : () async {
+                                final selected =
+                                    await E2bSandboxPickerSheet.show(context);
+                                if (selected != null && mounted) {
+                                  await _onSelectAndSwitchSandbox(selected);
+                                }
+                              },
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -736,42 +825,6 @@ class _SplashPageState extends State<SplashPage> {
                   : LocaleKeys.e2bConnectLastSandbox.tr,
             ),
           ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: isBusy
-                      ? null
-                      : () async {
-                          await CloudWorkspaceSheet.show(
-                            context,
-                            onLaunch: (cfg) => CloudWorkspaceLaunchDialog.show(
-                              context,
-                              config: cfg,
-                            ),
-                          );
-                          if (mounted) setState(() {});
-                        },
-                  icon: const Icon(Icons.add, size: 16),
-                  label: Text(LocaleKeys.e2bNewSandbox.tr),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: TextButton.icon(
-                  onPressed: isBusy
-                      ? null
-                      : () => Get.toNamed(
-                          AppRoutes.opencodeConnection,
-                          arguments: {'mode': 1},
-                        ),
-                  icon: const Icon(Icons.tune, size: 16),
-                  label: Text(LocaleKeys.e2bManageSandboxes.tr),
-                ),
-              ),
-            ],
-          ),
         ],
       );
     }
@@ -835,12 +888,15 @@ class _SplashPageState extends State<SplashPage> {
             TextButton.icon(
               onPressed: isBusy
                   ? null
-                  : () => Get.toNamed(
-                      AppRoutes.opencodeConnection,
-                      arguments: {'mode': 1},
-                    ),
-              icon: const Icon(Icons.tune, size: 16),
-              label: Text(LocaleKeys.e2bManageSandboxes.tr),
+                  : () async {
+                      final selected =
+                          await E2bSandboxPickerSheet.show(context);
+                      if (selected != null && mounted) {
+                        await _onSelectAndSwitchSandbox(selected);
+                      }
+                    },
+              icon: const Icon(Icons.list_alt, size: 16),
+              label: Text(LocaleKeys.e2bSelectSandbox.tr),
             ),
           ],
         ),

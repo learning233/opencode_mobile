@@ -159,6 +159,9 @@ class LocaleKeys {
   static const e2bConnectSandbox = "e2b_connect_sandbox";
   static const e2bConnectLastSandbox = "e2b_connect_last_sandbox";
   static const e2bWakeAndConnect = "e2b_wake_and_connect";
+  static const e2bSelectSandbox = "e2b_select_sandbox";
+  static const e2bCurrentActive = "e2b_current_active";
+  static const e2bSwitchedSandbox = "e2b_switched_sandbox";
   static const e2bManageSandboxes = "e2b_manage_sandboxes";
   static const e2bSandboxNotReadyWakeHint = "e2b_sandbox_not_ready_wake_hint";
   static const e2bCloudBackend = "e2b_cloud_backend";
@@ -1439,6 +1442,9 @@ class Messages extends Translations {
     LocaleKeys.e2bConnectSandbox: '进入沙盒',
     LocaleKeys.e2bConnectLastSandbox: '连接上次沙盒',
     LocaleKeys.e2bWakeAndConnect: '唤醒并连接',
+    LocaleKeys.e2bSelectSandbox: '选择沙盒',
+    LocaleKeys.e2bCurrentActive: '当前沙盒',
+    LocaleKeys.e2bSwitchedSandbox: '已切换至沙盒: @id',
     LocaleKeys.e2bManageSandboxes: '管理沙盒',
     LocaleKeys.e2bSandboxNotReadyWakeHint: '上次沙盒未就绪，可一键唤醒并连接',
     LocaleKeys.e2bCloudBackend: 'E2B 云端',
@@ -2732,6 +2738,9 @@ class Messages extends Translations {
     LocaleKeys.e2bConnectSandbox: 'Connect',
     LocaleKeys.e2bConnectLastSandbox: 'Connect Last Sandbox',
     LocaleKeys.e2bWakeAndConnect: 'Wake & Connect',
+    LocaleKeys.e2bSelectSandbox: 'Select Sandbox',
+    LocaleKeys.e2bCurrentActive: 'Active',
+    LocaleKeys.e2bSwitchedSandbox: 'Switched to sandbox: @id',
     LocaleKeys.e2bManageSandboxes: 'Manage Sandboxes',
     LocaleKeys.e2bSandboxNotReadyWakeHint:
         'Previous sandbox is not ready. You can wake and connect.',

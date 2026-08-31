@@ -8,57 +8,70 @@ import '../helpers/fake_http_adapter.dart';
 
 void main() {
   group('ConnectTransport wire protocol (mock envd)', () {
-    test('serverStreamCall sends enveloped frame body with connect+json',
-        () async {
-      final adapter = FakeHttpAdapter((options, body) async {
-        return ResponseBody(
-          Stream.fromIterable([
-            framedEvents([
-              {
-                'event': {'start': {'pid': 123}},
-              },
+    test(
+      'serverStreamCall sends enveloped frame body with connect+json',
+      () async {
+        final adapter = FakeHttpAdapter((options, body) async {
+          return ResponseBody(
+            Stream.fromIterable([
+              framedEvents([
+                {
+                  'event': {
+                    'start': {'pid': 123},
+                  },
+                },
+              ]),
             ]),
-          ]),
-          200,
-          headers: {
-            'content-type': ['application/connect+json'],
-          },
-        );
-      });
-      final dio = Dio()..httpClientAdapter = adapter;
-      const config = ConnectionConfig(apiKey: 'k', envdAccessToken: 'tok');
-      final transport = ConnectTransport(config: config, dio: dio);
+            200,
+            headers: {
+              'content-type': ['application/connect+json'],
+            },
+          );
+        });
+        final dio = Dio()..httpClientAdapter = adapter;
+        const config = ConnectionConfig(apiKey: 'k', envdAccessToken: 'tok');
+        final transport = ConnectTransport(config: config, dio: dio);
 
-      await transport.serverStreamCall(
-        sandboxId: 'sbx-1',
-        path: '/process.Process/Start',
-        request: {'process': {'cmd': 'echo'}},
-      ).drain<void>();
+        await transport
+            .serverStreamCall(
+              sandboxId: 'sbx-1',
+              path: '/process.Process/Start',
+              request: {
+                'process': {'cmd': 'echo'},
+              },
+            )
+            .drain<void>();
 
-      final req = adapter.requests.single;
-      expect(req.header('Content-Type'), 'application/connect+json');
-      expect(req.header('X-Access-Token'), 'tok');
-      expect(req.header('E2b-Sandbox-Id'), 'sbx-1');
+        final req = adapter.requests.single;
+        expect(req.header('Content-Type'), 'application/connect+json');
+        expect(req.header('X-Access-Token'), 'tok');
+        expect(req.header('E2b-Sandbox-Id'), 'sbx-1');
 
-      // 请求体必须是信封帧而非裸 JSON
-      expect(req.body.length, greaterThan(5));
-      expect(req.body[0], 0x00);
-      final len = (req.body[1] << 24) |
-          (req.body[2] << 16) |
-          (req.body[3] << 8) |
-          req.body[4];
-      expect(len, req.body.length - 5);
-      final decoded = jsonDecode(utf8.decode(req.body.sublist(5)));
-      expect(decoded['process']['cmd'], 'echo');
-    });
+        // 请求体必须是信封帧而非裸 JSON
+        expect(req.body.length, greaterThan(5));
+        expect(req.body[0], 0x00);
+        final len =
+            (req.body[1] << 24) |
+            (req.body[2] << 16) |
+            (req.body[3] << 8) |
+            req.body[4];
+        expect(len, req.body.length - 5);
+        final decoded = jsonDecode(utf8.decode(req.body.sublist(5)));
+        expect(decoded['process']['cmd'], 'echo');
+      },
+    );
 
     test('serverStreamCall decodes frames split across chunks', () async {
       final full = framedEvents([
         {
-          'event': {'start': {'pid': 7}},
+          'event': {
+            'start': {'pid': 7},
+          },
         },
         {
-          'event': {'end': {'exit_code': 0}},
+          'event': {
+            'end': {'exit_code': 0},
+          },
         },
       ]);
       final adapter = FakeHttpAdapter((options, body) async {
@@ -76,11 +89,13 @@ void main() {
       const config = ConnectionConfig(apiKey: 'k');
       final transport = ConnectTransport(config: config, dio: dio);
 
-      final frames = await transport.serverStreamCall(
-        sandboxId: 'sbx-1',
-        path: '/process.Process/Start',
-        request: {'x': 1},
-      ).toList();
+      final frames = await transport
+          .serverStreamCall(
+            sandboxId: 'sbx-1',
+            path: '/process.Process/Start',
+            request: {'x': 1},
+          )
+          .toList();
 
       final events = frames
           .map((f) => f.jsonMap)
@@ -146,18 +161,19 @@ void main() {
           Stream.fromIterable([
             framedEvents([
               {
-                'event': {'start': {'pid': 123}},
-              },
-              {
                 'event': {
-                  'data': {
-                    'stdout':
-                        base64Encode(utf8.encode('hello 世界')),
-                  },
+                  'start': {'pid': 123},
                 },
               },
               {
-                'event': {'end': {'exit_code': 0, 'exited': true}},
+                'event': {
+                  'data': {'stdout': base64Encode(utf8.encode('hello 世界'))},
+                },
+              },
+              {
+                'event': {
+                  'end': {'exit_code': 0, 'exited': true},
+                },
               },
             ]),
           ]),
@@ -169,10 +185,7 @@ void main() {
       String? captured;
       final result = await commands.run(
         'echo hi',
-        opts: CommandOpts(
-          timeoutMs: 30000,
-          onStdout: (s) => captured = s,
-        ),
+        opts: CommandOpts(timeoutMs: 30000, onStdout: (s) => captured = s),
       );
 
       expect(result.exitCode, 0);
@@ -180,8 +193,9 @@ void main() {
       expect(result.stdout, 'hello 世界');
       expect(captured, 'hello 世界');
 
-      final req = adapter.requests
-          .firstWhere((r) => r.options.uri.path.contains('Process/Start'));
+      final req = adapter.requests.firstWhere(
+        (r) => r.options.uri.path.contains('Process/Start'),
+      );
       final payload = jsonDecode(utf8.decode(req.body.sublist(5)));
       expect(payload['process']['args'][0], '-l');
       expect(payload['process']['args'][1], '-c');
@@ -195,10 +209,14 @@ void main() {
           Stream.fromIterable([
             framedEvents([
               {
-                'event': {'start': {'pid': 9}},
+                'event': {
+                  'start': {'pid': 9},
+                },
               },
               {
-                'event': {'end': {'exitCode': 3}},
+                'event': {
+                  'end': {'exitCode': 3},
+                },
               },
             ]),
           ]),
@@ -224,9 +242,13 @@ void main() {
       });
       final commands = buildCommands(adapter);
 
-      controller.add(ConnectTransportFrameHelper.encode({
-        'event': {'start': {'pid': 77}},
-      }));
+      controller.add(
+        ConnectTransportFrameHelper.encode({
+          'event': {
+            'start': {'pid': 77},
+          },
+        }),
+      );
 
       final sw = DateTime.now();
       final handle = await commands.start(
@@ -262,46 +284,48 @@ void main() {
   });
 
   group('Sandbox.connect over mock control plane', () {
-    test('calls POST /sandboxes/{id}/connect and returns fresh token',
-        () async {
-      final adapter = FakeHttpAdapter((options, body) async {
-        expect(options.method, 'POST');
-        expect(options.uri.path, contains('/sandboxes/sbx-9/connect'));
-        final req = jsonDecode(utf8.decode(body));
-        expect(req['timeout'], 600);
-        return ResponseBody.fromString(
-          jsonEncode({
-            'sandboxID': 'sbx-9',
-            'templateID': 'opencode',
-            'envdAccessToken': 'fresh-tok',
-            'domain': 'e2b.app',
-          }),
-          200,
-          headers: {
-            'content-type': ['application/json'],
-          },
+    test(
+      'calls POST /sandboxes/{id}/connect and returns fresh token',
+      () async {
+        final adapter = FakeHttpAdapter((options, body) async {
+          expect(options.method, 'POST');
+          expect(options.uri.path, contains('/sandboxes/sbx-9/connect'));
+          final req = jsonDecode(utf8.decode(body));
+          expect(req['timeout'], 600);
+          return ResponseBody.fromString(
+            jsonEncode({
+              'sandboxID': 'sbx-9',
+              'templateID': 'opencode',
+              'envdAccessToken': 'fresh-tok',
+              'domain': 'e2b.app',
+            }),
+            200,
+            headers: {
+              'content-type': ['application/json'],
+            },
+          );
+        });
+        final dio = Dio()..httpClientAdapter = adapter;
+
+        final sandbox = await Sandbox.connect(
+          SandboxConnectOpts(
+            sandboxId: 'sbx-9',
+            apiKey: 'k',
+            timeout: 600,
+            envdAccessToken: 'stale-tok',
+          ),
+          dio: dio,
         );
-      });
-      final dio = Dio()..httpClientAdapter = adapter;
 
-      final sandbox = await Sandbox.connect(
-        SandboxConnectOpts(
-          sandboxId: 'sbx-9',
-          apiKey: 'k',
-          timeout: 600,
-          envdAccessToken: 'stale-tok',
-        ),
-        dio: dio,
-      );
-
-      expect(sandbox.sandboxId, 'sbx-9');
-      expect(sandbox.envdAccessToken, 'fresh-tok');
-      expect(sandbox.connectionConfig.envdAccessToken, 'fresh-tok');
-      expect(
-        sandbox.connectionConfig.getSandboxEnvdUrl('sbx-9'),
-        'https://49983-sbx-9.e2b.app',
-      );
-    });
+        expect(sandbox.sandboxId, 'sbx-9');
+        expect(sandbox.envdAccessToken, 'fresh-tok');
+        expect(sandbox.connectionConfig.envdAccessToken, 'fresh-tok');
+        expect(
+          sandbox.connectionConfig.getSandboxEnvdUrl('sbx-9'),
+          'https://49983-sbx-9.e2b.app',
+        );
+      },
+    );
 
     test('404 maps to SandboxNotFoundException', () async {
       final adapter = FakeHttpAdapter((options, body) async {

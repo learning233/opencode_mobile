@@ -41,11 +41,7 @@ class GitRepoItem {
 
 /// GitHub 平台用户信息
 class GitUserInfo {
-  const GitUserInfo({
-    required this.login,
-    this.name = '',
-    this.email = '',
-  });
+  const GitUserInfo({required this.login, this.name = '', this.email = ''});
 
   final String login;
   final String name;
@@ -142,11 +138,10 @@ class GitRepoService {
       final uri = Uri.parse(cleanUrl);
       final host = uri.host;
       // 用 Uri.replace(userInfo: ...) 构造,自动对 token 做 URL 编码
-      final isGithubLike = host.contains('github.com') || host.contains('gitlab');
+      final isGithubLike =
+          host.contains('github.com') || host.contains('gitlab');
       final userInfo = isGithubLike ? 'oauth2:$cleanToken' : cleanToken;
-      final updated = uri.replace(
-        userInfo: userInfo,
-      );
+      final updated = uri.replace(userInfo: userInfo);
       return updated.toString();
     } catch (_) {
       return cleanUrl;

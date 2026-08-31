@@ -226,12 +226,7 @@ class _BashSheetBodyState extends State<_BashSheetBody> {
       final output = rx.value;
       // 只在 part 被流式替换后自动跟随底部；打开已完成卡时停在顶部。
       if (part != widget.fallback) _scrollToBottom();
-      return _content(
-        theme,
-        appColors: appColors,
-        part: part,
-        output: output,
-      );
+      return _content(theme, appColors: appColors, part: part, output: output);
     });
   }
 

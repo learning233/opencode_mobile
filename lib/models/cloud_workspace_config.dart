@@ -162,7 +162,8 @@ class CloudWorkspaceConfig {
     return CloudWorkspaceConfig(
       e2bApiKey: json['e2b_api_key'] as String? ?? '',
       templateId: json['template_id'] as String? ?? 'opencode',
-      toolchains: (json['toolchains'] as List<dynamic>?)
+      toolchains:
+          (json['toolchains'] as List<dynamic>?)
               ?.map((e) => e.toString())
               .toList() ??
           ['dart', 'rust'],

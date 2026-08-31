@@ -69,10 +69,10 @@ class CommandHandle {
     required Future<void> Function() killer,
     required Future<void> Function(String data) stdinSender,
     required Future<void> Function() stdinCloser,
-  })  : _waiter = waiter,
-        _killer = killer,
-        _stdinSender = stdinSender,
-        _stdinCloser = stdinCloser;
+  }) : _waiter = waiter,
+       _killer = killer,
+       _stdinSender = stdinSender,
+       _stdinCloser = stdinCloser;
 
   /// 等待命令执行完成并返回结果
   Future<CommandResult> wait() => _waiter();

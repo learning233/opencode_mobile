@@ -37,9 +37,9 @@ class PtyHandle {
     required Future<void> Function(Uint8List data) inputSender,
     required Future<void> Function(PtySize size) resizer,
     required Future<void> Function() killer,
-  })  : _inputSender = inputSender,
-        _resizer = resizer,
-        _killer = killer;
+  }) : _inputSender = inputSender,
+       _resizer = resizer,
+       _killer = killer;
 
   Future<void> sendInput(Uint8List data) => _inputSender(data);
   Future<void> resize(PtySize size) => _resizer(size);

@@ -77,9 +77,7 @@ class Sandbox {
       );
     }
     if (statusCode == 404) {
-      throw SandboxNotFoundException(
-        '$action失败: 目标不存在 (HTTP 404)$suffix',
-      );
+      throw SandboxNotFoundException('$action失败: 目标不存在 (HTTP 404)$suffix');
     }
     // 模板相关错误给出可操作的指引
     if (serverMsg.toLowerCase().contains('template')) {
@@ -144,8 +142,8 @@ class Sandbox {
       final data = res.data is Map
           ? Map<String, dynamic>.from(res.data as Map)
           : const <String, dynamic>{};
-      final sandboxId = (data['sandboxID'] ?? data['sandboxId'] ?? data['id'])
-          ?.toString() ??
+      final sandboxId =
+          (data['sandboxID'] ?? data['sandboxId'] ?? data['id'])?.toString() ??
           '';
       if (sandboxId.isEmpty) {
         throw const SandboxException('创建沙盒失败: 服务端响应缺少 sandboxID');
@@ -179,16 +177,14 @@ class Sandbox {
   /// 真实调用控制面 `POST /sandboxes/{id}/connect`:校验沙盒存在性,
   /// 已休眠(paused)的沙盒会被自动唤醒(响应 201),
   /// 并返回服务端新签发的 envdAccessToken 与 domain。
-  static Future<Sandbox> connect(
-    SandboxConnectOpts opts, {
-    Dio? dio,
-  }) async {
+  static Future<Sandbox> connect(SandboxConnectOpts opts, {Dio? dio}) async {
     final effectiveApiKey = opts.apiKey ?? '';
     if (effectiveApiKey.isEmpty) {
       throw const SandboxAuthenticationException('E2B API Key 不能为空');
     }
 
-    final client = dio ??
+    final client =
+        dio ??
         Dio(
           BaseOptions(
             connectTimeout: const Duration(seconds: 15),
@@ -197,7 +193,10 @@ class Sandbox {
           ),
         );
 
-    final baseConfig = ConnectionConfig(apiKey: effectiveApiKey, domain: opts.domain);
+    final baseConfig = ConnectionConfig(
+      apiKey: effectiveApiKey,
+      domain: opts.domain,
+    );
 
     try {
       final res = await client.post(
@@ -216,11 +215,12 @@ class Sandbox {
       final data = res.data is Map
           ? Map<String, dynamic>.from(res.data as Map)
           : const <String, dynamic>{};
-      final envdAccessToken =
-          (data['envdAccessToken'] ?? opts.envdAccessToken)?.toString();
+      final envdAccessToken = (data['envdAccessToken'] ?? opts.envdAccessToken)
+          ?.toString();
       final respDomain = data['domain']?.toString();
-      final domain =
-          (respDomain == null || respDomain.isEmpty) ? opts.domain : respDomain;
+      final domain = (respDomain == null || respDomain.isEmpty)
+          ? opts.domain
+          : respDomain;
 
       final config = ConnectionConfig(
         apiKey: effectiveApiKey,
@@ -413,16 +413,28 @@ class Sandbox {
   String getHostUrl(int port) => connectionConfig.getHostUrl(sandboxId, port);
 
   /// 销毁当前沙盒
-  Future<void> destroy({Dio? dio}) =>
-      Sandbox.kill(sandboxId, apiKey: connectionConfig.apiKey, domain: connectionConfig.domain, dio: dio);
+  Future<void> destroy({Dio? dio}) => Sandbox.kill(
+    sandboxId,
+    apiKey: connectionConfig.apiKey,
+    domain: connectionConfig.domain,
+    dio: dio,
+  );
 
   /// 休眠当前沙盒
-  Future<void> pauseSandbox({Dio? dio}) =>
-      Sandbox.pause(sandboxId, apiKey: connectionConfig.apiKey, domain: connectionConfig.domain, dio: dio);
+  Future<void> pauseSandbox({Dio? dio}) => Sandbox.pause(
+    sandboxId,
+    apiKey: connectionConfig.apiKey,
+    domain: connectionConfig.domain,
+    dio: dio,
+  );
 
   /// 唤醒当前沙盒
-  Future<void> resumeSandbox({Dio? dio}) =>
-      Sandbox.resume(sandboxId, apiKey: connectionConfig.apiKey, domain: connectionConfig.domain, dio: dio);
+  Future<void> resumeSandbox({Dio? dio}) => Sandbox.resume(
+    sandboxId,
+    apiKey: connectionConfig.apiKey,
+    domain: connectionConfig.domain,
+    dio: dio,
+  );
 
   /// 刷新当前沙盒 TTL (keep-alive)
   Future<void> extendTimeout(int timeoutSeconds, {Dio? dio}) =>

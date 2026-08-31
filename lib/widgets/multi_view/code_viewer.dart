@@ -584,10 +584,7 @@ class _FileEditorPageState extends State<FileEditorPage> {
   @override
   Widget build(BuildContext context) {
     if (_isImage || isImageFilePath(widget.filePath)) {
-      return ImageViewer(
-        filePath: widget.filePath,
-        worktree: widget.worktree,
-      );
+      return ImageViewer(filePath: widget.filePath, worktree: widget.worktree);
     }
     if (_isAudio || isAudioFilePath(widget.filePath)) {
       return AudioPlayerView(

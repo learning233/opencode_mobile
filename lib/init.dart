@@ -180,7 +180,9 @@ class Global {
     final saved = settings.selfHostedServerUrl;
     if (saved != null && saved.isNotEmpty) return saved;
     final curr = settings.serverUrl;
-    if (curr != null && curr.isNotEmpty && !E2bWorkspaceService.isCloudUrl(curr)) {
+    if (curr != null &&
+        curr.isNotEmpty &&
+        !E2bWorkspaceService.isCloudUrl(curr)) {
       return curr;
     }
     return ApiEndpoints.baseLocalUrl;
@@ -191,7 +193,9 @@ class Global {
     final saved = settings.selfHostedServerUsername;
     if (saved != null && saved.isNotEmpty) return saved;
     final curr = settings.serverUrl;
-    if (curr != null && curr.isNotEmpty && !E2bWorkspaceService.isCloudUrl(curr)) {
+    if (curr != null &&
+        curr.isNotEmpty &&
+        !E2bWorkspaceService.isCloudUrl(curr)) {
       return settings.serverUsername ?? 'opencode';
     }
     return 'opencode';
@@ -202,7 +206,9 @@ class Global {
     final saved = settings.selfHostedServerPassword;
     if (saved != null && saved.isNotEmpty) return saved;
     final curr = settings.serverUrl;
-    if (curr != null && curr.isNotEmpty && !E2bWorkspaceService.isCloudUrl(curr)) {
+    if (curr != null &&
+        curr.isNotEmpty &&
+        !E2bWorkspaceService.isCloudUrl(curr)) {
       return settings.serverPassword ?? '';
     }
     return '';

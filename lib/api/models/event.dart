@@ -22,11 +22,7 @@ class SseEvent {
   /// Reusable empty list to avoid allocations in typed getters.
   static const _emptyList = <dynamic>[];
 
-  SseEvent({
-    required this.id,
-    required this.type,
-    required this.properties,
-  });
+  SseEvent({required this.id, required this.type, required this.properties});
 
   /// Parses a raw SSE payload string into an [SseEvent].
   ///
@@ -78,11 +74,7 @@ class SseEvent {
       }
     }
 
-    return SseEvent(
-      id: id,
-      type: eventType,
-      properties: properties,
-    );
+    return SseEvent(id: id, type: eventType, properties: properties);
   }
 
   // ── typed accessors matching SDK event properties ──

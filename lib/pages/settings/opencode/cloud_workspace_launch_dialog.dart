@@ -13,10 +13,7 @@ import '../../../utils/snackbar_utils.dart';
 import '../../../utils/translations.dart';
 
 class CloudWorkspaceLaunchDialog extends StatefulWidget {
-  const CloudWorkspaceLaunchDialog({
-    super.key,
-    required this.config,
-  });
+  const CloudWorkspaceLaunchDialog({super.key, required this.config});
 
   final CloudWorkspaceConfig config;
 
@@ -38,7 +35,7 @@ class CloudWorkspaceLaunchDialog extends StatefulWidget {
 
 class _CloudWorkspaceLaunchDialogState
     extends State<CloudWorkspaceLaunchDialog> {
-  String _currentStatus = '正在准备启动 E2B 云端沙盒...';
+  late String _currentStatus;
   bool _isError = false;
   String? _errorMessage;
   CancelToken? _cancelToken;
@@ -46,6 +43,7 @@ class _CloudWorkspaceLaunchDialogState
   @override
   void initState() {
     super.initState();
+    _currentStatus = LocaleKeys.e2bLaunchPreparing.tr;
     _startLaunch();
   }
 
@@ -60,7 +58,7 @@ class _CloudWorkspaceLaunchDialogState
     if (widget.config.e2bApiKey.trim().isEmpty) {
       setState(() {
         _isError = true;
-        _errorMessage = 'E2B API Key 不能为空，请先在设置中填写';
+        _errorMessage = LocaleKeys.e2bApiKeyEmptyError.tr;
       });
       return;
     }
@@ -71,7 +69,7 @@ class _CloudWorkspaceLaunchDialogState
     setState(() {
       _isError = false;
       _errorMessage = null;
-      _currentStatus = '正在向 E2B 申请微型虚拟机沙盒...';
+      _currentStatus = LocaleKeys.e2bLaunchRequestingVm.tr;
     });
 
     final service = E2bWorkspaceService.instance;
@@ -88,7 +86,7 @@ class _CloudWorkspaceLaunchDialogState
     if (!result.success) {
       setState(() {
         _isError = true;
-        _errorMessage = result.error ?? '启动云端沙盒失败';
+        _errorMessage = result.error ?? LocaleKeys.e2bLaunchFailed.tr;
       });
       return;
     }
@@ -97,7 +95,7 @@ class _CloudWorkspaceLaunchDialogState
     final endpointUrl = result.endpointUrl!;
     final password = result.password!;
 
-    setState(() => _currentStatus = '沙盒就绪，正在与本地建立安全连接...');
+    setState(() => _currentStatus = LocaleKeys.e2bLaunchConnecting.tr);
 
     // 1. 保存当前沙盒状态到设置(含 envd 访问令牌,供下次直连恢复)
     await Global.settings.updateCloudWorkspaceConfig((curr) {
@@ -123,7 +121,7 @@ class _CloudWorkspaceLaunchDialogState
     if (!connectResult.success) {
       setState(() {
         _isError = true;
-        _errorMessage = connectResult.error ?? 'OpenCode 连接握手失败';
+        _errorMessage = connectResult.error ?? LocaleKeys.e2bHandshakeFailed.tr;
       });
       return;
     }
@@ -149,7 +147,7 @@ class _CloudWorkspaceLaunchDialogState
 
     if (mounted) {
       Navigator.of(context).pop();
-      Snack.success('E2B 云端工作区已连接并就绪');
+      Snack.success(LocaleKeys.e2bWorkspaceReady.tr);
       Get.offNamed(AppRoutes.home);
     }
   }
@@ -164,11 +162,15 @@ class _CloudWorkspaceLaunchDialogState
         children: [
           Icon(
             _isError ? Icons.error_outline : Icons.cloud_sync,
-            color: _isError ? theme.colorScheme.error : theme.colorScheme.primary,
+            color: _isError
+                ? theme.colorScheme.error
+                : theme.colorScheme.primary,
           ),
           const SizedBox(width: 10),
           Text(
-            _isError ? '启动遇到问题' : 'E2B 云端工作区',
+            _isError
+                ? LocaleKeys.e2bLaunchErrorTitle.tr
+                : LocaleKeys.e2bTitle.tr,
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
         ],
@@ -180,8 +182,9 @@ class _CloudWorkspaceLaunchDialogState
           if (!_isError) ...[
             const SizedBox(height: 8),
             LinearProgressIndicator(
-              backgroundColor:
-                  theme.colorScheme.primary.withValues(alpha: 0.15),
+              backgroundColor: theme.colorScheme.primary.withValues(
+                alpha: 0.15,
+              ),
             ),
             const SizedBox(height: 16),
             Text(
@@ -199,7 +202,7 @@ class _CloudWorkspaceLaunchDialogState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     SelectableText(
-                      _errorMessage ?? '未知错误',
+                      _errorMessage ?? LocaleKeys.snackError.tr,
                       style: TextStyle(
                         fontSize: 13,
                         color: theme.colorScheme.error,
@@ -207,7 +210,7 @@ class _CloudWorkspaceLaunchDialogState
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      '沙盒实例已保留，可在连接页沙盒列表中销毁或重新连接。',
+                      LocaleKeys.e2bSandboxPreservedHint.tr,
                       style: TextStyle(
                         fontSize: 12,
                         color: theme.colorScheme.onSurfaceVariant,

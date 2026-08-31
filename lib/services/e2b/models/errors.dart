@@ -16,13 +16,19 @@ class SandboxTimeoutException extends SandboxException {
 }
 
 class SandboxAuthenticationException extends SandboxException {
-  const SandboxAuthenticationException(super.message,
-      {super.statusCode, super.cause});
+  const SandboxAuthenticationException(
+    super.message, {
+    super.statusCode,
+    super.cause,
+  });
 }
 
 class SandboxNotFoundException extends SandboxException {
-  const SandboxNotFoundException(super.message,
-      {super.statusCode, super.cause});
+  const SandboxNotFoundException(
+    super.message, {
+    super.statusCode,
+    super.cause,
+  });
 }
 
 class CommandExitException extends SandboxException {
@@ -35,6 +41,7 @@ class CommandExitException extends SandboxException {
     required this.stdout,
     required this.stderr,
     String? message,
-  }) : super(message ??
-            'Command exited with non-zero code $exitCode:\n$stderr');
+  }) : super(
+         message ?? 'Command exited with non-zero code $exitCode:\n$stderr',
+       );
 }

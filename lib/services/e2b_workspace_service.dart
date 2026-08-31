@@ -378,9 +378,11 @@ exit 43
         return const E2bLaunchResult(success: false, error: '操作已取消');
       }
 
-      onProgress?.call(bootstrap.alreadyRunning
-          ? 'OpenCode 已在运行，正在验证健康状态...'
-          : 'OpenCode 已拉起，正在等待服务就绪...');
+      onProgress?.call(
+        bootstrap.alreadyRunning
+            ? 'OpenCode 已在运行，正在验证健康状态...'
+            : 'OpenCode 已拉起，正在等待服务就绪...',
+      );
 
       // 轮询健康检查等待 OpenCode serve 启动就绪（默认最多约 120 秒）
       final health = await _waitForHealthy(
@@ -463,7 +465,8 @@ exit 43
       }
 
       // 2. 密码解析: 优先用该沙盒对应的存储密码, 缺失时从沙盒内 recover
-      var password = (config.activeSandboxId == sandboxId
+      var password =
+          (config.activeSandboxId == sandboxId
               ? config.activeSandboxPassword
               : null) ??
           '';
@@ -554,10 +557,7 @@ exit 43
       );
     } catch (e) {
       AppLogger.e('E2B connectSandbox unexpected error', e);
-      return E2bSandboxConnectResult(
-        success: false,
-        error: '连接沙盒遇到未知错误: $e',
-      );
+      return E2bSandboxConnectResult(success: false, error: '连接沙盒遇到未知错误: $e');
     }
   }
 
@@ -685,16 +685,13 @@ exit 43
   /// pgrep 用 [o]pencode 技巧避免匹配到执行命令的 bash 自身。
   Future<String?> recoverPassword(Sandbox sandbox) async {
     try {
-      final result = await sandbox.commands.run(
-        r'''
+      final result = await sandbox.commands.run(r'''
 cat "$HOME/.opencode_pw" 2>/dev/null && exit 0
 pid="$(pgrep -f '[o]pencode serve' | head -n 1)"
 if [ -n "$pid" ] && [ -r "/proc/$pid/environ" ]; then
   tr '\0' '\n' < "/proc/$pid/environ" | grep '^OPENCODE_SERVER_PASSWORD=' | cut -d= -f2-
 fi
-''',
-        opts: const CommandOpts(timeoutMs: 15000),
-      );
+''', opts: const CommandOpts(timeoutMs: 15000));
       final pw = result.stdout.trim();
       return pw.isEmpty ? null : pw;
     } catch (e) {
@@ -719,8 +716,11 @@ fi
   }
 
   /// 探测健康端点,返回 HTTP 状态码(网络异常返回 null)
-  Future<int?> _probeHealth(String healthUrl, String password,
-      {CancelToken? cancelToken}) async {
+  Future<int?> _probeHealth(
+    String healthUrl,
+    String password, {
+    CancelToken? cancelToken,
+  }) async {
     try {
       final token = base64Encode(utf8.encode('opencode:$password'));
       final res = await _healthDio.get(
@@ -847,7 +847,9 @@ fi
         );
       }
 
-      if (attempt % 5 == 0 && sandbox != null && cancelToken?.isCancelled != true) {
+      if (attempt % 5 == 0 &&
+          sandbox != null &&
+          cancelToken?.isCancelled != true) {
         final logTail = await readOpencodeLogTail(sandbox);
         if (logTail.isNotEmpty) {
           AppLogger.w('[VM /tmp/opencode.log]\n$logTail');
@@ -971,8 +973,9 @@ fi
         opts: SandboxListOpts(apiKey: cleanKey),
         dio: _dio,
       );
-      final result =
-          list.sandboxes.map((j) => E2bSandboxInfo.fromJson(j)).toList();
+      final result = list.sandboxes
+          .map((j) => E2bSandboxInfo.fromJson(j))
+          .toList();
       AppLogger.i('Fetched ${result.length} E2B sandboxes via Sandbox.list');
       return result;
     } catch (e) {

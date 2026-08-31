@@ -127,7 +127,8 @@ class Commands {
           sawEndStream = true;
           final trailer = frame.jsonMap;
           final trailerError = trailer?['error'] ?? trailer?['message'];
-          if (trailerError != null && trailerError.toString().trim().isNotEmpty) {
+          if (trailerError != null &&
+              trailerError.toString().trim().isNotEmpty) {
             exitError = 'envd 流式调用错误: $trailerError';
           }
           return;
@@ -245,7 +246,11 @@ class Commands {
   }
 
   /// 发送终止信号 (SIGTERM=15 / SIGKILL=9)
-  Future<void> kill(int pid, {int signal = 15, CancelToken? cancelToken}) async {
+  Future<void> kill(
+    int pid, {
+    int signal = 15,
+    CancelToken? cancelToken,
+  }) async {
     cancelToken?.cancel();
     if (pid <= 0) return;
 

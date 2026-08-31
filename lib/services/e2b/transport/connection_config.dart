@@ -75,9 +75,6 @@ class ConnectionConfig {
 
   /// 构造控制面 REST API 请求的基础 Header
   Map<String, String> getApiHeaders() {
-    return {
-      'Content-Type': 'application/json',
-      'X-API-Key': apiKey,
-    };
+    return {'Content-Type': 'application/json', 'X-API-Key': apiKey};
   }
 }

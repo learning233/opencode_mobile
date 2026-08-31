@@ -42,9 +42,8 @@ void main() {
     } catch (_) {}
   });
 
-  Directory cacheDir() => Directory(
-    '${temp.path}${Platform.pathSeparator}session_cache',
-  );
+  Directory cacheDir() =>
+      Directory('${temp.path}${Platform.pathSeparator}session_cache');
 
   group('SessionCacheStore', () {
     test('save then load round-trips the raw messages', () async {
@@ -114,8 +113,9 @@ void main() {
 
     test('load returns null for corrupted json', () async {
       cacheDir().createSync(recursive: true);
-      File('${cacheDir().path}${Platform.pathSeparator}s1.json')
-          .writeAsStringSync('{"v":1,"messages":[{"id":');
+      File(
+        '${cacheDir().path}${Platform.pathSeparator}s1.json',
+      ).writeAsStringSync('{"v":1,"messages":[{"id":');
 
       expect(await store.load('s1'), isNull);
     });
@@ -133,18 +133,24 @@ void main() {
     test('empty messages are never written to disk', () async {
       await store.save('s1', []);
 
-      expect(cacheDir().existsSync() && cacheDir().listSync().isNotEmpty,
-          isFalse);
+      expect(
+        cacheDir().existsSync() && cacheDir().listSync().isNotEmpty,
+        isFalse,
+      );
       expect(await store.load('s1'), isNull);
     });
 
     test('session ids containing path separators are rejected', () async {
-      await store.save('../evil', [_rawMessage('m1', role: 'user', created: 100)]);
+      await store.save('../evil', [
+        _rawMessage('m1', role: 'user', created: 100),
+      ]);
 
       expect(await store.load('../evil'), isNull);
       // 目录里不应出现任何文件（未逃逸出 session_cache）。
-      expect(cacheDir().existsSync() && cacheDir().listSync().isNotEmpty,
-          isFalse);
+      expect(
+        cacheDir().existsSync() && cacheDir().listSync().isNotEmpty,
+        isFalse,
+      );
     });
 
     test('prune removes the oldest files beyond the limits', () async {

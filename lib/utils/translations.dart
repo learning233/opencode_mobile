@@ -177,6 +177,54 @@ class LocaleKeys {
   static const e2bNotConfigured = "e2b_not_configured";
   static const e2bCustomBaseUrl = "e2b_custom_base_url";
   static const e2bCustomBaseUrlHint = "e2b_custom_base_url_hint";
+  static const e2bRepoSelected = "e2b_repo_selected";
+  static const e2bTemplateHelper = "e2b_template_helper";
+  static const e2bGitProjectAndAuth = "e2b_git_project_and_auth";
+  static const e2bGitPatLabel = "e2b_git_pat_label";
+  static const e2bGitPatHint = "e2b_git_pat_hint";
+  static const e2bFetchAndSelectRepo = "e2b_fetch_and_select_repo";
+  static const e2bSelectedRepoWithBranch = "e2b_selected_repo_with_branch";
+  static const e2bGitRepoUrlOptionalHint = "e2b_git_repo_url_optional_hint";
+  static const e2bFetchReposFailed = "e2b_fetch_repos_failed";
+  static const e2bFetchReposTokenError = "e2b_fetch_repos_token_error";
+  static const e2bSelectGitHubRepo = "e2b_select_github_repo";
+  static const e2bFetchingRepoList = "e2b_fetching_repo_list";
+  static const e2bLaunchPreparing = "e2b_launch_preparing";
+  static const e2bApiKeyEmptyError = "e2b_api_key_empty_error";
+  static const e2bLaunchRequestingVm = "e2b_launch_requesting_vm";
+  static const e2bLaunchFailed = "e2b_launch_failed";
+  static const e2bLaunchConnecting = "e2b_launch_connecting";
+  static const e2bHandshakeFailed = "e2b_handshake_failed";
+  static const e2bWorkspaceReady = "e2b_workspace_ready";
+  static const e2bLaunchErrorTitle = "e2b_launch_error_title";
+  static const e2bSandboxPreservedHint = "e2b_sandbox_preserved_hint";
+  static const e2bConnectFailed = "e2b_connect_failed";
+  static const e2bServiceUnreachable = "e2b_service_unreachable";
+  static const e2bConnectedToSandbox = "e2b_connected_to_sandbox";
+  static const e2bConnectionError = "e2b_connection_error";
+  static const e2bSandboxPausedSuccess = "e2b_sandbox_paused_success";
+  static const e2bSandboxPauseFailed = "e2b_sandbox_pause_failed";
+  static const e2bSandboxResumedSuccess = "e2b_sandbox_resumed_success";
+  static const e2bSandboxResumeFailed = "e2b_sandbox_resume_failed";
+  static const e2bSandboxDestroyedSuccess = "e2b_sandbox_destroyed_success";
+  static const e2bSandboxDestroyFailed = "e2b_sandbox_destroy_failed";
+  static const e2bCheckingStatus = "e2b_checking_status";
+  static const e2bSandboxConnected = "e2b_sandbox_connected";
+  static const e2bAuthFailedTitle = "e2b_auth_failed_title";
+  static const e2bAuthFailedDesc = "e2b_auth_failed_desc";
+  static const e2bServiceNotReadyTitle = "e2b_service_not_ready_title";
+  static const e2bServiceNotReadyDesc = "e2b_service_not_ready_desc";
+  static const e2bSandboxDisconnected = "e2b_sandbox_disconnected";
+  static const e2bSandboxDisconnectedDesc = "e2b_sandbox_disconnected_desc";
+  static const e2bNoActiveSandbox = "e2b_no_active_sandbox";
+  static const e2bNoActiveSandboxDesc = "e2b_no_active_sandbox_desc";
+  static const e2bFetchingSandboxes = "e2b_fetching_sandboxes";
+  static const e2bFetchSandboxesFailed = "e2b_fetch_sandboxes_failed";
+  static const e2bStartedAt = "e2b_started_at";
+  static const e2bExpiresAt = "e2b_expires_at";
+  static const e2bCopySandboxId = "e2b_copy_sandbox_id";
+  static const e2bProbingSandbox = "e2b_probing_sandbox";
+  static const e2bSandboxLabel = "e2b_sandbox_label";
 
   // ── Settings – General ──
   static const secAppearance = "gen_sec_appearance";
@@ -1402,12 +1450,61 @@ class Messages extends Translations {
     LocaleKeys.e2bSelectRepo: '选择要拉取的项目',
     LocaleKeys.e2bSearchRepos: '搜索项目名称...',
     LocaleKeys.e2bNoReposFound: '未找到匹配的仓库',
-    LocaleKeys.e2bGitTokenRequiredForRepos: '请先填写 Personal Access Token 以便获取您的项目列表',
+    LocaleKeys.e2bGitTokenRequiredForRepos:
+        '请先填写 Personal Access Token 以便获取您的项目列表',
     LocaleKeys.e2bProvidersConfig: 'AI 大模型供应商配置',
     LocaleKeys.e2bConfigured: '已配置',
     LocaleKeys.e2bNotConfigured: '未设置',
     LocaleKeys.e2bCustomBaseUrl: '自定义 API Base URL',
     LocaleKeys.e2bCustomBaseUrlHint: 'https://api.openai.com/v1',
+    LocaleKeys.e2bRepoSelected: '已选中 GitHub 项目: @repo',
+    LocaleKeys.e2bTemplateHelper: '留空默认 opencode；可填自定义模板实现秒级启动',
+    LocaleKeys.e2bGitProjectAndAuth: 'GitHub 项目与授权',
+    LocaleKeys.e2bGitPatLabel: 'GitHub Personal Access Token (PAT)',
+    LocaleKeys.e2bGitPatHint: 'ghp_xxxx (具备 repo 读写权限)',
+    LocaleKeys.e2bFetchAndSelectRepo: '🔍 获取并选择我的 GitHub 项目',
+    LocaleKeys.e2bSelectedRepoWithBranch: '已选仓库: @repo (@branch)',
+    LocaleKeys.e2bGitRepoUrlOptionalHint: '可选：或直接粘贴 GitHub 仓库地址',
+    LocaleKeys.e2bFetchReposFailed: '获取 GitHub 仓库失败: @error',
+    LocaleKeys.e2bFetchReposTokenError: '获取项目失败，请检查 GitHub Token 权限',
+    LocaleKeys.e2bSelectGitHubRepo: '选择 GitHub 项目',
+    LocaleKeys.e2bFetchingRepoList: '正在获取您的 GitHub 仓库列表...',
+    LocaleKeys.e2bLaunchPreparing: '正在准备启动 E2B 云端沙盒...',
+    LocaleKeys.e2bApiKeyEmptyError: 'E2B API Key 不能为空，请先在设置中填写',
+    LocaleKeys.e2bLaunchRequestingVm: '正在向 E2B 申请微型虚拟机沙盒...',
+    LocaleKeys.e2bLaunchFailed: '启动云端沙盒失败',
+    LocaleKeys.e2bLaunchConnecting: '沙盒就绪，正在与本地建立安全连接...',
+    LocaleKeys.e2bHandshakeFailed: 'OpenCode 连接握手失败',
+    LocaleKeys.e2bWorkspaceReady: 'E2B 云端工作区已连接并就绪',
+    LocaleKeys.e2bLaunchErrorTitle: '启动遇到问题',
+    LocaleKeys.e2bSandboxPreservedHint: '沙盒实例已保留，可在连接页沙盒列表中销毁或重新连接。',
+    LocaleKeys.e2bConnectFailed: '连接沙盒失败',
+    LocaleKeys.e2bServiceUnreachable: '无法连接到沙盒 OpenCode 服务',
+    LocaleKeys.e2bConnectedToSandbox: '已连接至 E2B 沙盒: @id',
+    LocaleKeys.e2bConnectionError: '连接失败: @error',
+    LocaleKeys.e2bSandboxPausedSuccess: '沙盒 @id 已挂起休眠',
+    LocaleKeys.e2bSandboxPauseFailed: '挂起沙盒失败: @error',
+    LocaleKeys.e2bSandboxResumedSuccess: '沙盒 @id 已唤醒就绪',
+    LocaleKeys.e2bSandboxResumeFailed: '唤醒沙盒失败: @error',
+    LocaleKeys.e2bSandboxDestroyedSuccess: '沙盒 @id 已销毁释放',
+    LocaleKeys.e2bSandboxDestroyFailed: '销毁沙盒失败: @error',
+    LocaleKeys.e2bCheckingStatus: '正在检查云端沙盒状态...',
+    LocaleKeys.e2bSandboxConnected: '云端沙盒已连接',
+    LocaleKeys.e2bAuthFailedTitle: '沙盒服务运行中 (认证未通过)',
+    LocaleKeys.e2bAuthFailedDesc: '密码不匹配，可在列表中重新连接',
+    LocaleKeys.e2bServiceNotReadyTitle: '沙盒服务未就绪 (HTTP @status)',
+    LocaleKeys.e2bServiceNotReadyDesc: 'OpenCode 未启动，在列表中点击连接修复',
+    LocaleKeys.e2bSandboxDisconnected: '云端沙盒未连接',
+    LocaleKeys.e2bSandboxDisconnectedDesc: '@id · 在列表中点击连接',
+    LocaleKeys.e2bNoActiveSandbox: '未连接云端沙盒',
+    LocaleKeys.e2bNoActiveSandboxDesc: '新建或在列表中选择沙盒',
+    LocaleKeys.e2bFetchingSandboxes: '正在获取 E2B 沙盒列表...',
+    LocaleKeys.e2bFetchSandboxesFailed: '获取沙盒列表失败: @error',
+    LocaleKeys.e2bStartedAt: '启动于 @time',
+    LocaleKeys.e2bExpiresAt: '过期于 @time',
+    LocaleKeys.e2bCopySandboxId: '复制沙盒 ID',
+    LocaleKeys.e2bProbingSandbox: '正在探测 E2B 云端沙盒状态...',
+    LocaleKeys.e2bSandboxLabel: '沙盒: @id',
 
     // ── Settings – General ──
     LocaleKeys.secAppearance: '外观与布局',
@@ -2567,7 +2664,8 @@ class Messages extends Translations {
     LocaleKeys.connModeSelfHosted: 'Self-Hosted',
     LocaleKeys.connModeCloud: '☁️ E2B Cloud',
     LocaleKeys.e2bTitle: 'E2B Cloud Workspace',
-    LocaleKeys.e2bDesc: 'Provision isolated MicroVM Linux & OpenCode sandbox in seconds via E2B.',
+    LocaleKeys.e2bDesc:
+        'Provision isolated MicroVM Linux & OpenCode sandbox in seconds via E2B.',
     LocaleKeys.e2bApiKey: 'E2B API Key',
     LocaleKeys.e2bApiKeyHint: 'API Key from e2b.dev/dashboard',
     LocaleKeys.e2bTemplate: 'Sandbox Template ID',
@@ -2591,9 +2689,11 @@ class Messages extends Translations {
     LocaleKeys.e2bGeminiKey: 'Gemini API Key',
     LocaleKeys.e2bDeepseekKey: 'DeepSeek API Key',
     LocaleKeys.e2bTtlHours: 'Cloud Retention TTL',
-    LocaleKeys.e2bTtlDesc: 'Cloud sandbox stays active even when mobile screen is locked or offline.',
+    LocaleKeys.e2bTtlDesc:
+        'Cloud sandbox stays active even when mobile screen is locked or offline.',
     LocaleKeys.e2bAutoPause: 'Auto-Pause when Idle',
-    LocaleKeys.e2bAutoPauseDesc: 'Auto-snapshot and pause sandbox only when agent is idle to save costs and preserve state.',
+    LocaleKeys.e2bAutoPauseDesc:
+        'Auto-snapshot and pause sandbox only when agent is idle to save costs and preserve state.',
     LocaleKeys.e2bLaunchWorkspace: '🚀 Launch Cloud Workspace',
     LocaleKeys.e2bLaunchingWorkspace: 'Launching E2B Sandbox...',
     LocaleKeys.e2bPauseSandbox: 'Pause',
@@ -2603,9 +2703,11 @@ class Messages extends Translations {
     LocaleKeys.e2bCreateSandbox: 'New Sandbox',
     LocaleKeys.e2bRefreshList: 'Refresh List',
     LocaleKeys.e2bNoSandboxes: 'No Running Sandboxes',
-    LocaleKeys.e2bNoSandboxesDesc: 'Click "New Sandbox" in the top right to launch a MicroVM workspace',
+    LocaleKeys.e2bNoSandboxesDesc:
+        'Click "New Sandbox" in the top right to launch a MicroVM workspace',
     LocaleKeys.e2bApiKeyRequired: 'E2B API Key Required',
-    LocaleKeys.e2bApiKeyRequiredDesc: 'Configure your API key to view and manage cloud sandboxes on mobile',
+    LocaleKeys.e2bApiKeyRequiredDesc:
+        'Configure your API key to view and manage cloud sandboxes on mobile',
     LocaleKeys.e2bConfigApiKey: 'Configure API Key',
     LocaleKeys.e2bCurrentlyConnected: 'Connected',
     LocaleKeys.e2bConnectSandbox: 'Connect',
@@ -2624,7 +2726,8 @@ class Messages extends Translations {
     LocaleKeys.connectionDisconnected: 'Disconnected',
     LocaleKeys.e2bClearInvalidSandbox: 'Clear Invalid Sandbox',
     LocaleKeys.e2bConfirmDestroy: 'Destroy Sandbox?',
-    LocaleKeys.e2bConfirmDestroyDesc: 'The sandbox will be permanently terminated. Uncommitted changes will be lost.',
+    LocaleKeys.e2bConfirmDestroyDesc:
+        'The sandbox will be permanently terminated. Uncommitted changes will be lost.',
     LocaleKeys.e2bSandboxStatusRunning: 'Running',
     LocaleKeys.e2bSandboxStatusPaused: '🟡 Paused',
     LocaleKeys.e2bSandboxDashboard: 'Sandbox Dashboard',
@@ -2634,12 +2737,71 @@ class Messages extends Translations {
     LocaleKeys.e2bSelectRepo: 'Select Repository to Clone',
     LocaleKeys.e2bSearchRepos: 'Search repository name...',
     LocaleKeys.e2bNoReposFound: 'No repositories found',
-    LocaleKeys.e2bGitTokenRequiredForRepos: 'Please enter Personal Access Token first to fetch your repositories',
+    LocaleKeys.e2bGitTokenRequiredForRepos:
+        'Please enter Personal Access Token first to fetch your repositories',
     LocaleKeys.e2bProvidersConfig: 'AI Model Providers Configuration',
     LocaleKeys.e2bConfigured: 'Configured',
     LocaleKeys.e2bNotConfigured: 'Not Set',
     LocaleKeys.e2bCustomBaseUrl: 'Custom API Base URL',
     LocaleKeys.e2bCustomBaseUrlHint: 'https://api.openai.com/v1',
+    LocaleKeys.e2bRepoSelected: 'Selected GitHub repo: @repo',
+    LocaleKeys.e2bTemplateHelper:
+        "Leave empty for default 'opencode'; custom template can achieve instant startup",
+    LocaleKeys.e2bGitProjectAndAuth: 'GitHub Repository & Auth',
+    LocaleKeys.e2bGitPatLabel: 'GitHub Personal Access Token (PAT)',
+    LocaleKeys.e2bGitPatHint: 'ghp_xxxx (with repo read/write access)',
+    LocaleKeys.e2bFetchAndSelectRepo: '🔍 Fetch & Select My GitHub Repos',
+    LocaleKeys.e2bSelectedRepoWithBranch: 'Selected: @repo (@branch)',
+    LocaleKeys.e2bGitRepoUrlOptionalHint:
+        'Optional: or paste Git clone URL directly',
+    LocaleKeys.e2bFetchReposFailed: 'Failed to fetch GitHub repos: @error',
+    LocaleKeys.e2bFetchReposTokenError:
+        'Failed to fetch repos, please check GitHub Token permissions',
+    LocaleKeys.e2bSelectGitHubRepo: 'Select GitHub Repository',
+    LocaleKeys.e2bFetchingRepoList: 'Fetching your GitHub repositories...',
+    LocaleKeys.e2bLaunchPreparing: 'Preparing to launch E2B Sandbox...',
+    LocaleKeys.e2bApiKeyEmptyError:
+        'E2B API Key cannot be empty, please configure it in settings',
+    LocaleKeys.e2bLaunchRequestingVm: 'Requesting micro-VM sandbox from E2B...',
+    LocaleKeys.e2bLaunchFailed: 'Failed to launch cloud sandbox',
+    LocaleKeys.e2bLaunchConnecting:
+        'Sandbox ready, establishing secure connection...',
+    LocaleKeys.e2bHandshakeFailed: 'OpenCode connection handshake failed',
+    LocaleKeys.e2bWorkspaceReady: 'E2B Cloud Workspace connected and ready',
+    LocaleKeys.e2bLaunchErrorTitle: 'Launch Issue',
+    LocaleKeys.e2bSandboxPreservedHint:
+        'Sandbox instance is preserved. You can destroy or reconnect from sandbox list.',
+    LocaleKeys.e2bConnectFailed: 'Failed to connect sandbox',
+    LocaleKeys.e2bServiceUnreachable:
+        'Unable to reach sandbox OpenCode service',
+    LocaleKeys.e2bConnectedToSandbox: 'Connected to E2B sandbox: @id',
+    LocaleKeys.e2bConnectionError: 'Connection failed: @error',
+    LocaleKeys.e2bSandboxPausedSuccess: 'Sandbox @id paused',
+    LocaleKeys.e2bSandboxPauseFailed: 'Failed to pause sandbox: @error',
+    LocaleKeys.e2bSandboxResumedSuccess: 'Sandbox @id resumed and ready',
+    LocaleKeys.e2bSandboxResumeFailed: 'Failed to resume sandbox: @error',
+    LocaleKeys.e2bSandboxDestroyedSuccess: 'Sandbox @id destroyed',
+    LocaleKeys.e2bSandboxDestroyFailed: 'Failed to destroy sandbox: @error',
+    LocaleKeys.e2bCheckingStatus: 'Checking cloud sandbox status...',
+    LocaleKeys.e2bSandboxConnected: 'Cloud sandbox connected',
+    LocaleKeys.e2bAuthFailedTitle: 'Sandbox service running (Auth Failed)',
+    LocaleKeys.e2bAuthFailedDesc:
+        'Password mismatch, please reconnect from list',
+    LocaleKeys.e2bServiceNotReadyTitle:
+        'Sandbox service not ready (HTTP @status)',
+    LocaleKeys.e2bServiceNotReadyDesc:
+        'OpenCode not running, click connect in list to repair',
+    LocaleKeys.e2bSandboxDisconnected: 'Cloud sandbox disconnected',
+    LocaleKeys.e2bSandboxDisconnectedDesc: '@id · Click connect in list',
+    LocaleKeys.e2bNoActiveSandbox: 'No active cloud sandbox',
+    LocaleKeys.e2bNoActiveSandboxDesc: 'Create new or select sandbox from list',
+    LocaleKeys.e2bFetchingSandboxes: 'Fetching E2B sandbox list...',
+    LocaleKeys.e2bFetchSandboxesFailed: 'Failed to fetch sandboxes: @error',
+    LocaleKeys.e2bStartedAt: 'Started at @time',
+    LocaleKeys.e2bExpiresAt: 'Expires at @time',
+    LocaleKeys.e2bCopySandboxId: 'Copy Sandbox ID',
+    LocaleKeys.e2bProbingSandbox: 'Probing E2B cloud sandbox status...',
+    LocaleKeys.e2bSandboxLabel: 'Sandbox: @id',
 
     // ── Settings – General ──
     LocaleKeys.secAppearance: 'Appearance & Layout',

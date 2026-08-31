@@ -78,7 +78,8 @@ class _SplashPageState extends State<SplashPage> {
     if (_selectedMode == 1) {
       // ── 云端模式冷启动恢复流 ──
       final cloudConfig = Global.settings.cloudWorkspaceConfig;
-      if (!cloudConfig.hasActiveSandbox || cloudConfig.e2bApiKey.trim().isEmpty) {
+      if (!cloudConfig.hasActiveSandbox ||
+          cloudConfig.e2bApiKey.trim().isEmpty) {
         setState(() => _autoConnecting = false);
         return;
       }
@@ -90,7 +91,9 @@ class _SplashPageState extends State<SplashPage> {
       });
 
       try {
-        AppLogger.i('Splash cloud cold-start probing ${cloudConfig.activeSandboxUrl}');
+        AppLogger.i(
+          'Splash cloud cold-start probing ${cloudConfig.activeSandboxUrl}',
+        );
         final probeCode = await E2bWorkspaceService.instance.probeSandboxHealth(
           cloudConfig.activeSandboxUrl!,
           password: cloudConfig.activeSandboxPassword,
@@ -142,7 +145,8 @@ class _SplashPageState extends State<SplashPage> {
     }
 
     // ── 自建服务器自动连接 ──
-    if (!Global.hasSelfHostedSettings || E2bWorkspaceService.isCloudUrl(Global.serverUrl)) {
+    if (!Global.hasSelfHostedSettings ||
+        E2bWorkspaceService.isCloudUrl(Global.serverUrl)) {
       setState(() => _autoConnecting = false);
       return;
     }
@@ -346,7 +350,7 @@ class _SplashPageState extends State<SplashPage> {
               const SizedBox(height: 16),
               Text(
                 _selectedMode == 1
-                    ? '正在探测 E2B 云端沙盒状态...'
+                    ? LocaleKeys.e2bProbingSandbox.tr
                     : LocaleKeys.mobileAutoConnecting.trParams({
                         'url': _maskedUrl(Global.selfHostedServerUrl),
                       }),
@@ -544,12 +548,18 @@ class _SplashPageState extends State<SplashPage> {
             children: [
               Row(
                 children: [
-                  Icon(Icons.vpn_key_outlined, color: theme.colorScheme.primary),
+                  Icon(
+                    Icons.vpn_key_outlined,
+                    color: theme.colorScheme.primary,
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       LocaleKeys.e2bNoApiKey.tr,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
                     ),
                   ),
                 ],
@@ -599,7 +609,9 @@ class _SplashPageState extends State<SplashPage> {
         children: [
           Card(
             elevation: 0,
-            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+            color: theme.colorScheme.surfaceContainerHighest.withValues(
+              alpha: 0.5,
+            ),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
               side: BorderSide(
@@ -613,11 +625,14 @@ class _SplashPageState extends State<SplashPage> {
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.cloud_outlined, color: theme.colorScheme.primary),
+                      Icon(
+                        Icons.cloud_outlined,
+                        color: theme.colorScheme.primary,
+                      ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          '沙盒: $shortId',
+                          LocaleKeys.e2bSandboxLabel.trParams({'id': shortId}),
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 14,
@@ -626,7 +641,10 @@ class _SplashPageState extends State<SplashPage> {
                         ),
                       ),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: theme.colorScheme.primaryContainer,
                           borderRadius: BorderRadius.circular(12),
@@ -660,7 +678,9 @@ class _SplashPageState extends State<SplashPage> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.7),
+                color: theme.colorScheme.secondaryContainer.withValues(
+                  alpha: 0.7,
+                ),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Row(
@@ -717,7 +737,9 @@ class _SplashPageState extends State<SplashPage> {
           if (isBusy) ...[
             const SizedBox(height: 16),
             LinearProgressIndicator(
-              backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.15),
+              backgroundColor: theme.colorScheme.primary.withValues(
+                alpha: 0.15,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
@@ -755,8 +777,10 @@ class _SplashPageState extends State<SplashPage> {
                       : () async {
                           await CloudWorkspaceSheet.show(
                             context,
-                            onLaunch: (cfg) =>
-                                CloudWorkspaceLaunchDialog.show(context, config: cfg),
+                            onLaunch: (cfg) => CloudWorkspaceLaunchDialog.show(
+                              context,
+                              config: cfg,
+                            ),
                           );
                           if (mounted) setState(() {});
                         },
@@ -770,9 +794,9 @@ class _SplashPageState extends State<SplashPage> {
                   onPressed: isBusy
                       ? null
                       : () => Get.toNamed(
-                            AppRoutes.opencodeConnection,
-                            arguments: {'mode': 1},
-                          ),
+                          AppRoutes.opencodeConnection,
+                          arguments: {'mode': 1},
+                        ),
                   icon: const Icon(Icons.tune, size: 16),
                   label: Text(LocaleKeys.e2bManageSandboxes.tr),
                 ),
@@ -805,7 +829,10 @@ class _SplashPageState extends State<SplashPage> {
                 Expanded(
                   child: Text(
                     LocaleKeys.e2bTitle.tr,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
                   ),
                 ),
               ],
@@ -825,8 +852,10 @@ class _SplashPageState extends State<SplashPage> {
                   : () async {
                       await CloudWorkspaceSheet.show(
                         context,
-                        onLaunch: (cfg) =>
-                            CloudWorkspaceLaunchDialog.show(context, config: cfg),
+                        onLaunch: (cfg) => CloudWorkspaceLaunchDialog.show(
+                          context,
+                          config: cfg,
+                        ),
                       );
                       if (mounted) setState(() {});
                     },
@@ -838,9 +867,9 @@ class _SplashPageState extends State<SplashPage> {
               onPressed: isBusy
                   ? null
                   : () => Get.toNamed(
-                        AppRoutes.opencodeConnection,
-                        arguments: {'mode': 1},
-                      ),
+                      AppRoutes.opencodeConnection,
+                      arguments: {'mode': 1},
+                    ),
               icon: const Icon(Icons.tune, size: 16),
               label: Text(LocaleKeys.e2bManageSandboxes.tr),
             ),

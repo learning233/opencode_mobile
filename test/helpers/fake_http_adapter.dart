@@ -23,10 +23,8 @@ class CapturedRequest {
 class FakeHttpAdapter implements HttpClientAdapter {
   FakeHttpAdapter(this.handler);
 
-  final Future<ResponseBody> Function(
-    RequestOptions options,
-    List<int> body,
-  ) handler;
+  final Future<ResponseBody> Function(RequestOptions options, List<int> body)
+  handler;
 
   final List<CapturedRequest> requests = [];
 

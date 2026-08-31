@@ -1,9 +1,4 @@
-enum EntryType {
-  file,
-  directory,
-  symlink,
-  unknown,
-}
+enum EntryType { file, directory, symlink, unknown }
 
 class EntryInfo {
   final String name;
@@ -30,7 +25,8 @@ class EntryInfo {
         ? (int.tryParse(sizeRaw) ?? 0)
         : ((sizeRaw as num?)?.toInt() ?? 0);
 
-    final modifiedRaw = json['modifiedTime'] ?? json['modified_time'] ?? json['modified_at'];
+    final modifiedRaw =
+        json['modifiedTime'] ?? json['modified_time'] ?? json['modified_at'];
     return EntryInfo(
       name: json['name']?.toString() ?? '',
       path: json['path']?.toString() ?? '',
@@ -54,12 +50,7 @@ class EntryInfo {
   }
 }
 
-enum FilesystemEventType {
-  create,
-  write,
-  remove,
-  rename,
-}
+enum FilesystemEventType { create, write, remove, rename }
 
 class FilesystemEvent {
   final String path;

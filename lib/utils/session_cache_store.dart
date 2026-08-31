@@ -88,10 +88,10 @@ class SessionCacheStore {
     return _enqueue(() async {
       try {
         final dir = await _dir();
-        final json = await compute(
-          jsonEncode,
-          {'v': _version, 'messages': messages},
-        );
+        final json = await compute(jsonEncode, {
+          'v': _version,
+          'messages': messages,
+        });
         final file = _fileFor(dir, sessionId);
         final tmp = File('${file.path}.tmp');
         try {
@@ -158,9 +158,7 @@ class SessionCacheStore {
       }
       if (entries.length <= maxFiles && total <= maxTotalBytes) return;
       final byOldest = entries.keys.toList()
-        ..sort(
-          (a, b) => entries[a]!.modified.compareTo(entries[b]!.modified),
-        );
+        ..sort((a, b) => entries[a]!.modified.compareTo(entries[b]!.modified));
       for (final file in byOldest) {
         if (entries.length <= maxFiles && total <= maxTotalBytes) return;
         final info = entries.remove(file);

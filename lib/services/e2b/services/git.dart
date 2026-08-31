@@ -25,9 +25,7 @@ class Git {
     final cmd = 'git ${args.map(_shellQuote).join(' ')}';
     return commands.run(
       cmd,
-      opts: const CommandOpts(
-        envs: {'GIT_TERMINAL_PROMPT': '0'},
-      ),
+      opts: const CommandOpts(envs: {'GIT_TERMINAL_PROMPT': '0'}),
     );
   }
 
@@ -57,17 +55,20 @@ class Git {
   }
 
   /// 推送至远端
-  Future<CommandResult> push({String? remote = 'origin', String? branch, String? cwd}) async {
-    final effectiveRemote = (remote != null && remote.isNotEmpty) ? remote : 'origin';
+  Future<CommandResult> push({
+    String? remote = 'origin',
+    String? branch,
+    String? cwd,
+  }) async {
+    final effectiveRemote = (remote != null && remote.isNotEmpty)
+        ? remote
+        : 'origin';
     final branchArg = (branch != null && branch.isNotEmpty)
         ? ' ${_shellQuote(branch)}'
         : '';
     return commands.run(
       'git push ${_shellQuote(effectiveRemote)}$branchArg',
-      opts: CommandOpts(
-        cwd: cwd,
-        envs: const {'GIT_TERMINAL_PROMPT': '0'},
-      ),
+      opts: CommandOpts(cwd: cwd, envs: const {'GIT_TERMINAL_PROMPT': '0'}),
     );
   }
 

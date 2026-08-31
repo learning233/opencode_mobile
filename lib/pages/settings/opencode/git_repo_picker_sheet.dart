@@ -5,10 +5,7 @@ import '../../../utils/snackbar_utils.dart';
 import '../../../utils/translations.dart';
 
 class GitRepoPickerSheet extends StatefulWidget {
-  const GitRepoPickerSheet({
-    super.key,
-    required this.token,
-  });
+  const GitRepoPickerSheet({super.key, required this.token});
 
   final String token;
 
@@ -23,9 +20,7 @@ class GitRepoPickerSheet extends StatefulWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) => GitRepoPickerSheet(
-        token: token,
-      ),
+      builder: (ctx) => GitRepoPickerSheet(token: token),
     );
   }
 
@@ -59,7 +54,9 @@ class _GitRepoPickerSheetState extends State<GitRepoPickerSheet> {
     });
 
     try {
-      final repos = await GitRepoService.instance.fetchRepositories(widget.token);
+      final repos = await GitRepoService.instance.fetchRepositories(
+        widget.token,
+      );
       if (mounted) {
         setState(() {
           _allRepos = repos;
@@ -71,9 +68,11 @@ class _GitRepoPickerSheetState extends State<GitRepoPickerSheet> {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage = '获取 GitHub 仓库失败: $e';
+          _errorMessage = LocaleKeys.e2bFetchReposFailed.trParams({
+            'error': e.toString(),
+          });
         });
-        Snack.error('获取项目失败，请检查 GitHub Token 权限');
+        Snack.error(LocaleKeys.e2bFetchReposTokenError.tr);
       }
     }
   }
@@ -111,7 +110,9 @@ class _GitRepoPickerSheetState extends State<GitRepoPickerSheet> {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                color: theme.colorScheme.onSurfaceVariant.withValues(
+                  alpha: 0.3,
+                ),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -119,14 +120,11 @@ class _GitRepoPickerSheetState extends State<GitRepoPickerSheet> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.folder_open,
-                    color: theme.colorScheme.primary,
-                  ),
+                  Icon(Icons.folder_open, color: theme.colorScheme.primary),
                   const SizedBox(width: 8),
-                  const Text(
-                    '选择 GitHub 项目',
-                    style: TextStyle(
+                  Text(
+                    LocaleKeys.e2bSelectGitHubRepo.tr,
+                    style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                     ),
@@ -167,118 +165,121 @@ class _GitRepoPickerSheetState extends State<GitRepoPickerSheet> {
             const Divider(height: 16),
             Expanded(
               child: _isLoading
-                  ? const Center(
+                  ? Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          CircularProgressIndicator(),
-                          SizedBox(height: 12),
-                          Text('正在获取您的 GitHub 仓库列表...'),
+                          const CircularProgressIndicator(),
+                          const SizedBox(height: 12),
+                          Text(LocaleKeys.e2bFetchingRepoList.tr),
                         ],
                       ),
                     )
                   : _errorMessage != null
-                      ? Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(24),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.error_outline,
-                                    size: 40, color: theme.colorScheme.error),
-                                const SizedBox(height: 10),
-                                Text(_errorMessage!,
-                                    textAlign: TextAlign.center),
-                                const SizedBox(height: 12),
-                                FilledButton.tonal(
-                                  onPressed: _loadRepos,
-                                  child: Text(LocaleKeys.retry.tr),
-                                ),
-                              ],
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.error_outline,
+                              size: 40,
+                              color: theme.colorScheme.error,
+                            ),
+                            const SizedBox(height: 10),
+                            Text(_errorMessage!, textAlign: TextAlign.center),
+                            const SizedBox(height: 12),
+                            FilledButton.tonal(
+                              onPressed: _loadRepos,
+                              child: Text(LocaleKeys.retry.tr),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : _filteredRepos.isEmpty
+                  ? Center(
+                      child: Text(
+                        LocaleKeys.e2bNoReposFound.tr,
+                        style: TextStyle(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    )
+                  : ListView.separated(
+                      controller: scrollController,
+                      itemCount: _filteredRepos.length,
+                      separatorBuilder: (context, index) =>
+                          const Divider(height: 1, indent: 16),
+                      itemBuilder: (ctx, index) {
+                        final repo = _filteredRepos[index];
+                        return ListTile(
+                          leading: CircleAvatar(
+                            radius: 18,
+                            backgroundColor: repo.isPrivate
+                                ? theme.colorScheme.tertiaryContainer
+                                : theme.colorScheme.primaryContainer,
+                            child: Icon(
+                              repo.isPrivate
+                                  ? Icons.lock_outline
+                                  : Icons.public,
+                              size: 18,
+                              color: repo.isPrivate
+                                  ? theme.colorScheme.onTertiaryContainer
+                                  : theme.colorScheme.onPrimaryContainer,
                             ),
                           ),
-                        )
-                      : _filteredRepos.isEmpty
-                          ? Center(
-                              child: Text(
-                                LocaleKeys.e2bNoReposFound.tr,
-                                style: TextStyle(
-                                  color: theme.colorScheme.onSurfaceVariant,
+                          title: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  repo.fullName,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                            )
-                          : ListView.separated(
-                              controller: scrollController,
-                              itemCount: _filteredRepos.length,
-                              separatorBuilder: (context, index) =>
-                                  const Divider(height: 1, indent: 16),
-                              itemBuilder: (ctx, index) {
-                                final repo = _filteredRepos[index];
-                                return ListTile(
-                                  leading: CircleAvatar(
-                                    radius: 18,
-                                    backgroundColor: repo.isPrivate
-                                        ? theme.colorScheme.tertiaryContainer
-                                        : theme.colorScheme.primaryContainer,
-                                    child: Icon(
-                                      repo.isPrivate
-                                          ? Icons.lock_outline
-                                          : Icons.public,
-                                      size: 18,
-                                      color: repo.isPrivate
-                                          ? theme.colorScheme.onTertiaryContainer
-                                          : theme.colorScheme.onPrimaryContainer,
-                                    ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color:
+                                      theme.colorScheme.surfaceContainerHighest,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  repo.defaultBranch,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: theme.colorScheme.onSurfaceVariant,
                                   ),
-                                  title: Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          repo.fullName,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 14,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 6,
-                                          vertical: 2,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: theme.colorScheme.surfaceContainerHighest,
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: Text(
-                                          repo.defaultBranch,
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: theme.colorScheme.onSurfaceVariant,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          subtitle: repo.description.isNotEmpty
+                              ? Text(
+                                  repo.description,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: theme.colorScheme.onSurfaceVariant,
                                   ),
-                                  subtitle: repo.description.isNotEmpty
-                                      ? Text(
-                                          repo.description,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: theme.colorScheme.onSurfaceVariant,
-                                          ),
-                                        )
-                                      : null,
-                                  onTap: () {
-                                    Navigator.of(context).pop(repo);
-                                  },
-                                );
-                              },
-                            ),
+                                )
+                              : null,
+                          onTap: () {
+                            Navigator.of(context).pop(repo);
+                          },
+                        );
+                      },
+                    ),
             ),
           ],
         );

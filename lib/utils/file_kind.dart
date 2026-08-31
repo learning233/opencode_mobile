@@ -1,10 +1,5 @@
 /// File kinds supported by the multi-view system.
-enum FileKind {
-  code,
-  markdown,
-  image,
-  audio,
-}
+enum FileKind { code, markdown, image, audio }
 
 /// Known image extensions supported for direct viewing.
 const kImageExtensions = {
@@ -36,12 +31,7 @@ const kAudioExtensions = {
 };
 
 /// Known markdown extensions supported for rich preview.
-const kMarkdownExtensions = {
-  '.md',
-  '.markdown',
-  '.mdown',
-  '.mkdn',
-};
+const kMarkdownExtensions = {'.md', '.markdown', '.mdown', '.mkdn'};
 
 /// Detect the [FileKind] from file [path] and optional [mimeType].
 FileKind detectFileKind(String path, {String? mimeType}) {

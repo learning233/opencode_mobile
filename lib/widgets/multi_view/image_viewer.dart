@@ -110,10 +110,7 @@ class _ImageViewerState extends State<ImageViewer> {
         }
 
         // 数 MB base64 的正则清洗 + 解码放后台 isolate，打开大附件不占 UI 线程。
-        final Uint8List bytes = await compute(
-          _decodeBase64Sync,
-          base64Content,
-        );
+        final Uint8List bytes = await compute(_decodeBase64Sync, base64Content);
         // isolate 解码期间可能已有更新的请求完成或页面已销毁，丢弃过期结果。
         if (seq != _requestSeq || !mounted) return;
 

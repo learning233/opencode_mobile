@@ -55,8 +55,9 @@ String? buildPreviewUrl(String serverUrl, String port) {
   final host = uri.host;
   // E2B 云沙盒:预览端口是主机名前缀 {port}-{sandboxId}.{domain},
   // 不是 host:port 形式。从 4096-{id}.e2b.app 解析出 id 后拼 {port}-{id}.{domain}。
-  final cloudMatch =
-      RegExp(r'^(\d+)-(.+?)\.([a-z0-9-]+(?:\.[a-z0-9-]+)+)$').firstMatch(host);
+  final cloudMatch = RegExp(
+    r'^(\d+)-(.+?)\.([a-z0-9-]+(?:\.[a-z0-9-]+)+)$',
+  ).firstMatch(host);
   if (cloudMatch != null) {
     final id = cloudMatch.group(2)!;
     final domain = cloudMatch.group(3)!;

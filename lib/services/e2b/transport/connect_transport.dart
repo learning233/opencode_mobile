@@ -46,18 +46,21 @@ class ConnectTransport {
   Dio get dio => _dio;
 
   ConnectTransport({required this.config, Dio? dio})
-      : _dio = dio ??
-            Dio(
-              BaseOptions(
-                connectTimeout: const Duration(seconds: 15),
-                sendTimeout: const Duration(seconds: 30),
-                receiveTimeout: const Duration(seconds: 60),
-              ),
-            );
+    : _dio =
+          dio ??
+          Dio(
+            BaseOptions(
+              connectTimeout: const Duration(seconds: 15),
+              sendTimeout: const Duration(seconds: 30),
+              receiveTimeout: const Duration(seconds: 60),
+            ),
+          );
 
   /// 编码单条 Unary / Stream 请求 Payload
-  static Uint8List encodeFrame(Map<String, dynamic> data,
-      {ConnectFrameFlag flag = ConnectFrameFlag.data}) {
+  static Uint8List encodeFrame(
+    Map<String, dynamic> data, {
+    ConnectFrameFlag flag = ConnectFrameFlag.data,
+  }) {
     final payloadBytes = utf8.encode(jsonEncode(data));
     final len = payloadBytes.length;
     final header = Uint8List(5);
@@ -79,7 +82,8 @@ class ConnectTransport {
     int offset = 0;
     while (offset + 5 <= bytes.length) {
       final flagByte = bytes[offset];
-      final len = (bytes[offset + 1] << 24) |
+      final len =
+          (bytes[offset + 1] << 24) |
           (bytes[offset + 2] << 16) |
           (bytes[offset + 3] << 8) |
           bytes[offset + 4];
@@ -88,10 +92,12 @@ class ConnectTransport {
       if (offset + len <= bytes.length) {
         final chunk = Uint8List.fromList(bytes.sublist(offset, offset + len));
         offset += len;
-        frames.add(ConnectFrame(
-          flag: ConnectFrameFlag.fromByte(flagByte),
-          payload: chunk,
-        ));
+        frames.add(
+          ConnectFrame(
+            flag: ConnectFrameFlag.fromByte(flagByte),
+            payload: chunk,
+          ),
+        );
       } else {
         break;
       }
@@ -221,20 +227,28 @@ class ConnectTransport {
       throw SandboxNotFoundException('沙盒 $sandboxId 未找到或已终止 (404): $path');
     }
     if (statusCode == 409) {
-      throw SandboxException('envd 请求冲突 (HTTP 409): $path',
-          statusCode: statusCode);
+      throw SandboxException(
+        'envd 请求冲突 (HTTP 409): $path',
+        statusCode: statusCode,
+      );
     }
     if (statusCode == 429) {
-      throw SandboxException('envd 请求被限流 (HTTP 429): $path',
-          statusCode: statusCode);
+      throw SandboxException(
+        'envd 请求被限流 (HTTP 429): $path',
+        statusCode: statusCode,
+      );
     }
     if (statusCode >= 400 && statusCode < 500) {
-      throw SandboxException('envd 请求无效 (HTTP $statusCode): $path',
-          statusCode: statusCode);
+      throw SandboxException(
+        'envd 请求无效 (HTTP $statusCode): $path',
+        statusCode: statusCode,
+      );
     }
     if (statusCode >= 500) {
-      throw SandboxException('envd 服务异常 (HTTP $statusCode): $path',
-          statusCode: statusCode);
+      throw SandboxException(
+        'envd 服务异常 (HTTP $statusCode): $path',
+        statusCode: statusCode,
+      );
     }
   }
 }

@@ -56,10 +56,13 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
     _passCtrl.text = Global.selfHostedServerPassword;
 
     final cloudConfig = Global.settings.cloudWorkspaceConfig;
-    final argMode = Get.arguments is Map ? (Get.arguments as Map)['mode'] as int? : null;
+    final argMode = Get.arguments is Map
+        ? (Get.arguments as Map)['mode'] as int?
+        : null;
     if (argMode != null) {
       _selectedMode = argMode;
-    } else if (cloudConfig.hasActiveSandbox || E2bWorkspaceService.isCloudUrl(Global.serverUrl)) {
+    } else if (cloudConfig.hasActiveSandbox ||
+        E2bWorkspaceService.isCloudUrl(Global.serverUrl)) {
       _selectedMode = 1;
     }
 
@@ -224,7 +227,7 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
 
       if (!res.success) {
         if (mounted) {
-          Snack.error(res.error ?? '连接沙盒失败');
+          Snack.error(res.error ?? LocaleKeys.e2bConnectFailed.tr);
         }
         return;
       }
@@ -238,7 +241,7 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
 
       if (!result.success) {
         if (mounted) {
-          Snack.error(result.error ?? '无法连接到沙盒 OpenCode 服务');
+          Snack.error(result.error ?? LocaleKeys.e2bServiceUnreachable.tr);
         }
         return;
       }
@@ -273,12 +276,18 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
       Get.find<SettingsController>().checkHealth();
 
       if (mounted) {
-        Snack.success('已连接至 E2B 沙盒: ${item.sandboxId}');
+        Snack.success(
+          LocaleKeys.e2bConnectedToSandbox.trParams({'id': item.sandboxId}),
+        );
         _navigatedAway = true;
         Get.offNamed(AppRoutes.home);
       }
     } catch (e) {
-      if (mounted) Snack.error('连接失败: $e');
+      if (mounted) {
+        Snack.error(
+          LocaleKeys.e2bConnectionError.trParams({'error': e.toString()}),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isActionInProgress = false);
     }
@@ -306,10 +315,14 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
             Get.find<SessionController>().disconnectSse();
           }
         }
-        Snack.success('沙盒 ${item.sandboxId} 已挂起休眠');
+        Snack.success(
+          LocaleKeys.e2bSandboxPausedSuccess.trParams({'id': item.sandboxId}),
+        );
         await _fetchSandboxList();
       } else {
-        Snack.error('挂起沙盒失败: ${res.error}');
+        Snack.error(
+          LocaleKeys.e2bSandboxPauseFailed.trParams({'error': res.error ?? ''}),
+        );
       }
     } finally {
       if (mounted) setState(() => _isActionInProgress = false);
@@ -332,10 +345,16 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
             (curr) => curr.copyWith(activeSandboxStatus: 'running'),
           );
         }
-        Snack.success('沙盒 ${item.sandboxId} 已唤醒就绪');
+        Snack.success(
+          LocaleKeys.e2bSandboxResumedSuccess.trParams({'id': item.sandboxId}),
+        );
         await _fetchSandboxList();
       } else {
-        Snack.error('唤醒沙盒失败: ${res.error}');
+        Snack.error(
+          LocaleKeys.e2bSandboxResumeFailed.trParams({
+            'error': res.error ?? '',
+          }),
+        );
       }
     } finally {
       if (mounted) setState(() => _isActionInProgress = false);
@@ -349,7 +368,7 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
       builder: (ctx) => AlertDialog(
         title: Text(LocaleKeys.e2bConfirmDestroy.tr),
         content: Text(
-          '沙盒 ID: ${item.sandboxId}\n${LocaleKeys.e2bConfirmDestroyDesc.tr}',
+          '${LocaleKeys.e2bSandboxLabel.trParams({'id': item.sandboxId})}\n${LocaleKeys.e2bConfirmDestroyDesc.tr}',
         ),
         actions: [
           TextButton(
@@ -387,10 +406,18 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
             Get.find<SessionController>().disconnectSse();
           }
         }
-        Snack.success('沙盒 ${item.sandboxId} 已销毁释放');
+        Snack.success(
+          LocaleKeys.e2bSandboxDestroyedSuccess.trParams({
+            'id': item.sandboxId,
+          }),
+        );
         await _fetchSandboxList();
       } else {
-        Snack.error('销毁沙盒失败: ${res.error}');
+        Snack.error(
+          LocaleKeys.e2bSandboxDestroyFailed.trParams({
+            'error': res.error ?? '',
+          }),
+        );
       }
     } finally {
       if (mounted) setState(() => _isActionInProgress = false);
@@ -545,25 +572,21 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
         activeId.isNotEmpty &&
         Global.serverUrl.contains(activeId);
 
-    final ({
-      IconData icon,
-      Color? iconColor,
-      String title,
-      String subtitle,
-    }) state;
+    final ({IconData icon, Color? iconColor, String title, String subtitle})
+    state;
 
     if (!hasKey) {
       state = (
         icon: Icons.key_off_outlined,
         iconColor: null,
-        title: '未配置 E2B API Key',
-        subtitle: '配置后即可创建云端工作区',
+        title: LocaleKeys.e2bNoApiKey.tr,
+        subtitle: LocaleKeys.e2bNoApiKeyDesc.tr,
       );
     } else if (_cloudChecking) {
       state = (
         icon: Icons.cloud_sync_outlined,
         iconColor: null,
-        title: '正在检查云端沙盒状态...',
+        title: LocaleKeys.e2bCheckingStatus.tr,
         subtitle: activeId ?? '',
       );
     } else if (connectedNow) {
@@ -572,37 +595,41 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
         state = (
           icon: Icons.check_circle,
           iconColor: context.appColors.success,
-          title: '云端沙盒已连接',
+          title: LocaleKeys.e2bSandboxConnected.tr,
           subtitle: activeId,
         );
       } else if (status == 401 || status == 403) {
         state = (
           icon: Icons.shield_outlined,
           iconColor: theme.colorScheme.tertiary,
-          title: '沙盒服务运行中(认证未通过)',
-          subtitle: '密码不匹配,可在列表中重新连接',
+          title: LocaleKeys.e2bAuthFailedTitle.tr,
+          subtitle: LocaleKeys.e2bAuthFailedDesc.tr,
         );
       } else {
         state = (
           icon: Icons.warning_amber_rounded,
           iconColor: theme.colorScheme.error,
-          title: '沙盒服务未就绪 (HTTP ${status ?? "无响应"})',
-          subtitle: 'OpenCode 未启动,在列表中点击连接修复',
+          title: LocaleKeys.e2bServiceNotReadyTitle.trParams({
+            'status': status?.toString() ?? 'no_resp',
+          }),
+          subtitle: LocaleKeys.e2bServiceNotReadyDesc.tr,
         );
       }
     } else if (activeId != null && activeId.isNotEmpty) {
       state = (
         icon: Icons.cloud_off_outlined,
         iconColor: null,
-        title: '云端沙盒未连接',
-        subtitle: '$activeId · 在列表中点击连接',
+        title: LocaleKeys.e2bSandboxDisconnected.tr,
+        subtitle: LocaleKeys.e2bSandboxDisconnectedDesc.trParams({
+          'id': activeId,
+        }),
       );
     } else {
       state = (
         icon: Icons.cloud_queue_outlined,
         iconColor: null,
-        title: '未连接云端沙盒',
-        subtitle: '新建或在列表中选择沙盒',
+        title: LocaleKeys.e2bNoActiveSandbox.tr,
+        subtitle: LocaleKeys.e2bNoActiveSandboxDesc.tr,
       );
     }
 
@@ -768,7 +795,10 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
                 ),
                 const SizedBox(width: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(12),
@@ -799,7 +829,10 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
                 ),
                 FilledButton.icon(
                   style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
                     visualDensity: VisualDensity.compact,
                   ),
                   onPressed: _isActionInProgress
@@ -815,14 +848,14 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
         const SizedBox(height: 12),
 
         if (_loadingSandboxes && _sandboxes.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 32),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 32),
             child: Center(
               child: Column(
                 children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 12),
-                  Text('正在获取 E2B 沙盒列表...'),
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 12),
+                  Text(LocaleKeys.e2bFetchingSandboxes.tr),
                 ],
               ),
             ),
@@ -836,7 +869,11 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
                 children: [
                   Icon(Icons.error_outline, color: theme.colorScheme.error),
                   const SizedBox(height: 8),
-                  Text('获取沙盒列表失败: $_sandboxesError'),
+                  Text(
+                    LocaleKeys.e2bFetchSandboxesFailed.trParams({
+                      'error': _sandboxesError ?? '',
+                    }),
+                  ),
                   const SizedBox(height: 12),
                   OutlinedButton.icon(
                     onPressed: _fetchSandboxList,
@@ -852,9 +889,7 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
             elevation: 0,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
-              side: BorderSide(
-                color: theme.colorScheme.outlineVariant,
-              ),
+              side: BorderSide(color: theme.colorScheme.outlineVariant),
             ),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
@@ -959,7 +994,9 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
                         tooltip: LocaleKeys.clipboardCopied.tr,
                         icon: const Icon(Icons.copy, size: 14),
                         onPressed: () {
-                          Clipboard.setData(ClipboardData(text: sandbox.sandboxId));
+                          Clipboard.setData(
+                            ClipboardData(text: sandbox.sandboxId),
+                          );
                           Snack.success(LocaleKeys.clipboardCopied.tr);
                         },
                       ),
@@ -1040,7 +1077,9 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
                   _buildMetaItem(
                     theme,
                     Icons.access_time,
-                    '启动于 ${_formatTime(sandbox.startedAt!)}',
+                    LocaleKeys.e2bStartedAt.trParams({
+                      'time': _formatTime(sandbox.startedAt!),
+                    }),
                   ),
               ],
             ),
@@ -1074,7 +1113,10 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
                 if (!isPaused)
                   OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 10,
+                      ),
                       visualDensity: VisualDensity.compact,
                     ),
                     onPressed: _isActionInProgress
@@ -1089,7 +1131,10 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
                 else
                   OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 10,
+                      ),
                       visualDensity: VisualDensity.compact,
                     ),
                     onPressed: _isActionInProgress

@@ -18,14 +18,12 @@ void main() {
       sessionID: 's1',
       messageID: 'msg1',
       type: PartType.text,
-      raw: {
-        'id': 'p1',
-        'type': 'text',
-        'text': 'full streamed text',
-      },
+      raw: {'id': 'p1', 'type': 'text', 'text': 'full streamed text'},
     );
 
-    final synced = SessionController.messageWithSyncedParts(original, [streamed]);
+    final synced = SessionController.messageWithSyncedParts(original, [
+      streamed,
+    ]);
 
     // raw 副本持有当前 parts，原 raw 不被污染。
     expect(identical(synced.raw, original.raw), isFalse);
@@ -55,14 +53,12 @@ void main() {
       sessionID: 's1',
       messageID: 'msg2',
       type: PartType.text,
-      raw: {
-        'id': 'p1',
-        'type': 'text',
-        'text': 'v2 full text',
-      },
+      raw: {'id': 'p1', 'type': 'text', 'text': 'v2 full text'},
     );
 
-    final synced = SessionController.messageWithSyncedParts(original, [streamed]);
+    final synced = SessionController.messageWithSyncedParts(original, [
+      streamed,
+    ]);
     final info = synced.raw['info'] as Map;
     expect((info['content'] as List).single, same(streamed.raw));
 

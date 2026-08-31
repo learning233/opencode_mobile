@@ -13,11 +13,8 @@ class Filesystem {
   final ConnectTransport transport;
   final Dio _dio;
 
-  Filesystem({
-    required this.sandboxId,
-    required this.transport,
-    Dio? dio,
-  }) : _dio = dio ?? Dio();
+  Filesystem({required this.sandboxId, required this.transport, Dio? dio})
+    : _dio = dio ?? Dio();
 
   /// 读取文本文件内容
   Future<String> read(String path, {String? user}) async {
@@ -85,14 +82,16 @@ class Filesystem {
       expirationInSeconds: 300,
       envdAccessToken: token,
     );
-    return uri.replace(
-      queryParameters: {
-        ...uri.queryParameters,
-        'signature': sig.signature,
-        if (sig.expiration != null)
-          'signature_expiration': sig.expiration.toString(),
-      },
-    ).toString();
+    return uri
+        .replace(
+          queryParameters: {
+            ...uri.queryParameters,
+            'signature': sig.signature,
+            if (sig.expiration != null)
+              'signature_expiration': sig.expiration.toString(),
+          },
+        )
+        .toString();
   }
 
   /// 列出目录中的文件与子目录

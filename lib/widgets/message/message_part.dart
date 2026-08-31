@@ -233,8 +233,7 @@ class _FileAttachmentState extends State<_FileAttachment> {
       // data: URL。
       // 键带 URL 内容哈希：同 messageID:partId 的 URL 变化（理论防御）时
       // 旧 provider 不再命中，重载后按新键重新解码。
-      final key =
-          '${widget.part.messageID}:${widget.part.id}:${url.hashCode}';
+      final key = '${widget.part.messageID}:${widget.part.id}:${url.hashCode}';
       final cachedProvider = _dataImageProviderCache[key];
       if (cachedProvider != null) {
         if (!mounted) return;
@@ -279,8 +278,7 @@ class _FileAttachmentState extends State<_FileAttachment> {
       // 键带 mtime/size 指纹：文件被编辑（同路径内容变化）后旧 provider
       // 不再命中，滚回/重建时按新指纹重新读取，附件缩略图不再停留旧内容。
       final stat = await file.stat();
-      final key =
-          '$path:${stat.size}:${stat.modified.millisecondsSinceEpoch}';
+      final key = '$path:${stat.size}:${stat.modified.millisecondsSinceEpoch}';
       // provider 缓存命中：跳过 IO 与解码（State 滚出视口销毁、滚回重建时
       // 会重新走 initState 加载，未缓存前每次都重复 readAsBytes）。
       final cached = _fileImageProviderCache[key];

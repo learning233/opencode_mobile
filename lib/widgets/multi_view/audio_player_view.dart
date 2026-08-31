@@ -239,10 +239,7 @@ class _AudioPlayerViewState extends State<AudioPlayerView> {
       await _player.resume();
     } else {
       await _player.play(
-        BytesSource(
-          _bytes!,
-          mimeType: _mimeFor(widget.filePath),
-        ),
+        BytesSource(_bytes!, mimeType: _mimeFor(widget.filePath)),
       );
     }
   }

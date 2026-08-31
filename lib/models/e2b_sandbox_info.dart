@@ -32,8 +32,9 @@ class E2bSandboxInfo {
     return E2bSandboxInfo(
       sandboxId: (json['sandboxID'] ?? json['sandboxId'] ?? json['id'] ?? '')
           .toString(),
-      templateId: (json['templateID'] ?? json['templateId'] ?? json['template'] ?? '')
-          .toString(),
+      templateId:
+          (json['templateID'] ?? json['templateId'] ?? json['template'] ?? '')
+              .toString(),
       alias: json['alias']?.toString() ?? '',
       state: (json['state'] ?? json['status'] ?? 'running').toString(),
       startedAt: json['startedAt'] != null

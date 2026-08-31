@@ -169,7 +169,9 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
               ? 'main'
               : selected.defaultBranch;
         });
-        Snack.success('已选中 GitHub 项目: ${selected.fullName}');
+        Snack.success(
+          LocaleKeys.e2bRepoSelected.trParams({'repo': selected.fullName}),
+        );
       }
     } finally {
       if (mounted) setState(() => _isFetchingRepos = false);
@@ -256,7 +258,7 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
             decoration: InputDecoration(
               labelText: LocaleKeys.e2bTemplate.tr,
               hintText: LocaleKeys.e2bTemplateHint.tr,
-              helperText: '留空默认 opencode；可填自定义模板实现秒级启动（见 docs/e2b_template_guide.md）',
+              helperText: LocaleKeys.e2bTemplateHelper.tr,
               border: const OutlineInputBorder(),
               prefixIcon: const Icon(Icons.layers_outlined),
             ),
@@ -299,7 +301,11 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
           const SizedBox(height: 20),
 
           // 3. GitHub 仓库绑定与授权选择
-          _buildSectionHeader(Icons.merge_type, 'GitHub 项目与授权', theme),
+          _buildSectionHeader(
+            Icons.merge_type,
+            LocaleKeys.e2bGitProjectAndAuth.tr,
+            theme,
+          ),
           const SizedBox(height: 8),
           TextField(
             controller: _tokenCtrl,
@@ -308,8 +314,8 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
             autocorrect: false,
             obscureText: true,
             decoration: InputDecoration(
-              labelText: 'GitHub Personal Access Token (PAT)',
-              hintText: 'ghp_xxxx (具备 repo 读写权限)',
+              labelText: LocaleKeys.e2bGitPatLabel.tr,
+              hintText: LocaleKeys.e2bGitPatHint.tr,
               border: const OutlineInputBorder(),
               prefixIcon: const Icon(Icons.token),
             ),
@@ -328,7 +334,7 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
             label: Text(
               _isFetchingRepos
                   ? LocaleKeys.e2bFetchingRepos.tr
-                  : '🔍 获取并选择我的 GitHub 项目',
+                  : LocaleKeys.e2bFetchAndSelectRepo.tr,
             ),
           ),
           const SizedBox(height: 10),
@@ -354,7 +360,10 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '已选仓库: ${_repoFullNameCtrl.text} ($_branch)',
+                      LocaleKeys.e2bSelectedRepoWithBranch.trParams({
+                        'repo': _repoFullNameCtrl.text,
+                        'branch': _branch,
+                      }),
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 13,
@@ -380,7 +389,7 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
               controller: _repoCtrl,
               decoration: InputDecoration(
                 labelText: LocaleKeys.e2bGitRepo.tr,
-                hintText: '可选：或直接粘贴 GitHub 仓库地址',
+                hintText: LocaleKeys.e2bGitRepoUrlOptionalHint.tr,
                 border: const OutlineInputBorder(),
                 prefixIcon: const Icon(Icons.link),
               ),

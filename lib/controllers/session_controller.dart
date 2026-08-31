@@ -978,10 +978,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       List<({PickedImage image, String base64})> sendEncoded = const [];
       if (images.isNotEmpty) {
         try {
-          sendEncoded = await compute(
-            compressAndEncodeImagesSync,
-            images,
-          );
+          sendEncoded = await compute(compressAndEncodeImagesSync, images);
         } catch (e) {
           AppLogger.e('compress images (vision) failed: $e');
           sendEncoded = [
@@ -1422,7 +1419,8 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         // 流式通道有内容）时，旧快照不得冲掉乐观消息与流式内容，落盘交由
         // idle 收尾兜底。重连强刷（force/flaggedReload）豁免：全量历史是
         // 权威数据，生成中也必须落快照以纠正断线期间的残留状态。
-        final snapshotStale = !force &&
+        final snapshotStale =
+            !force &&
             !flaggedReload &&
             (state.isGenerating.value ||
                 _localSendInFlight.contains(sessionId) ||
@@ -1535,16 +1533,14 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       // 失败同样终结加载态（见 finally），但标记失败：空会话 UI 提示重试
       // 而不是伪装成"开启对话"。seq 守卫避免切项目后写过期会话状态；票据
       // 守卫避免被 force 取代的旧请求把失败标记压到取代者头上。
-      if (seq == _sessionFetchSeq &&
-          _messageLoadTickets[sessionId] == ticket) {
+      if (seq == _sessionFetchSeq && _messageLoadTickets[sessionId] == ticket) {
         stateOf(sessionId).historyLoadFailed.value = true;
       }
     } finally {
       // 票据仍为本请求时才终结加载态：被取代的旧请求在取代者飞行期间置
       // true，会让空会话 UI 在"正在加载"与"开始对话"间闪跳。取代者自身的
       // finally 负责收尾。
-      if (seq == _sessionFetchSeq &&
-          _messageLoadTickets[sessionId] == ticket) {
+      if (seq == _sessionFetchSeq && _messageLoadTickets[sessionId] == ticket) {
         stateOf(sessionId).hasLoadedHistory.value = true;
       }
     }
@@ -1622,7 +1618,8 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         // 落盘前统一把当前 parts 回写 raw 副本：即便某个消息变更点漏调
         // messageWithSyncedParts，快照也不会缺流式内容。
         [
-          for (final m in state.messages) messageWithSyncedParts(m, m.parts).raw,
+          for (final m in state.messages)
+            messageWithSyncedParts(m, m.parts).raw,
         ],
       ),
     );
@@ -1894,10 +1891,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     var encoded = const <String>[];
     if (images.isNotEmpty) {
       try {
-        final results = await compute(
-          compressAndEncodeImagesSync,
-          images,
-        );
+        final results = await compute(compressAndEncodeImagesSync, images);
         sendImages = [for (final r in results) r.image];
         encoded = [for (final r in results) r.base64];
       } catch (e) {
@@ -3522,10 +3516,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     final newParts = state.messages[idx].parts
         .where((p) => p.id != partId)
         .toList();
-    state.messages[idx] = messageWithSyncedParts(
-      state.messages[idx],
-      newParts,
-    );
+    state.messages[idx] = messageWithSyncedParts(state.messages[idx], newParts);
     state.partsVersion++;
     // 删除的可能是挂起的 question part：布尔为 true 时重扫兜底。
     if (state.hasPendingQuestion.value) state.rescanHasPendingQuestion();

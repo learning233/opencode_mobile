@@ -88,8 +88,12 @@ class E2bWorkspaceService {
 
   /// 沙盒内启动 OpenCode 的引导脚本。
   /// 密码通过进程环境变量 BOOTSTRAP_PASSWORD 传入(避免拼接注入)。
+  ///
+  /// 注意:脚本经 `bash -l -c '<全文>'` 执行,进程自身 cmdline 含脚本全文,
+  /// 因此 pgrep 必须用 `[o]pencode` 正则技巧避免自匹配;
+  /// 服务就绪判定一律用 curl 探测本机 4096,不依赖进程名。
   /// 退出码约定: 0 成功 / 42 opencode 安装失败 / 43 serve 启动失败。
-  static const String _bootstrapScript = r'''
+  static const String bootstrapScript = r'''
 export PATH="$HOME/.opencode/bin:/usr/local/bin:$PATH"
 echo "=== OpenCode Bootstrap ==="
 echo "USER: $(whoami), HOME: $HOME"
@@ -97,10 +101,31 @@ echo "USER: $(whoami), HOME: $HOME"
 # 落盘密码供重连恢复(仅当前用户可读)
 umask 077 && printf '%s' "$BOOTSTRAP_PASSWORD" > "$HOME/.opencode_pw"
 
-if pgrep -f "opencode serve" > /dev/null 2>&1; then
-  echo "opencode serve already running: $(pgrep -a opencode || echo '?')"
-  exit 0
-fi
+# 探测本机 4096:200=健康;000=无监听;其他(如401)=有服务但密码不匹配
+probe() {
+  local code
+  code="$(curl -s -o /dev/null -m 2 -w '%{http_code}' \
+    -u "opencode:$BOOTSTRAP_PASSWORD" \
+    http://127.0.0.1:4096/api/health 2>/dev/null)"
+  [ -z "$code" ] && code="000"
+  echo "$code"
+}
+
+code="$(probe)"
+case "$code" in
+  200)
+    echo "opencode serve already healthy on 4096"
+    exit 0
+    ;;
+  000)
+    echo "no server listening on 4096 yet"
+    ;;
+  *)
+    echo "port 4096 has a server with mismatched auth (HTTP $code), restarting..."
+    pkill -f "[o]pencode serve" 2>/dev/null || true
+    sleep 1
+    ;;
+esac
 
 # opencode 缺失时自动安装:官方安装脚本优先,npm 兜底(base 模板自带 Node/curl)
 if ! command -v opencode > /dev/null 2>&1; then
@@ -130,16 +155,28 @@ if [ -n "$GIT_BRANCH" ] && [ -d .git ]; then
 fi
 
 echo "Starting opencode serve on 0.0.0.0:4096..."
-nohup env OPENCODE_SERVER_PASSWORD="$BOOTSTRAP_PASSWORD" \
+setsid nohup env OPENCODE_SERVER_PASSWORD="$BOOTSTRAP_PASSWORD" \
   opencode serve --hostname 0.0.0.0 --port 4096 \
   > /tmp/opencode.log 2>&1 < /dev/null &
-sleep 2
-if ! pgrep -f "opencode serve" > /dev/null 2>&1; then
-  echo "ERROR: opencode serve exited immediately, log:"
-  cat /tmp/opencode.log 2>/dev/null
-  exit 43
-fi
-echo "opencode serve started: $(pgrep -a opencode | head -n 1)"
+
+# 轮询等待端口就绪(最多约 30 秒);进程若中途退出则提前失败并输出日志
+for i in $(seq 1 15); do
+  code="$(probe)"
+  if [ "$code" = "200" ]; then
+    echo "opencode serve is up (attempt $i)"
+    exit 0
+  fi
+  if ! pgrep -f "[o]pencode serve" > /dev/null 2>&1; then
+    echo "ERROR: opencode serve exited, log:"
+    cat /tmp/opencode.log 2>/dev/null
+    exit 43
+  fi
+  sleep 2
+done
+
+echo "ERROR: opencode serve not ready after 30s, log:"
+cat /tmp/opencode.log 2>/dev/null
+exit 43
 ''';
 
   /// 生成安全的随机密码用于 OpenCode Basic Auth
@@ -352,7 +389,7 @@ echo "opencode serve started: $(pgrep -a opencode | head -n 1)"
     // 2. 执行引导脚本(前台等待结束,含 opencode 自动安装兜底)
     try {
       final result = await sandbox.commands.run(
-        _bootstrapScript,
+        bootstrapScript,
         opts: CommandOpts(
           timeoutMs: 180000,
           envs: {'BOOTSTRAP_PASSWORD': password},
@@ -431,12 +468,13 @@ echo "opencode serve started: $(pgrep -a opencode | head -n 1)"
 
   /// 通过 envd 从沙盒内恢复 OpenCode Basic Auth 密码。
   /// 优先读 bootstrap 落盘的 ~/.opencode_pw,回退到 serve 进程的环境变量。
+  /// pgrep 用 [o]pencode 技巧避免匹配到执行命令的 bash 自身。
   Future<String?> recoverPassword(Sandbox sandbox) async {
     try {
       final result = await sandbox.commands.run(
         r'''
 cat "$HOME/.opencode_pw" 2>/dev/null && exit 0
-pid="$(pgrep -f 'opencode serve' | head -n 1)"
+pid="$(pgrep -f '[o]pencode serve' | head -n 1)"
 if [ -n "$pid" ] && [ -r "/proc/$pid/environ" ]; then
   tr '\0' '\n' < "/proc/$pid/environ" | grep '^OPENCODE_SERVER_PASSWORD=' | cut -d= -f2-
 fi
@@ -449,6 +487,21 @@ fi
       AppLogger.w('recoverPassword failed: $e');
       return null;
     }
+  }
+
+  /// 探测沙盒应用端口健康,返回 HTTP 状态码。
+  /// 200=健康;401/403=服务存活但密码不匹配;502/其他/null=服务未就绪。
+  /// 供云端模式状态条使用。
+  Future<int?> probeSandboxHealth(
+    String endpointUrl, {
+    String? password,
+    CancelToken? cancelToken,
+  }) {
+    return _probeHealth(
+      '$endpointUrl/api/health',
+      password ?? '',
+      cancelToken: cancelToken,
+    );
   }
 
   /// 探测健康端点,返回 HTTP 状态码(网络异常返回 null)

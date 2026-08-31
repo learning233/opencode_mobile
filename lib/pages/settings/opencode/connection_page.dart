@@ -43,6 +43,10 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
   String? _sandboxesError;
   CancelToken? _connectCancelToken;
 
+  // 云端活跃沙盒健康探测状态(null = 未探测/网络不通)
+  bool _cloudChecking = false;
+  int? _activeProbeStatus;
+
   SettingsController get _settings => Get.find<SettingsController>();
 
   @override
@@ -58,9 +62,12 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _settings.checkHealth();
-      if (_selectedMode == 1 || cloudConfig.e2bApiKey.isNotEmpty) {
+      // 云端模式显示云端自身状态,不做自建服务器健康检查
+      if (_selectedMode == 1) {
         _fetchSandboxList();
+        _probeActiveSandbox();
+      } else {
+        _settings.checkHealth();
       }
     });
   }
@@ -107,6 +114,29 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
         });
       }
     }
+  }
+
+  /// 探测当前活跃沙盒的应用端口,供云端状态条展示真实连接状态
+  Future<void> _probeActiveSandbox() async {
+    final config = Global.settings.cloudWorkspaceConfig;
+    final url = config.activeSandboxUrl;
+    if (url == null || url.isEmpty) {
+      if (mounted) setState(() => _activeProbeStatus = null);
+      return;
+    }
+    if (mounted) setState(() => _cloudChecking = true);
+    final status = await E2bWorkspaceService.instance.probeSandboxHealth(url);
+    if (mounted) {
+      setState(() {
+        _activeProbeStatus = status;
+        _cloudChecking = false;
+      });
+    }
+  }
+
+  /// 刷新云端状态(列表 + 活跃沙盒探测)
+  Future<void> _refreshCloudStatus() async {
+    await Future.wait([_fetchSandboxList(), _probeActiveSandbox()]);
   }
 
   Future<void> _saveAndReconnect() async {
@@ -448,7 +478,9 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
               if (vals.isNotEmpty) {
                 setState(() => _selectedMode = vals.first);
                 if (_selectedMode == 1) {
-                  _fetchSandboxList();
+                  _refreshCloudStatus();
+                } else {
+                  _settings.checkHealth();
                 }
               }
             },
@@ -472,6 +504,10 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
   }
 
   Widget _buildHealthStatus(ThemeData theme) {
+    // 云端模式显示云端自身的连接状态,与自建服务器健康无关
+    if (_selectedMode == 1) {
+      return _buildCloudHealthStatus(theme);
+    }
     return Obx(() {
       final checking = _settings.healthChecking.value;
       final ok = _settings.healthOk.value;
@@ -517,6 +553,115 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
         ),
       );
     });
+  }
+
+  /// 云端模式专属状态条:基于是否配置 Key、活跃沙盒与实时探测结果
+  Widget _buildCloudHealthStatus(ThemeData theme) {
+    final cloudConfig = Global.settings.cloudWorkspaceConfig;
+    final hasKey = cloudConfig.e2bApiKey.trim().isNotEmpty;
+    final activeId = cloudConfig.activeSandboxId;
+    // Global.serverUrl 仅在健康检查通过后写入,代表真实已建立的连接
+    final connectedNow = Global.serverUrl.contains('e2b.app') &&
+        activeId != null &&
+        activeId.isNotEmpty &&
+        Global.serverUrl.contains(activeId);
+
+    final ({
+      IconData icon,
+      Color? iconColor,
+      String title,
+      String subtitle,
+    }) state;
+
+    if (!hasKey) {
+      state = (
+        icon: Icons.key_off_outlined,
+        iconColor: null,
+        title: '未配置 E2B API Key',
+        subtitle: '配置后即可创建云端工作区',
+      );
+    } else if (_cloudChecking) {
+      state = (
+        icon: Icons.cloud_sync_outlined,
+        iconColor: null,
+        title: '正在检查云端沙盒状态...',
+        subtitle: activeId ?? '',
+      );
+    } else if (connectedNow) {
+      final status = _activeProbeStatus;
+      if (status == 200) {
+        state = (
+          icon: Icons.check_circle,
+          iconColor: context.appColors.success,
+          title: '云端沙盒已连接',
+          subtitle: activeId,
+        );
+      } else if (status == 401 || status == 403) {
+        state = (
+          icon: Icons.shield_outlined,
+          iconColor: theme.colorScheme.tertiary,
+          title: '沙盒服务运行中(认证未通过)',
+          subtitle: '密码不匹配,可在列表中重新连接',
+        );
+      } else {
+        state = (
+          icon: Icons.warning_amber_rounded,
+          iconColor: theme.colorScheme.error,
+          title: '沙盒服务未就绪 (HTTP ${status ?? "无响应"})',
+          subtitle: 'OpenCode 未启动,在列表中点击连接修复',
+        );
+      }
+    } else if (activeId != null && activeId.isNotEmpty) {
+      state = (
+        icon: Icons.cloud_off_outlined,
+        iconColor: null,
+        title: '云端沙盒未连接',
+        subtitle: '$activeId · 在列表中点击连接',
+      );
+    } else {
+      state = (
+        icon: Icons.cloud_queue_outlined,
+        iconColor: null,
+        title: '未连接云端沙盒',
+        subtitle: '新建或在列表中选择沙盒',
+      );
+    }
+
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: _cloudChecking
+          ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Icon(state.icon, color: state.iconColor),
+      title: Text(state.title, style: const TextStyle(fontSize: 14)),
+      subtitle: Text(
+        state.subtitle,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 12,
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+      trailing: hasKey
+          ? IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: _cloudChecking ? null : _refreshCloudStatus,
+            )
+          : IconButton(
+              icon: const Icon(Icons.settings_outlined),
+              onPressed: () {
+                CloudWorkspaceSheet.show(
+                  context,
+                  onlyConfig: true,
+                  onLaunch: (_) => _refreshCloudStatus(),
+                );
+              },
+            ),
+    );
   }
 
   Widget _buildSelfHostedView(ThemeData theme) {
@@ -808,8 +953,8 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
     E2bSandboxInfo sandbox,
     CloudWorkspaceConfig cloudConfig,
   ) {
-    final isCurrentConnected = Global.serverUrl.contains(sandbox.sandboxId) ||
-        cloudConfig.activeSandboxId == sandbox.sandboxId;
+    // Global.serverUrl 仅在健康检查通过后写入,才是真实已建立的连接
+    final isCurrentConnected = Global.serverUrl.contains(sandbox.sandboxId);
     final isPaused = sandbox.isPaused;
 
     return Card(

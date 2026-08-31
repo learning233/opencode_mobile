@@ -328,4 +328,67 @@ void main() {
       );
     });
   });
+
+  group('Sandbox.create error mapping (mock control plane)', () {
+    test('401 with server message maps to auth exception', () async {
+      final adapter = FakeHttpAdapter((options, body) async {
+        return ResponseBody.fromString(
+          jsonEncode({'code': 401, 'message': 'Invalid API key'}),
+          401,
+          headers: {
+            'content-type': ['application/json'],
+          },
+        );
+      });
+      final dio = Dio()..httpClientAdapter = adapter;
+
+      await expectLater(
+        Sandbox.create(
+          opts: const SandboxCreateOpts(apiKey: 'bad-key'),
+          dio: dio,
+        ),
+        throwsA(
+          isA<SandboxAuthenticationException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('API Key 无效'), contains('Invalid API key')),
+          ),
+        ),
+      );
+    });
+
+    test('400 template-not-found surfaces server message and hint', () async {
+      final adapter = FakeHttpAdapter((options, body) async {
+        // 校验请求体为裸 JSON 且 templateID 正确
+        final req = jsonDecode(utf8.decode(body));
+        expect(req['templateID'], 'no-such-tpl');
+        expect(req['timeout'], isA<num>());
+        return ResponseBody.fromString(
+          jsonEncode({
+            'code': 400,
+            'message': 'Template not found: no-such-tpl',
+          }),
+          400,
+          headers: {
+            'content-type': ['application/json'],
+          },
+        );
+      });
+      final dio = Dio()..httpClientAdapter = adapter;
+
+      await expectLater(
+        Sandbox.create(
+          opts: const SandboxCreateOpts(apiKey: 'k', template: 'no-such-tpl'),
+          dio: dio,
+        ),
+        throwsA(
+          isA<SandboxException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('Template not found'), contains('模板不存在')),
+          ),
+        ),
+      );
+    });
+  });
 }

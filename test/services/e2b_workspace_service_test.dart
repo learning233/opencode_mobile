@@ -251,6 +251,21 @@ void main() {
     });
   });
 
+  group('E2bWorkspaceService bootstrap script', () {
+    test('avoids pgrep self-match and probes port via curl', () {
+      final script = E2bWorkspaceService.bootstrapScript;
+      // 守护:bash -l -c 的进程 cmdline 含脚本文本,
+      // 若裸写 "opencode serve" 会被 pgrep -f 匹配到脚本自身,
+      // 误判"已在运行"直接 exit 0,导致服务从未启动(历史 502 根因)
+      expect(script.contains('pgrep -f "opencode serve"'), isFalse);
+      expect(script.contains("pgrep -f 'opencode serve'"), isFalse);
+      expect(script.contains('[o]pencode serve'), isTrue);
+      // 就绪判定必须 curl 探测本机端口,不能只看进程名/固定 sleep
+      expect(script.contains('127.0.0.1:4096'), isTrue);
+      expect(script.contains('setsid nohup'), isTrue);
+    });
+  });
+
   group('E2bWorkspaceService health polling (mock HTTP)', () {
     final service = E2bWorkspaceService.instance;
 

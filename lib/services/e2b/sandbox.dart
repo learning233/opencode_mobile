@@ -40,6 +40,56 @@ class Sandbox {
   }
 
   // ==========================
+  // 控制面错误处理
+  // ==========================
+
+  /// 提取 E2B 控制面错误响应中的 message
+  static String _parseServerMessage(dynamic body) {
+    if (body is Map) {
+      return (body['message'] ?? body['error'] ?? '').toString();
+    }
+    if (body == null) return '';
+    return body.toString();
+  }
+
+  /// 按控制面 HTTP 状态码抛出带服务端原始信息的异常
+  static Never _throwControlPlaneError(
+    int? statusCode,
+    dynamic body,
+    String action,
+  ) {
+    final serverMsg = _parseServerMessage(body);
+    final suffix = serverMsg.isEmpty ? '' : ', $serverMsg';
+
+    if (statusCode == 401 || statusCode == 403) {
+      throw SandboxAuthenticationException(
+        '$action失败: E2B API Key 无效或无权限 (HTTP $statusCode)$suffix',
+      );
+    }
+    if (statusCode == 404) {
+      throw SandboxNotFoundException(
+        '$action失败: 目标不存在 (HTTP 404)$suffix',
+      );
+    }
+    // 模板相关错误给出可操作的指引
+    if (serverMsg.toLowerCase().contains('template')) {
+      throw SandboxException(
+        '$action失败: 模板不存在或不可用 (HTTP $statusCode)$suffix\n'
+        '请检查 App 内配置的模板 ID,可在 E2B Dashboard → Templates 中查看可用模板',
+        statusCode: statusCode,
+      );
+    }
+    throw SandboxException(
+      '$action失败: HTTP ${statusCode ?? '?'}$suffix',
+      statusCode: statusCode,
+    );
+  }
+
+  /// 判断控制面响应是否成功
+  static bool _isSuccess(int? statusCode) =>
+      statusCode != null && statusCode >= 200 && statusCode < 300;
+
+  // ==========================
   // 静态生命周期工厂方法
   // ==========================
 
@@ -70,23 +120,27 @@ class Sandbox {
     try {
       final res = await client.post(
         '${config.apiUrl}/sandboxes',
-        options: Options(headers: config.getApiHeaders()),
+        options: Options(
+          headers: config.getApiHeaders(),
+          validateStatus: (status) => true,
+        ),
         data: payload,
       );
 
-      if (res.statusCode != 200 && res.statusCode != 201) {
-        throw SandboxException(
-          '创建沙盒失败: ${res.data?['message'] ?? res.statusCode}',
-          statusCode: res.statusCode,
-        );
+      if (!_isSuccess(res.statusCode)) {
+        _throwControlPlaneError(res.statusCode, res.data, '创建沙盒');
       }
 
-      final data = res.data as Map;
+      final data = res.data is Map
+          ? Map<String, dynamic>.from(res.data as Map)
+          : const <String, dynamic>{};
       final sandboxId = (data['sandboxID'] ?? data['sandboxId'] ?? data['id'])
           ?.toString() ??
           '';
-      final templateId =
-          data['templateID']?.toString() ?? opts.template;
+      if (sandboxId.isEmpty) {
+        throw const SandboxException('创建沙盒失败: 服务端响应缺少 sandboxID');
+      }
+      final templateId = data['templateID']?.toString() ?? opts.template;
       final envdAccessToken = data['envdAccessToken']?.toString();
 
       final fullConfig = ConnectionConfig(
@@ -145,17 +199,8 @@ class Sandbox {
         data: {'timeout': opts.timeout},
       );
 
-      if (res.statusCode == 404) {
-        throw SandboxNotFoundException('沙盒 ${opts.sandboxId} 不存在或已销毁 (404)');
-      }
-      if (res.statusCode != 200 && res.statusCode != 201) {
-        final msg = res.data is Map
-            ? (res.data['message']?.toString() ?? '')
-            : (res.data?.toString() ?? '');
-        throw SandboxException(
-          '连接沙盒失败: HTTP ${res.statusCode}${msg.isEmpty ? '' : ', $msg'}',
-          statusCode: res.statusCode,
-        );
+      if (!_isSuccess(res.statusCode)) {
+        _throwControlPlaneError(res.statusCode, res.data, '连接沙盒');
       }
 
       final data = res.data is Map
@@ -207,11 +252,8 @@ class Sandbox {
         ),
         data: {'timeout': timeoutSeconds},
       );
-      if (res.statusCode != 200 && res.statusCode != 204) {
-        throw SandboxException(
-          '刷新沙盒超时失败: HTTP ${res.statusCode}',
-          statusCode: res.statusCode,
-        );
+      if (!_isSuccess(res.statusCode)) {
+        _throwControlPlaneError(res.statusCode, res.data, '刷新沙盒超时');
       }
     } on DioException catch (e) {
       throw SandboxException('刷新沙盒超时异常: ${e.message}', cause: e);
@@ -233,13 +275,20 @@ class Sandbox {
     try {
       final res = await client.get(
         '${config.apiUrl}/sandboxes',
-        options: Options(headers: config.getApiHeaders()),
+        options: Options(
+          headers: config.getApiHeaders(),
+          validateStatus: (status) => true,
+        ),
         queryParameters: {
           if (opts.states != null) 'state': opts.states,
           'limit': opts.limit,
           if (opts.nextToken != null) 'nextToken': opts.nextToken,
         },
       );
+
+      if (!_isSuccess(res.statusCode)) {
+        _throwControlPlaneError(res.statusCode, res.data, '获取沙盒列表');
+      }
 
       final data = res.data;
       if (data is List) {
@@ -269,10 +318,13 @@ class Sandbox {
     try {
       final res = await client.post(
         '${config.apiUrl}/sandboxes/$sandboxId/pause',
-        options: Options(headers: config.getApiHeaders()),
+        options: Options(
+          headers: config.getApiHeaders(),
+          validateStatus: (status) => true,
+        ),
       );
-      if (res.statusCode != 200 && res.statusCode != 204) {
-        throw SandboxException('休眠沙盒失败: HTTP ${res.statusCode}');
+      if (!_isSuccess(res.statusCode)) {
+        _throwControlPlaneError(res.statusCode, res.data, '休眠沙盒');
       }
     } on DioException catch (e) {
       throw SandboxException('休眠沙盒异常: ${e.message}', cause: e);
@@ -291,10 +343,13 @@ class Sandbox {
     try {
       final res = await client.post(
         '${config.apiUrl}/sandboxes/$sandboxId/resume',
-        options: Options(headers: config.getApiHeaders()),
+        options: Options(
+          headers: config.getApiHeaders(),
+          validateStatus: (status) => true,
+        ),
       );
-      if (res.statusCode != 200 && res.statusCode != 204 && res.statusCode != 201) {
-        throw SandboxException('唤醒沙盒失败: HTTP ${res.statusCode}');
+      if (!_isSuccess(res.statusCode)) {
+        _throwControlPlaneError(res.statusCode, res.data, '唤醒沙盒');
       }
     } on DioException catch (e) {
       throw SandboxException('唤醒沙盒异常: ${e.message}', cause: e);
@@ -313,10 +368,13 @@ class Sandbox {
     try {
       final res = await client.delete(
         '${config.apiUrl}/sandboxes/$sandboxId',
-        options: Options(headers: config.getApiHeaders()),
+        options: Options(
+          headers: config.getApiHeaders(),
+          validateStatus: (status) => true,
+        ),
       );
-      if (res.statusCode != 200 && res.statusCode != 204) {
-        throw SandboxException('销毁沙盒失败: HTTP ${res.statusCode}');
+      if (!_isSuccess(res.statusCode)) {
+        _throwControlPlaneError(res.statusCode, res.data, '销毁沙盒');
       }
     } on DioException catch (e) {
       throw SandboxException('销毁沙盒异常: ${e.message}', cause: e);

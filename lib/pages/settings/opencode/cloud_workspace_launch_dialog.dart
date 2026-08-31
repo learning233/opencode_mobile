@@ -56,6 +56,15 @@ class _CloudWorkspaceLaunchDialogState
   }
 
   Future<void> _startLaunch() async {
+    // 双保险:未配置 Key 直接报错,不发起任何请求
+    if (widget.config.e2bApiKey.trim().isEmpty) {
+      setState(() {
+        _isError = true;
+        _errorMessage = 'E2B API Key 不能为空，请先在设置中填写';
+      });
+      return;
+    }
+
     _cancelToken?.cancel();
     _cancelToken = CancelToken();
 

@@ -225,3 +225,33 @@ sequenceDiagram
 2. 模板 ID 可留空默认 `opencode`,或使用[自定义模板](e2b_template_guide.md)(秒级启动);
 3. 点击「新建沙盒」,观察弹窗进度:申请沙盒 → 部署 OpenCode(首启需安装约 30~60 秒)→ 健康握手 → 进入工作区;
 4. 若失败,弹窗会展示具体原因与沙盒内 `/tmp/opencode.log` 尾部;沙盒保留在列表中,可销毁或重连。
+
+### 补充修复(2026-08-31 第二轮:状态展示与错误透出)
+
+1. **云端模式专属状态条**:此前顶部状态条在云端模式也显示自建服务器连接状态
+   (来自上次持久化的 `Global.serverUrl` 健康检查),导致未配置 Key 也显示"已连接"。
+   现在云端模式显示自身状态:未配置 Key / 未连接 / 已连接(实时探测)/ 服务未就绪(502)/ 认证未通过(401)。
+2. **控制面错误透出**:`Sandbox.create/list/pause/resume/kill/setTimeout` 均改为
+   `validateStatus: true` + 解析 E2B 错误体 `{code,message}`,不再被 Dio 通用异常文案
+   吞掉真实原因(如 "Template not found"、"Invalid API key");401/403 → "API Key 无效",
+   message 含 template → 附加"检查模板 ID"指引。
+3. **"当前连接"徽标收紧**:仅当 `Global.serverUrl` 真实包含该沙盒 ID 时才标记,
+   不再仅凭持久化的 `activeSandboxId`。
+4. **启动弹窗前置校验**:Key 为空直接报错,不发起任何请求。
+
+### 补充修复(2026-08-31 第三轮:bootstrap 自匹配导致 serve 未启动)
+
+**现象**:沙盒 RUNNING、`opencode --version` 正常输出,但 4096 端口始终 502,
+bootstrap 却报成功。
+
+**根因**:bootstrap 脚本经 `bash -l -c '<全文>'` 执行,**进程自身 cmdline 包含脚本全文**,
+开头的 `pgrep -f "opencode serve"` 匹配到了脚本自己,误判"已在运行"直接 `exit 0`,
+serve 从未被拉起。`recoverPassword` 存在同款自匹配。
+
+**修复**:
+* 服务就绪判定全部改为 **curl 探测本机 `127.0.0.1:4096/api/health`**(带密码),
+  三态:200=健康跳过 / 000=无监听需启动 / 其他=有服务但密码不匹配,kill 后带正确密码重启;
+* `pgrep`/`pkill` 一律使用 `[o]pencode serve` 正则写法规避自匹配;
+* 启动后从「固定 sleep 2 检查一次」改为**轮询等待端口就绪(最多约 30 秒)**,
+  进程中途退出立即 `exit 43` 并输出 `/tmp/opencode.log`;
+* serve 以 `setsid nohup` 脱离会话启动;密码落盘 `~/.opencode_pw` 移至脚本最前。

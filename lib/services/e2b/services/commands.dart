@@ -66,9 +66,21 @@ class Commands {
 
     final stdoutBuffer = StringBuffer();
     final stderrBuffer = StringBuffer();
-    // 增量 UTF-8 解码：多字节字符跨帧时不能逐事件 decode，否则产生 U+FFFD
-    final stdoutDecoder = Utf8Decoder(allowMalformed: true);
-    final stderrDecoder = Utf8Decoder(allowMalformed: true);
+    // 增量 UTF-8 解码：使用自定义 _StreamingTextSink 保证实时吐出每个解码分块，
+    // 同时跨帧的不完整多字节 UTF-8 序列由 Utf8Decoder 内部缓冲，避免产生 U+FFFD。
+    final stdoutByteSink = utf8.decoder.startChunkedConversion(
+      _StreamingTextSink((text) {
+        stdoutBuffer.write(text);
+        opts.onStdout?.call(text);
+      }),
+    );
+
+    final stderrByteSink = utf8.decoder.startChunkedConversion(
+      _StreamingTextSink((text) {
+        stderrBuffer.write(text);
+        opts.onStderr?.call(text);
+      }),
+    );
     int exitCode = 0;
     String? exitError;
     bool sawEndEvent = false;
@@ -140,28 +152,22 @@ class Commands {
             final errBase64 = data['stderr'] as String?;
 
             if (outBase64 != null) {
-              String text;
               try {
-                text = stdoutDecoder.convert(base64Decode(outBase64));
+                final bytes = base64Decode(outBase64);
+                stdoutByteSink.add(bytes);
               } catch (_) {
-                text = outBase64;
-              }
-              if (text.isNotEmpty) {
-                stdoutBuffer.write(text);
-                opts.onStdout?.call(text);
+                stdoutBuffer.write(outBase64);
+                opts.onStdout?.call(outBase64);
               }
             }
 
             if (errBase64 != null) {
-              String text;
               try {
-                text = stderrDecoder.convert(base64Decode(errBase64));
+                final bytes = base64Decode(errBase64);
+                stderrByteSink.add(bytes);
               } catch (_) {
-                text = errBase64;
-              }
-              if (text.isNotEmpty) {
-                stderrBuffer.write(text);
-                opts.onStderr?.call(text);
+                stderrBuffer.write(errBase64);
+                opts.onStderr?.call(errBase64);
               }
             }
           }
@@ -178,12 +184,10 @@ class Commands {
       onDone: () {
         // 冲刷残留的多字节 UTF-8 序列
         try {
-          final rest = stdoutDecoder.convert(const []);
-          if (rest.isNotEmpty) stdoutBuffer.write(rest);
+          stdoutByteSink.close();
         } catch (_) {}
         try {
-          final rest = stderrDecoder.convert(const []);
-          if (rest.isNotEmpty) stderrBuffer.write(rest);
+          stderrByteSink.close();
         } catch (_) {}
         // 流结束但从未收到 end 事件 = 命令未正常完成,不能静默按成功处理
         if (exitError == null && !sawEndEvent) {
@@ -278,4 +282,20 @@ class Commands {
       },
     );
   }
+}
+
+/// 增量流式文本解码接收器，对每个就绪的文本分块实时触发回调
+class _StreamingTextSink implements Sink<String> {
+  final void Function(String chunk) onChunk;
+  _StreamingTextSink(this.onChunk);
+
+  @override
+  void add(String data) {
+    if (data.isNotEmpty) {
+      onChunk(data);
+    }
+  }
+
+  @override
+  void close() {}
 }

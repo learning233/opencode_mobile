@@ -42,13 +42,15 @@ class EntryInfo {
     );
   }
 
-  /// 兼容 proto3 JSON 枚举名（FILE_TYPE_DIRECTORY 等）与旧 HTTP 简写（dir/file/symlink）
-  static EntryType _parseType(String typeStr) {
-    if (typeStr.contains('dir')) return EntryType.directory;
-    if (typeStr.contains('sym')) return EntryType.symlink;
-    if (typeStr.contains('file')) return EntryType.file;
-    if (typeStr.contains('unspecified')) return EntryType.unknown;
-    return typeStr.isEmpty ? EntryType.unknown : EntryType.file;
+  /// 兼容 proto3 JSON 枚举名（FILE_TYPE_DIRECTORY 等）、数值枚举（1/2/3）与旧 HTTP 简写（dir/file/symlink）
+  static EntryType _parseType(dynamic raw) {
+    if (raw == null) return EntryType.unknown;
+    final str = raw.toString().toLowerCase();
+    if (str == '2' || str.contains('dir')) return EntryType.directory;
+    if (str == '3' || str.contains('sym')) return EntryType.symlink;
+    if (str == '1' || str.contains('file')) return EntryType.file;
+    if (str == '0' || str.contains('unspecified')) return EntryType.unknown;
+    return str.isEmpty ? EntryType.unknown : EntryType.file;
   }
 }
 

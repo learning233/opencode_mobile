@@ -128,6 +128,14 @@ class E2bWorkspaceService {
 
   /// 沙盒内启动 OpenCode 的引导脚本。
   static const String bootstrapScript = r'''
+export PATH="$HOME/.opencode/bin:/usr/local/bin:$PATH"
+echo "=== OpenCode Bootstrap ==="
+echo "USER: $(whoami), HOME: $HOME"
+
+# 落盘密码供重连恢复(仅当前用户可读)
+umask 077 && printf '%s' "$BOOTSTRAP_PASSWORD" > "$HOME/.opencode_pw"
+
+# 探测本机 4096:200=健康;000=无监听;其他(如401)=有服务但密码不匹配
 probe() {
   local code
   code="$(curl -s -o /dev/null -m 2 -w '%{http_code}' \
@@ -152,83 +160,87 @@ case "$code" in
     sleep 1
     ;;
   *)
-    echo "existing server responded with HTTP $code, attempting clean restart"
-    pkill -9 -f '[o]pencode serve' || true
+    echo "port 4096 has a server with mismatched auth (HTTP $code), restarting..."
+    pkill -f "[o]pencode serve" 2>/dev/null || true
     sleep 1
     ;;
 esac
 
-# 检查/自动安装 opencode CLI
-if ! command -v opencode >/dev/null 2>&1; then
-  echo "opencode CLI not found in PATH, attempting automatic installation..."
-  mkdir -p "$HOME/.opencode/bin"
-  if curl -fsSL https://opencode.ai/install.sh | bash; then
-    echo "opencode installed successfully via official script"
-  elif command -v npm >/dev/null 2>&1; then
-    echo "curl install script failed, falling back to npm global install..."
-    npm install -g opencode-ai || true
+# opencode 缺失时自动安装:官方安装脚本优先,npm 兜底(base 模板自带 Node/curl)
+if ! command -v opencode > /dev/null 2>&1; then
+  echo "opencode not found, installing..."
+  curl -fsSL https://opencode.ai/install | bash 2>&1 | tail -n 5
+  export PATH="$HOME/.opencode/bin:/usr/local/bin:$PATH"
+  if ! command -v opencode > /dev/null 2>&1; then
+    echo "install script failed, trying npm..."
+    npm install -g opencode-ai 2>&1 | tail -n 5
+    export PATH="/usr/local/bin:$PATH"
   fi
-  export PATH="$HOME/.opencode/bin:$PATH"
+  if ! command -v opencode > /dev/null 2>&1; then
+    echo "ERROR: opencode install failed"
+    exit 42
+  fi
 fi
+echo "opencode version: $(opencode --version 2>&1 | head -n 1)"
 
-if ! command -v opencode >/dev/null 2>&1; then
-  echo "FATAL: opencode CLI is still not found after install attempts"
-  exit 42
-fi
-
-echo "opencode binary: $(command -v opencode), version: $(opencode --version 2>/dev/null || echo 'unknown')"
-
-# 确保工作区根目录并处理 Git 仓库克隆/同步
-WORKSPACE_DIR="$HOME/workspace"
-mkdir -p "$WORKSPACE_DIR"
-cd "$WORKSPACE_DIR"
-
+# 克隆目录用 GitHub 项目名;未绑定仓库时回退到 ~/workspace
+mkdir -p "$HOME/workspace"
+REPO_DIR=""
 if [ -n "$GIT_CLONE_URL" ]; then
-  echo "Detected GIT_CLONE_URL, preparing repository workspace..."
-  if [ -d .git ]; then
-    echo "Repository already exists at $WORKSPACE_DIR, fetching latest changes..."
-    git remote set-url origin "$GIT_CLONE_URL" 2>/dev/null || true
-    git fetch origin "${GIT_BRANCH:-main}" --depth=1 2>/dev/null || true
-  else
-    echo "Cloning repository into $WORKSPACE_DIR..."
-    git clone --depth=1 --branch "${GIT_BRANCH:-main}" "$GIT_CLONE_URL" . 2>&1 || {
-      echo "WARN: Git clone failed, creating empty workspace"
-    }
-  fi
-  # 剥离内嵌在 remote URL 中的 Token,避免 git remote -v 透出凭据
-  if [ -d .git ] && [ -n "$GIT_REPO_URL" ]; then
-    git remote set-url origin "$GIT_REPO_URL" 2>/dev/null || true
+  REPO_NAME="$(basename "$GIT_CLONE_URL" .git)"
+  case "$REPO_NAME" in
+    ""|"."|".."|*/*) REPO_NAME="" ;;
+  esac
+  if [ -n "$REPO_NAME" ]; then
+    REPO_DIR="$HOME/$REPO_NAME"
   fi
 fi
 
-# 启动后台常驻服务(nohup + setsid 双保险)
-echo "Starting opencode serve daemon on 0.0.0.0:4096..."
-export OPENCODE_SERVER_PASSWORD="$BOOTSTRAP_PASSWORD"
-export PORT=4096
+if [ -n "$REPO_DIR" ] && [ ! -d "$REPO_DIR/.git" ]; then
+  echo "Cloning git repository into $REPO_DIR ..."
+  rm -rf "$REPO_DIR"
+  git clone "$GIT_CLONE_URL" "$REPO_DIR" 2>&1 | tail -n 3 || true
+fi
+cd "$REPO_DIR" 2>/dev/null || cd "$HOME/workspace" 2>/dev/null || cd "$HOME"
+echo "Working directory: $(pwd)"
+if [ -n "$GIT_BRANCH" ] && [ -d .git ]; then
+  git checkout "$GIT_BRANCH" 2>&1 | tail -n 2 || true
+fi
 
-rm -f /tmp/opencode.log
-nohup opencode serve --hostname 0.0.0.0 --port 4096 > /tmp/opencode.log 2>&1 &
-SERVE_PID=$!
-echo "opencode serve spawned with PID $SERVE_PID"
+# 剥离 clone URL 中内嵌的 token,避免凭据持久化进 .git/config
+if [ -d .git ]; then
+  remote_url="$(git remote get-url origin 2>/dev/null || true)"
+  if [ -n "$remote_url" ]; then
+    stripped="$(printf '%s' "$remote_url" | sed -E 's#^(https?://)[^/@]+@#\1#')"
+    if [ "$stripped" != "$remote_url" ]; then
+      git remote set-url origin "$stripped" 2>/dev/null || true
+    fi
+  fi
+fi
 
-# 快速轮询本地端点(至多 8 秒)
-for i in $(seq 1 16); do
-  sleep 0.5
+echo "Starting opencode serve on 0.0.0.0:4096..."
+setsid nohup env OPENCODE_SERVER_PASSWORD="$BOOTSTRAP_PASSWORD" \
+  opencode serve --hostname 0.0.0.0 --port 4096 \
+  > /tmp/opencode.log 2>&1 < /dev/null &
+
+# 轮询等待端口就绪(最多约 30 秒);进程若中途退出则提前失败并输出日志
+for i in $(seq 1 15); do
+  sleep 2
   code="$(probe)"
   if [ "$code" = "200" ]; then
-    echo "opencode serve became healthy on 4096 in ~${i}*0.5s"
+    echo "opencode serve is up (attempt $i)"
     exit 0
   fi
-  if ! kill -0 "$SERVE_PID" 2>/dev/null; then
-    echo "ERROR: opencode serve process (PID $SERVE_PID) died prematurely"
-    echo "=== /tmp/opencode.log tail ==="
-    tail -n 40 /tmp/opencode.log 2>/dev/null || true
+  if ! pgrep -f "[o]pencode serve" > /dev/null 2>&1; then
+    echo "ERROR: opencode serve exited, log:"
+    cat /tmp/opencode.log 2>/dev/null
     exit 43
   fi
 done
 
-echo "opencode serve daemon running (PID $SERVE_PID), probe code is '$code' (will be verified via health loop)"
-exit 0
+echo "ERROR: opencode serve not ready after 30s, log:"
+cat /tmp/opencode.log 2>/dev/null
+exit 43
 ''';
 
   /// 生成安全的随机密码用于 OpenCode Basic Auth

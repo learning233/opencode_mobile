@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get/get.dart';
 import 'package:opencode_app/e2b/e2b.dart';
 import 'package:opencode_app/init.dart';
 import 'package:opencode_app/models/cloud_workspace_config.dart';
@@ -10,6 +11,7 @@ import 'package:opencode_app/services/e2b_workspace_service.dart';
 import 'package:opencode_app/services/git_repo_service.dart';
 import 'package:opencode_app/utils/app_logger.dart';
 import 'package:opencode_app/utils/app_settings_store.dart';
+import 'package:opencode_app/utils/translations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../helpers/fake_http_adapter.dart';
@@ -122,7 +124,7 @@ void main() {
         CloudWorkspaceConfig(e2bApiKey: ''),
       );
       expect(result.success, false);
-      expect(result.error, contains('E2B API Key 不能为空'));
+      expect(result.error, LocaleKeys.e2bApiKeyEmptyError.tr);
     });
   });
 
@@ -337,7 +339,7 @@ void main() {
       );
 
       expect(res.healthy, isFalse);
-      expect(res.failReason, contains('密码不匹配'));
+      expect(res.failReason, LocaleKeys.e2bAuthFailedDesc.tr);
     });
 
     test('waitForHealthy retries 502 then succeeds on 200', () async {
@@ -383,7 +385,7 @@ void main() {
         );
 
         expect(res.healthy, isFalse);
-        expect(res.failReason, contains('超时'));
+        expect(res.failReason, LocaleKeys.e2bHealthCheckTimeout.tr);
       },
     );
   });
@@ -444,7 +446,7 @@ void main() {
         );
 
         expect(result.success, isFalse);
-        expect(result.error, contains('安装失败'));
+        expect(result.error, contains('OpenCode binary not found'));
       },
     );
 
@@ -596,7 +598,7 @@ void main() {
         endpointUrl: 'https://4096-sbx-1.e2b.app',
       );
       expect(res.success, isFalse);
-      expect(res.error, contains('E2B API Key 不能为空'));
+      expect(res.error, LocaleKeys.e2bApiKeyEmptyError.tr);
     });
 
     test(

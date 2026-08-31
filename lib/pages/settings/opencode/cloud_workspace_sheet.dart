@@ -404,7 +404,9 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  '分支: $_branch',
+                                  LocaleKeys.e2bBranchPrefix.trParams({
+                                    'branch': _branch,
+                                  }),
                                   style: TextStyle(
                                     fontSize: 11.5,
                                     color: theme.colorScheme.onSurfaceVariant,

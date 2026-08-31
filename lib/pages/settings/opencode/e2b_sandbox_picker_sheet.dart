@@ -561,7 +561,9 @@ class _E2bSandboxPickerSheetState extends State<E2bSandboxPickerSheet> {
                               ),
                               if (sb.repoName.isNotEmpty)
                                 Text(
-                                  'Repo: ${sb.repoName}',
+                                  LocaleKeys.e2bRepoPrefix.trParams({
+                                    'repo': sb.repoName,
+                                  }),
                                   style: TextStyle(
                                     fontSize: 11,
                                     color: theme.colorScheme.primary,

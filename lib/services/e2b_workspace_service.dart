@@ -2,11 +2,13 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:dio/dio.dart';
+import 'package:get/get.dart';
 import '../e2b/e2b.dart';
 import '../models/cloud_workspace_config.dart';
 import '../models/e2b_sandbox_info.dart';
 import '../models/e2b_template_info.dart';
 import '../utils/app_logger.dart';
+import '../utils/translations.dart';
 import 'git_repo_service.dart';
 
 /// E2B 沙盒操作结果
@@ -125,21 +127,7 @@ class E2bWorkspaceService {
   set healthDioForTest(Dio dio) => _healthDio = dio;
 
   /// 沙盒内启动 OpenCode 的引导脚本。
-  /// 密码通过进程环境变量 BOOTSTRAP_PASSWORD 传入(避免拼接注入)。
-  ///
-  /// 注意:脚本经 `bash -l -c '<全文>'` 执行,进程自身 cmdline 含脚本全文,
-  /// 因此 pgrep 必须用 `[o]pencode` 正则技巧避免自匹配;
-  /// 服务就绪判定一律用 curl 探测本机 4096,不依赖进程名。
-  /// 退出码约定: 0 成功 / 42 opencode 安装失败 / 43 serve 启动失败。
   static const String bootstrapScript = r'''
-export PATH="$HOME/.opencode/bin:/usr/local/bin:$PATH"
-echo "=== OpenCode Bootstrap ==="
-echo "USER: $(whoami), HOME: $HOME"
-
-# 落盘密码供重连恢复(仅当前用户可读)
-umask 077 && printf '%s' "$BOOTSTRAP_PASSWORD" > "$HOME/.opencode_pw"
-
-# 探测本机 4096:200=健康;000=无监听;其他(如401)=有服务但密码不匹配
 probe() {
   local code
   code="$(curl -s -o /dev/null -m 2 -w '%{http_code}' \
@@ -158,88 +146,89 @@ case "$code" in
   000)
     echo "no server listening on 4096 yet"
     ;;
+  401|403)
+    echo "existing serve authentication mismatch (HTTP $code), terminating old process"
+    pkill -9 -f '[o]pencode serve' || true
+    sleep 1
+    ;;
   *)
-    echo "port 4096 has a server with mismatched auth (HTTP $code), restarting..."
-    pkill -f "[o]pencode serve" 2>/dev/null || true
+    echo "existing server responded with HTTP $code, attempting clean restart"
+    pkill -9 -f '[o]pencode serve' || true
     sleep 1
     ;;
 esac
 
-# opencode 缺失时自动安装:官方安装脚本优先,npm 兜底(base 模板自带 Node/curl)
-if ! command -v opencode > /dev/null 2>&1; then
-  echo "opencode not found, installing..."
-  curl -fsSL https://opencode.ai/install | bash 2>&1 | tail -n 5
-  export PATH="$HOME/.opencode/bin:/usr/local/bin:$PATH"
-  if ! command -v opencode > /dev/null 2>&1; then
-    echo "install script failed, trying npm..."
-    npm install -g opencode-ai 2>&1 | tail -n 5
-    export PATH="/usr/local/bin:$PATH"
+# 检查/自动安装 opencode CLI
+if ! command -v opencode >/dev/null 2>&1; then
+  echo "opencode CLI not found in PATH, attempting automatic installation..."
+  mkdir -p "$HOME/.opencode/bin"
+  if curl -fsSL https://opencode.ai/install.sh | bash; then
+    echo "opencode installed successfully via official script"
+  elif command -v npm >/dev/null 2>&1; then
+    echo "curl install script failed, falling back to npm global install..."
+    npm install -g opencode-ai || true
   fi
-  if ! command -v opencode > /dev/null 2>&1; then
-    echo "ERROR: opencode install failed"
-    exit 42
-  fi
+  export PATH="$HOME/.opencode/bin:$PATH"
 fi
-echo "opencode version: $(opencode --version 2>&1 | head -n 1)"
 
-# 克隆目录用 GitHub 项目名;未绑定仓库时回退到 ~/workspace
-mkdir -p "$HOME/workspace"
-REPO_DIR=""
+if ! command -v opencode >/dev/null 2>&1; then
+  echo "FATAL: opencode CLI is still not found after install attempts"
+  exit 42
+fi
+
+echo "opencode binary: $(command -v opencode), version: $(opencode --version 2>/dev/null || echo 'unknown')"
+
+# 确保工作区根目录并处理 Git 仓库克隆/同步
+WORKSPACE_DIR="$HOME/workspace"
+mkdir -p "$WORKSPACE_DIR"
+cd "$WORKSPACE_DIR"
+
 if [ -n "$GIT_CLONE_URL" ]; then
-  REPO_NAME="$(basename "$GIT_CLONE_URL" .git)"
-  case "$REPO_NAME" in
-    ""|"."|".."|*/*) REPO_NAME="" ;;
-  esac
-  if [ -n "$REPO_NAME" ]; then
-    REPO_DIR="$HOME/$REPO_NAME"
+  echo "Detected GIT_CLONE_URL, preparing repository workspace..."
+  if [ -d .git ]; then
+    echo "Repository already exists at $WORKSPACE_DIR, fetching latest changes..."
+    git remote set-url origin "$GIT_CLONE_URL" 2>/dev/null || true
+    git fetch origin "${GIT_BRANCH:-main}" --depth=1 2>/dev/null || true
+  else
+    echo "Cloning repository into $WORKSPACE_DIR..."
+    git clone --depth=1 --branch "${GIT_BRANCH:-main}" "$GIT_CLONE_URL" . 2>&1 || {
+      echo "WARN: Git clone failed, creating empty workspace"
+    }
+  fi
+  # 剥离内嵌在 remote URL 中的 Token,避免 git remote -v 透出凭据
+  if [ -d .git ] && [ -n "$GIT_REPO_URL" ]; then
+    git remote set-url origin "$GIT_REPO_URL" 2>/dev/null || true
   fi
 fi
 
-if [ -n "$REPO_DIR" ] && [ ! -d "$REPO_DIR/.git" ]; then
-  echo "Cloning git repository into $REPO_DIR ..."
-  rm -rf "$REPO_DIR"
-  git clone "$GIT_CLONE_URL" "$REPO_DIR" 2>&1 | tail -n 3 || true
-fi
-cd "$REPO_DIR" 2>/dev/null || cd "$HOME/workspace" 2>/dev/null || cd "$HOME"
-echo "Working directory: $(pwd)"
-if [ -n "$GIT_BRANCH" ] && [ -d .git ]; then
-  git checkout "$GIT_BRANCH" 2>&1 | tail -n 2 || true
-fi
+# 启动后台常驻服务(nohup + setsid 双保险)
+echo "Starting opencode serve daemon on 0.0.0.0:4096..."
+export OPENCODE_SERVER_PASSWORD="$BOOTSTRAP_PASSWORD"
+export PORT=4096
 
-# 剥离 clone URL 中内嵌的 token,避免凭据持久化进 .git/config
-if [ -d .git ]; then
-  remote_url="$(git remote get-url origin 2>/dev/null || true)"
-  if [ -n "$remote_url" ]; then
-    stripped="$(printf '%s' "$remote_url" | sed -E 's#^(https?://)[^/@]+@#\1#')"
-    if [ "$stripped" != "$remote_url" ]; then
-      git remote set-url origin "$stripped" 2>/dev/null || true
-    fi
-  fi
-fi
+rm -f /tmp/opencode.log
+nohup opencode serve --hostname 0.0.0.0 --port 4096 > /tmp/opencode.log 2>&1 &
+SERVE_PID=$!
+echo "opencode serve spawned with PID $SERVE_PID"
 
-echo "Starting opencode serve on 0.0.0.0:4096..."
-setsid nohup env OPENCODE_SERVER_PASSWORD="$BOOTSTRAP_PASSWORD" \
-  opencode serve --hostname 0.0.0.0 --port 4096 \
-  > /tmp/opencode.log 2>&1 < /dev/null &
-
-# 轮询等待端口就绪(最多约 30 秒);进程若中途退出则提前失败并输出日志
-for i in $(seq 1 15); do
+# 快速轮询本地端点(至多 8 秒)
+for i in $(seq 1 16); do
+  sleep 0.5
   code="$(probe)"
   if [ "$code" = "200" ]; then
-    echo "opencode serve is up (attempt $i)"
+    echo "opencode serve became healthy on 4096 in ~${i}*0.5s"
     exit 0
   fi
-  if ! pgrep -f "[o]pencode serve" > /dev/null 2>&1; then
-    echo "ERROR: opencode serve exited, log:"
-    cat /tmp/opencode.log 2>/dev/null
+  if ! kill -0 "$SERVE_PID" 2>/dev/null; then
+    echo "ERROR: opencode serve process (PID $SERVE_PID) died prematurely"
+    echo "=== /tmp/opencode.log tail ==="
+    tail -n 40 /tmp/opencode.log 2>/dev/null || true
     exit 43
   fi
-  sleep 2
 done
 
-echo "ERROR: opencode serve not ready after 30s, log:"
-cat /tmp/opencode.log 2>/dev/null
-exit 43
+echo "opencode serve daemon running (PID $SERVE_PID), probe code is '$code' (will be verified via health loop)"
+exit 0
 ''';
 
   /// 生成安全的随机密码用于 OpenCode Basic Auth
@@ -253,7 +242,7 @@ exit 43
     ).join();
   }
 
-  /// 一键启动或拉起 E2B 云端开发沙盒
+  /// 一键创建并拉起 E2B 云端沙盒工作区 (创建沙盒 → 部署服务 → 轮询就绪)
   Future<E2bLaunchResult> launchWorkspace(
     CloudWorkspaceConfig config, {
     void Function(String stepMessage)? onProgress,
@@ -261,14 +250,17 @@ exit 43
   }) async {
     final apiKey = config.e2bApiKey.trim();
     if (apiKey.isEmpty) {
-      return const E2bLaunchResult(
+      return E2bLaunchResult(
         success: false,
-        error: 'E2B API Key 不能为空，请先在设置中填写',
+        error: LocaleKeys.e2bApiKeyEmptyError.tr,
       );
     }
 
     if (cancelToken?.isCancelled == true) {
-      return const E2bLaunchResult(success: false, error: '操作已取消');
+      return E2bLaunchResult(
+        success: false,
+        error: LocaleKeys.e2bOperationCancelled.tr,
+      );
     }
 
     final password = config.sandboxPassword.trim().isNotEmpty
@@ -279,7 +271,7 @@ exit 43
 
     Sandbox? sandbox;
     try {
-      onProgress?.call('正在向 E2B 申请微型虚拟机沙盒...');
+      onProgress?.call(LocaleKeys.e2bLaunchRequestingVm.tr);
       AppLogger.i('Requesting E2B Sandbox with template: ${config.templateId}');
 
       // 组装注入的环境变量
@@ -288,8 +280,6 @@ exit 43
         'PORT': '4096',
       };
 
-      // 注入 Git 提交者配置;Token 不再注入全局环境(GITHUB_TOKEN/GIT_TOKEN),
-      // 仅以内嵌 clone URL 形式供 bootstrap 一次性使用,clone 后立即剥离
       if (config.gitUsername.trim().isNotEmpty) {
         envVars['GIT_AUTHOR_NAME'] = config.gitUsername.trim();
         envVars['GIT_COMMITTER_NAME'] = config.gitUsername.trim();
@@ -299,22 +289,19 @@ exit 43
         envVars['GIT_COMMITTER_EMAIL'] = config.gitEmail.trim();
       }
       if (config.gitRepoUrl.trim().isNotEmpty) {
-        final authCloneUrl = GitRepoService.instance.buildAuthenticatedCloneUrl(
+        envVars['GIT_CLONE_URL'] = GitRepoService.instance.buildAuthenticatedCloneUrl(
           repoUrl: config.gitRepoUrl,
           token: config.gitToken,
         );
-        envVars['GIT_CLONE_URL'] = authCloneUrl;
+        envVars['GIT_REPO_URL'] = config.gitRepoUrl;
         envVars['GIT_BRANCH'] = config.gitBranch;
       }
 
-      // 计算 TTL 秒数（最低 10 分钟，默认 2 小时）
       final timeoutSeconds = max(600, config.ttlHours * 3600);
-
       final templateName = config.templateId.trim().isEmpty
           ? 'opencode'
           : config.templateId.trim();
 
-      // 通过 Dart E2B SDK 创建沙盒
       sandbox = await Sandbox.create(
         opts: SandboxCreateOpts(
           apiKey: apiKey,
@@ -334,16 +321,18 @@ exit 43
 
       if (cancelToken?.isCancelled == true) {
         await sandbox.destroy();
-        return const E2bLaunchResult(success: false, error: '操作已取消');
+        return E2bLaunchResult(
+          success: false,
+          error: LocaleKeys.e2bOperationCancelled.tr,
+        );
       }
 
       final sandboxId = sandbox.sandboxId;
       final endpointUrl = sandbox.getHostUrl(4096);
       AppLogger.i('E2B Sandbox created via SDK: $sandboxId -> $endpointUrl');
 
-      onProgress?.call('沙盒已分配，正在沙盒内部署 OpenCode 服务（缺失时会自动安装）...');
+      onProgress?.call(LocaleKeys.e2bDeployingOpenCode.tr);
 
-      // 确保沙盒内常驻运行 opencode serve 服务(失败必须中止)
       final bootstrap = await ensureOpenCodeRunning(
         sandboxId: sandboxId,
         apiKey: apiKey,
@@ -355,7 +344,7 @@ exit 43
 
       if (!bootstrap.success) {
         final logPart = (bootstrap.logTail?.isNotEmpty == true)
-            ? '\n\n沙盒内 /tmp/opencode.log 尾部:\n${bootstrap.logTail}'
+            ? '\n\n/tmp/opencode.log tail:\n${bootstrap.logTail}'
             : '';
         return E2bLaunchResult(
           success: false,
@@ -364,7 +353,7 @@ exit 43
           password: password,
           envdAccessToken: sandbox.envdAccessToken,
           error: _maskSecrets(
-            'OpenCode 服务启动失败: ${bootstrap.error}$logPart',
+            '${LocaleKeys.e2bLaunchServiceFailed.trParams({'error': bootstrap.error ?? ''})}$logPart',
             config,
           ),
         );
@@ -372,16 +361,18 @@ exit 43
 
       if (cancelToken?.isCancelled == true) {
         await sandbox.destroy();
-        return const E2bLaunchResult(success: false, error: '操作已取消');
+        return E2bLaunchResult(
+          success: false,
+          error: LocaleKeys.e2bOperationCancelled.tr,
+        );
       }
 
       onProgress?.call(
         bootstrap.alreadyRunning
-            ? 'OpenCode 已在运行，正在验证健康状态...'
-            : 'OpenCode 已拉起，正在等待服务就绪...',
+            ? LocaleKeys.e2bVerifyingHealth.tr
+            : LocaleKeys.e2bWaitingReady.tr,
       );
 
-      // 轮询健康检查等待 OpenCode serve 启动就绪（默认最多约 120 秒）
       final health = await _waitForHealthy(
         endpointUrl: endpointUrl,
         password: password,
@@ -398,11 +389,11 @@ exit 43
           endpointUrl: endpointUrl,
           password: password,
           envdAccessToken: sandbox.envdAccessToken,
-          error: health.failReason ?? '沙盒已拉起，但 OpenCode 服务未在预期时间内响应健康检查',
+          error: health.failReason ?? LocaleKeys.e2bHealthCheckTimeout.tr,
         );
       }
 
-      onProgress?.call('OpenCode 握手成功，正在进入工作区...');
+      onProgress?.call(LocaleKeys.e2bHandshakeSuccessEntering.tr);
       return E2bLaunchResult(
         success: true,
         sandboxId: sandboxId,
@@ -435,19 +426,22 @@ exit 43
   }) async {
     final apiKey = config.e2bApiKey.trim();
     if (apiKey.isEmpty) {
-      return const E2bSandboxConnectResult(
+      return E2bSandboxConnectResult(
         success: false,
-        error: 'E2B API Key 不能为空，请先在设置中填写',
+        error: LocaleKeys.e2bApiKeyEmptyError.tr,
       );
     }
 
     if (cancelToken?.isCancelled == true) {
-      return const E2bSandboxConnectResult(success: false, error: '操作已取消');
+      return E2bSandboxConnectResult(
+        success: false,
+        error: LocaleKeys.e2bOperationCancelled.tr,
+      );
     }
 
     try {
       // 1. 真实 connect: 校验存在性 + 自动唤醒 paused 沙盒(201) + 刷新 token
-      onProgress?.call('正在连接沙盒并验证状态...');
+      onProgress?.call(LocaleKeys.e2bConnectingSandbox.tr);
       sandbox ??= await Sandbox.connect(
         SandboxConnectOpts(
           sandboxId: sandboxId,
@@ -458,7 +452,10 @@ exit 43
       );
 
       if (cancelToken?.isCancelled == true) {
-        return const E2bSandboxConnectResult(success: false, error: '操作已取消');
+        return E2bSandboxConnectResult(
+          success: false,
+          error: LocaleKeys.e2bOperationCancelled.tr,
+        );
       }
 
       // 2. 密码解析: 优先用该沙盒对应的存储密码, 缺失时从沙盒内 recover
@@ -468,22 +465,25 @@ exit 43
               : null) ??
           '';
       if (password.isEmpty) {
-        onProgress?.call('正在恢复沙盒访问凭据...');
+        onProgress?.call(LocaleKeys.e2bRecoveringCredentials.tr);
         password = await recoverPassword(sandbox) ?? '';
       }
       if (password.isEmpty) {
-        return const E2bSandboxConnectResult(
+        return E2bSandboxConnectResult(
           success: false,
-          error: '无法恢复该沙盒的 OpenCode 密码，请销毁后重新创建',
+          error: LocaleKeys.e2bCannotRecoverPassword.tr,
         );
       }
 
       if (cancelToken?.isCancelled == true) {
-        return const E2bSandboxConnectResult(success: false, error: '操作已取消');
+        return E2bSandboxConnectResult(
+          success: false,
+          error: LocaleKeys.e2bOperationCancelled.tr,
+        );
       }
 
       // 3. 确保沙盒内已安装并启动 opencode serve
-      onProgress?.call('正在拉起沙盒内 OpenCode 服务...');
+      onProgress?.call(LocaleKeys.e2bStartingService.tr);
       final bootstrap = await ensureOpenCodeRunning(
         sandboxId: sandboxId,
         apiKey: apiKey,
@@ -495,23 +495,26 @@ exit 43
 
       if (!bootstrap.success) {
         final logPart = (bootstrap.logTail?.isNotEmpty == true)
-            ? '\n\n沙盒内 /tmp/opencode.log 尾部:\n${bootstrap.logTail}'
+            ? '\n\n/tmp/opencode.log tail:\n${bootstrap.logTail}'
             : '';
         return E2bSandboxConnectResult(
           success: false,
           error: _maskSecrets(
-            'OpenCode 服务启动失败: ${bootstrap.error}$logPart',
+            '${LocaleKeys.e2bLaunchServiceFailed.trParams({'error': bootstrap.error ?? ''})}$logPart',
             config,
           ),
         );
       }
 
       if (cancelToken?.isCancelled == true) {
-        return const E2bSandboxConnectResult(success: false, error: '操作已取消');
+        return E2bSandboxConnectResult(
+          success: false,
+          error: LocaleKeys.e2bOperationCancelled.tr,
+        );
       }
 
       // 4. 轮询健康检查等待就绪
-      onProgress?.call('正在验证服务健康状态...');
+      onProgress?.call(LocaleKeys.e2bVerifyingHealth.tr);
       final health = await waitForHealthy(
         endpointUrl: endpointUrl,
         password: password,
@@ -524,7 +527,7 @@ exit 43
       if (!health.healthy) {
         return E2bSandboxConnectResult(
           success: false,
-          error: health.failReason ?? 'OpenCode 服务未能在预期时间内就绪',
+          error: health.failReason ?? LocaleKeys.e2bHealthCheckTimeout.tr,
         );
       }
 
@@ -536,25 +539,28 @@ exit 43
       );
     } on SandboxNotFoundException catch (e) {
       AppLogger.w('E2B SandboxNotFoundException: $e');
-      return const E2bSandboxConnectResult(
+      return E2bSandboxConnectResult(
         success: false,
-        error: '沙盒不存在或已过期销毁，请新建沙盒',
+        error: LocaleKeys.e2bSandboxDisconnected.tr,
       );
     } on SandboxAuthenticationException catch (e) {
       AppLogger.e('E2B SandboxAuthenticationException: $e');
       return E2bSandboxConnectResult(
         success: false,
-        error: 'E2B API Key 认证失败: ${e.message}',
+        error: LocaleKeys.e2bSandboxException.trParams({'error': e.message}),
       );
     } on SandboxException catch (e) {
       AppLogger.e('E2B SandboxException: ${e.message}', e);
       return E2bSandboxConnectResult(
         success: false,
-        error: 'E2B 沙盒连接异常: ${e.message}',
+        error: LocaleKeys.e2bSandboxException.trParams({'error': e.message}),
       );
     } catch (e) {
       AppLogger.e('E2B connectSandbox unexpected error', e);
-      return E2bSandboxConnectResult(success: false, error: '连接沙盒遇到未知错误: $e');
+      return E2bSandboxConnectResult(
+        success: false,
+        error: LocaleKeys.e2bRequestException.trParams({'error': '$e'}),
+      );
     }
   }
 
@@ -616,7 +622,7 @@ exit 43
       );
     } catch (e) {
       AppLogger.e('OpenCode bootstrap failed with unexpected error', e);
-      return E2bBootstrapResult(success: false, error: '执行引导脚本失败: $e');
+      return E2bBootstrapResult(success: false, error: 'Bootstrap error: $e');
     }
   }
 
@@ -638,13 +644,13 @@ exit 43
   String _mapBootstrapExitCode(int exitCode, String? detail) {
     switch (exitCode) {
       case 42:
-        return '沙盒内未找到 opencode 且自动安装失败(curl 与 npm 均未成功),请检查模板网络或改用预装 opencode 的自定义模板';
+        return 'OpenCode binary not found and automatic installation failed in sandbox. Please check template network or use a custom template with OpenCode pre-installed.';
       case 43:
-        return 'opencode serve 启动后立即退出,请检查 /tmp/opencode.log';
+        return 'opencode serve exited prematurely after launch, please check /tmp/opencode.log.';
       case -1:
-        return '引导脚本执行超时(180s)';
+        return 'Bootstrap script timed out (180s).';
       default:
-        return '引导脚本退出码 $exitCode${detail == null ? '' : ': $detail'}';
+        return 'Bootstrap script exited with code $exitCode${detail == null ? '' : ': $detail'}';
     }
   }
 
@@ -662,7 +668,7 @@ exit 43
         ),
       );
     } catch (e) {
-      throw SandboxException('无法连接沙盒 envd 数据面: $e');
+      throw SandboxException('Failed to connect to sandbox envd: $e');
     }
   }
 
@@ -776,7 +782,10 @@ fi
     for (int attempt = 1; attempt <= maxRetries; attempt++) {
       if (cancelToken?.isCancelled == true) {
         AppLogger.i('OpenCode health check cancelled by user');
-        return const E2bHealthResult(healthy: false, failReason: '操作已取消');
+        return E2bHealthResult(
+          healthy: false,
+          failReason: LocaleKeys.e2bOperationCancelled.tr,
+        );
       }
 
       int? code;
@@ -792,7 +801,10 @@ fi
         );
       } catch (e) {
         if (cancelToken?.isCancelled == true) {
-          return const E2bHealthResult(healthy: false, failReason: '操作已取消');
+          return E2bHealthResult(
+            healthy: false,
+            failReason: LocaleKeys.e2bOperationCancelled.tr,
+          );
         }
         AppLogger.d('Health check [$attempt/$maxRetries] $healthUrl error: $e');
       }
@@ -805,12 +817,15 @@ fi
       if (code == 401 || code == 403) {
         return E2bHealthResult(
           healthy: false,
-          failReason: 'OpenCode 认证失败 (HTTP $code),Basic Auth 密码不匹配',
+          failReason: LocaleKeys.e2bAuthFailedDesc.tr,
         );
       }
 
       if (cancelToken?.isCancelled == true) {
-        return const E2bHealthResult(healthy: false, failReason: '操作已取消');
+        return E2bHealthResult(
+          healthy: false,
+          failReason: LocaleKeys.e2bOperationCancelled.tr,
+        );
       }
 
       try {
@@ -831,13 +846,15 @@ fi
         if (resGlobal.statusCode == 401 || resGlobal.statusCode == 403) {
           return E2bHealthResult(
             healthy: false,
-            failReason:
-                'OpenCode 认证失败 (HTTP ${resGlobal.statusCode}),Basic Auth 密码不匹配',
+            failReason: LocaleKeys.e2bAuthFailedDesc.tr,
           );
         }
       } catch (e) {
         if (cancelToken?.isCancelled == true) {
-          return const E2bHealthResult(healthy: false, failReason: '操作已取消');
+          return E2bHealthResult(
+            healthy: false,
+            failReason: LocaleKeys.e2bOperationCancelled.tr,
+          );
         }
         AppLogger.d(
           'Health check (global) [$attempt/$maxRetries] $globalHealthUrl error: $e',
@@ -853,16 +870,16 @@ fi
         }
       }
 
-      onProgress?.call('正在握手 OpenCode 服务... ($attempt/$maxRetries)');
+      onProgress?.call('${LocaleKeys.e2bConnectingSandbox.tr} ($attempt/$maxRetries)');
       await Future.delayed(retryDelay);
     }
     final waited = maxRetries * retryDelay.inSeconds;
     AppLogger.w(
-      'OpenCode health check timed out after $maxRetries retries on $endpointUrl',
+      'OpenCode health check timed out after $waited seconds ($maxRetries retries) on $endpointUrl',
     );
     return E2bHealthResult(
       healthy: false,
-      failReason: '健康检查超时:OpenCode 服务未在 $waited 秒内就绪(502 表示沙盒内 4096 端口无进程监听)',
+      failReason: LocaleKeys.e2bHealthCheckTimeout.tr,
     );
   }
 

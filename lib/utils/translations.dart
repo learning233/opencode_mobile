@@ -230,6 +230,23 @@ class LocaleKeys {
   static const e2bCopySandboxId = "e2b_copy_sandbox_id";
   static const e2bProbingSandbox = "e2b_probing_sandbox";
   static const e2bSandboxLabel = "e2b_sandbox_label";
+  static const e2bDeployingOpenCode = "e2b_deploying_opencode";
+  static const e2bVerifyingHealth = "e2b_verifying_health";
+  static const e2bWaitingReady = "e2b_waiting_ready";
+  static const e2bHandshakeSuccessEntering = "e2b_handshake_success_entering";
+  static const e2bConnectingSandbox = "e2b_connecting_sandbox";
+  static const e2bRecoveringCredentials = "e2b_recovering_credentials";
+  static const e2bCannotRecoverPassword = "e2b_cannot_recover_password";
+  static const e2bStartingService = "e2b_starting_service";
+  static const e2bSyncingGitRepo = "e2b_syncing_git_repo";
+  static const e2bUpdatingGitRepo = "e2b_updating_git_repo";
+  static const e2bHealthCheckTimeout = "e2b_health_check_timeout";
+  static const e2bLaunchServiceFailed = "e2b_launch_service_failed";
+  static const e2bSandboxException = "e2b_sandbox_exception";
+  static const e2bRequestException = "e2b_request_exception";
+  static const e2bBranchPrefix = "e2b_branch_prefix";
+  static const e2bRepoPrefix = "e2b_repo_prefix";
+  static const e2bOperationCancelled = "e2b_operation_cancelled";
 
   // ── Settings – General ──
   static const secAppearance = "gen_sec_appearance";
@@ -1508,6 +1525,23 @@ class Messages extends Translations {
     LocaleKeys.e2bSandboxDisconnectedDesc: '@id · 在列表中点击连接',
     LocaleKeys.e2bNoActiveSandbox: '未连接云端沙盒',
     LocaleKeys.e2bNoActiveSandboxDesc: '新建或在列表中选择沙盒',
+    LocaleKeys.e2bDeployingOpenCode: '沙盒已分配，正在沙盒内部署 OpenCode 服务...',
+    LocaleKeys.e2bVerifyingHealth: 'OpenCode 已在运行，正在验证健康状态...',
+    LocaleKeys.e2bWaitingReady: 'OpenCode 已拉起，正在等待服务就绪...',
+    LocaleKeys.e2bHandshakeSuccessEntering: 'OpenCode 握手成功，正在进入工作区...',
+    LocaleKeys.e2bConnectingSandbox: '正在连接沙盒并验证状态...',
+    LocaleKeys.e2bRecoveringCredentials: '正在恢复沙盒访问凭据...',
+    LocaleKeys.e2bCannotRecoverPassword: '无法恢复该沙盒的 OpenCode 密码，请销毁后重新创建',
+    LocaleKeys.e2bStartingService: '正在拉起沙盒内 OpenCode 服务...',
+    LocaleKeys.e2bSyncingGitRepo: '正在同步 Git 仓库代码...',
+    LocaleKeys.e2bUpdatingGitRepo: '正在更新 Git 仓库代码...',
+    LocaleKeys.e2bHealthCheckTimeout: '沙盒已拉起，但 OpenCode 服务未在预期时间内响应健康检查',
+    LocaleKeys.e2bLaunchServiceFailed: 'OpenCode 服务启动失败: @error',
+    LocaleKeys.e2bSandboxException: 'E2B 沙盒异常: @error',
+    LocaleKeys.e2bRequestException: 'E2B 请求异常: @error',
+    LocaleKeys.e2bBranchPrefix: '分支: @branch',
+    LocaleKeys.e2bRepoPrefix: '仓库: @repo',
+    LocaleKeys.e2bOperationCancelled: '操作已取消',
     LocaleKeys.e2bFetchingSandboxes: '正在获取 E2B 沙盒列表...',
     LocaleKeys.e2bFetchSandboxesFailed: '获取沙盒列表失败: @error',
     LocaleKeys.e2bStartedAt: '启动于 @time',
@@ -2798,6 +2832,30 @@ class Messages extends Translations {
     LocaleKeys.e2bSandboxDestroyFailed: 'Failed to destroy sandbox: @error',
     LocaleKeys.e2bCheckingStatus: 'Checking cloud sandbox status...',
     LocaleKeys.e2bSandboxConnected: 'Cloud sandbox connected',
+    LocaleKeys.e2bDeployingOpenCode:
+        'Sandbox allocated, deploying OpenCode server...',
+    LocaleKeys.e2bVerifyingHealth:
+        'OpenCode is running, verifying health status...',
+    LocaleKeys.e2bWaitingReady:
+        'OpenCode launched, waiting for service to be ready...',
+    LocaleKeys.e2bHandshakeSuccessEntering:
+        'Handshake succeeded, entering workspace...',
+    LocaleKeys.e2bConnectingSandbox:
+        'Connecting to sandbox and verifying status...',
+    LocaleKeys.e2bRecoveringCredentials: 'Recovering sandbox credentials...',
+    LocaleKeys.e2bCannotRecoverPassword:
+        'Cannot recover OpenCode password for this sandbox, please destroy and recreate',
+    LocaleKeys.e2bStartingService: 'Starting OpenCode service in sandbox...',
+    LocaleKeys.e2bSyncingGitRepo: 'Syncing Git repository...',
+    LocaleKeys.e2bUpdatingGitRepo: 'Updating Git repository...',
+    LocaleKeys.e2bHealthCheckTimeout:
+        'Sandbox started, but OpenCode did not respond to health check in time',
+    LocaleKeys.e2bLaunchServiceFailed: 'Failed to start OpenCode service: @error',
+    LocaleKeys.e2bSandboxException: 'E2B sandbox exception: @error',
+    LocaleKeys.e2bRequestException: 'E2B request exception: @error',
+    LocaleKeys.e2bBranchPrefix: 'Branch: @branch',
+    LocaleKeys.e2bRepoPrefix: 'Repo: @repo',
+    LocaleKeys.e2bOperationCancelled: 'Operation cancelled',
     LocaleKeys.e2bAuthFailedTitle: 'Sandbox service running (Auth Failed)',
     LocaleKeys.e2bAuthFailedDesc:
         'Password mismatch, please reconnect from list',

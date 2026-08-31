@@ -92,8 +92,10 @@ class CompactionSummaryWidget extends StatelessWidget {
     final dividerColor = theme.dividerColor.withValues(alpha: 0.3);
     final subColor = theme.textTheme.bodySmall?.color?.withValues(alpha: 0.5);
 
+    // Outer vertical padding is deliberately small: the rest moved inside the
+    // InkWell so the tap target is tall enough while visual spacing stays put.
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 16),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: InkWell(
         onTap: isCompacting || summary.trim().isEmpty
             ? null
@@ -103,7 +105,7 @@ class CompactionSummaryWidget extends StatelessWidget {
           children: [
             Expanded(child: Container(height: 0.5, color: dividerColor)),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [

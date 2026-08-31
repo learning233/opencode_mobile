@@ -244,6 +244,12 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     _allModels.clear();
     availableModels.clear();
 
+    // 冷启动/切项目先按本地持久化乐观恢复页签：GET /session 返回前不渲染
+    // "新建会话"空态页，激活会话的消息走 SWR 缓存首帧。只读库不写库
+    // （_activateSessionWithoutPersist 不持久化），服务端校验由 fetchSessions
+    // 成功后的 _restoreOpenedSessions 裁剪。
+    _optimisticRestoreOpenedTabs(directory);
+
     // Re-fetch for new project
     fetchModels();
     fetchSessions();
@@ -765,6 +771,19 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     }
   }
 
+  /// 冷启动/切项目时按本地持久化乐观恢复页签：先渲染上次的页签与激活会话，
+  /// 避免等 GET /session 返回期间显示"新建会话"空态页。只读库不写库；
+  /// 会话已从服务端删除的页签由 [_restoreOpenedSessions] 校验后移除。
+  void _optimisticRestoreOpenedTabs(String projectKey) {
+    final saved = Global.openedSessionIdsForProject(projectKey);
+    if (saved.isEmpty) return;
+    AppLogger.i(
+      '📂 [OpenedSessions] Optimistic restore for project [$projectKey]: $saved',
+    );
+    openedSessionIds.assignAll(saved);
+    _activateSessionWithoutPersist(saved.first);
+  }
+
   void _restoreOpenedSessions() {
     final projectKey = Get.isRegistered<ProjectController>()
         ? (Get.find<ProjectController>().activeProject.value?.worktree ?? '')
@@ -773,30 +792,40 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     AppLogger.i(
       '📂 [OpenedSessions] Reading for project [$projectKey]: saved=$saved',
     );
-    if (saved.isNotEmpty) {
-      // Only keep sessions that still exist on the server
-      final valid = saved
-          .where((id) => sessions.any((s) => s.id == id))
-          .toList();
-      AppLogger.i(
-        '✅ [OpenedSessions] Restored valid sessions for [$projectKey]: $valid',
-      );
-      openedSessionIds.assignAll(valid);
+    if (saved.isEmpty && openedSessionIds.isEmpty) return;
 
-      // Auto-select the first valid opened session
-      if (valid.isNotEmpty && activeSessionId.value.isEmpty) {
-        _activateSessionWithoutPersist(valid.first);
-      }
+    // 内存列表为准（乐观恢复或恢复窗口内用户增删页签后的最新状态；增删都会
+    // 同步写库，但写库入队是异步的，此刻读库未必可见），仅在会话列表已加载
+    // 时裁掉服务端已不存在的会话；内存为空才退回按存储恢复（非乐观路径）。
+    final serverIds = sessions.map((s) => s.id).toSet();
+    final base = openedSessionIds.isNotEmpty
+        ? openedSessionIds.toList()
+        : saved;
+    final merged = base.where((id) => serverIds.contains(id)).toList();
+    openedSessionIds.assignAll(merged);
+    if (merged.isEmpty) {
+      // 全部页签在服务端已失效：回落到"新建会话"空态页。
+      if (activeSessionId.value.isNotEmpty) activeSessionId.value = '';
+      return;
+    }
+    AppLogger.i(
+      '✅ [OpenedSessions] Restored valid sessions for [$projectKey]: $merged',
+    );
 
-      // Prefetch the remaining restored tabs in the background so switching to
-      // them after restart is instant instead of a blocking full-history fetch
-      // on each tab switch. 在途去重由 loadMessages 的 in-flight 表兜底
-      // （H1）：selectSession / SSE 预填充在预取完成前到达时复用同一 Future，
-      // 不会并发重复发全量 GET。
-      for (final id in valid) {
-        if (id != activeSessionId.value) {
-          unawaited(loadMessages(id));
-        }
+    // 激活会话被裁剪（服务端已删）时回落到第一个有效页签；乐观恢复已设好
+    // 有效激活会话时不重复 loadMessages。
+    if (!merged.contains(activeSessionId.value)) {
+      _activateSessionWithoutPersist(merged.first);
+    }
+
+    // Prefetch the remaining restored tabs in the background so switching to
+    // them after restart is instant instead of a blocking full-history fetch
+    // on each tab switch. 在途去重由 loadMessages 的 in-flight 表兜底
+    // （H1）：selectSession / SSE 预填充在预取完成前到达时复用同一 Future，
+    // 不会并发重复发全量 GET。
+    for (final id in merged) {
+      if (id != activeSessionId.value) {
+        unawaited(loadMessages(id));
       }
     }
   }

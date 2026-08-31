@@ -21,20 +21,34 @@ class EntryInfo {
   });
 
   factory EntryInfo.fromJson(Map<String, dynamic> json) {
-    final typeStr = (json['type'] ?? json['file_type'] ?? '').toString().toLowerCase();
-    final type = typeStr.contains('dir')
-        ? EntryType.directory
-        : (typeStr.contains('sym') ? EntryType.symlink : EntryType.file);
+    final raw = (json['type'] ?? json['file_type'] ?? '').toString();
+    final typeStr = raw.toLowerCase();
+    final type = _parseType(typeStr);
 
+    final sizeRaw = json['size'];
+    final size = sizeRaw is String
+        ? (int.tryParse(sizeRaw) ?? 0)
+        : ((sizeRaw as num?)?.toInt() ?? 0);
+
+    final modifiedRaw = json['modifiedTime'] ?? json['modified_time'] ?? json['modified_at'];
     return EntryInfo(
       name: json['name']?.toString() ?? '',
       path: json['path']?.toString() ?? '',
       type: type,
-      size: (json['size'] as num?)?.toInt() ?? 0,
-      modifiedAt: json['modified_at'] != null
-          ? DateTime.tryParse(json['modified_at'].toString())
+      size: size,
+      modifiedAt: modifiedRaw != null
+          ? DateTime.tryParse(modifiedRaw.toString())
           : null,
     );
+  }
+
+  /// 兼容 proto3 JSON 枚举名（FILE_TYPE_DIRECTORY 等）与旧 HTTP 简写（dir/file/symlink）
+  static EntryType _parseType(String typeStr) {
+    if (typeStr.contains('dir')) return EntryType.directory;
+    if (typeStr.contains('sym')) return EntryType.symlink;
+    if (typeStr.contains('file')) return EntryType.file;
+    if (typeStr.contains('unspecified')) return EntryType.unknown;
+    return typeStr.isEmpty ? EntryType.unknown : EntryType.file;
   }
 }
 

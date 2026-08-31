@@ -239,6 +239,7 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
             keyboardType: TextInputType.text,
             enableSuggestions: true,
             autocorrect: false,
+            obscureText: true,
             decoration: InputDecoration(
               labelText: LocaleKeys.e2bApiKey.tr,
               hintText: LocaleKeys.e2bApiKeyHint.tr,
@@ -305,6 +306,7 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
             keyboardType: TextInputType.text,
             enableSuggestions: true,
             autocorrect: false,
+            obscureText: true,
             decoration: InputDecoration(
               labelText: 'GitHub Personal Access Token (PAT)',
               hintText: 'ghp_xxxx (具备 repo 读写权限)',

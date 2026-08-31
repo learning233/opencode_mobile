@@ -30,6 +30,25 @@ class Commands {
     return result;
   }
 
+  /// 解析 end 事件的退出码。当前 envd 在 `status` 字符串里返回
+  /// (如 "exit status 3"),`exit_code` 已废弃且服务端不保证填充。
+  static int _parseExitCode(Map<dynamic, dynamic> end) {
+    final explicit = end['exit_code'] ?? end['exitCode'];
+    if (explicit is num) return explicit.toInt();
+    if (explicit is String) {
+      final parsed = int.tryParse(explicit);
+      if (parsed != null) return parsed;
+    }
+    final status = end['status']?.toString();
+    if (status != null) {
+      final match = RegExp(r'exit status (\d+)').firstMatch(status);
+      if (match != null) {
+        return int.tryParse(match.group(1)!) ?? 0;
+      }
+    }
+    return 0;
+  }
+
   /// 异步在沙盒内启动新进程，返回 CommandHandle。
   ///
   /// [CommandOpts.background] 为 true 时(对齐官方 JS SDK 语义):
@@ -47,15 +66,19 @@ class Commands {
 
     final stdoutBuffer = StringBuffer();
     final stderrBuffer = StringBuffer();
+    // 增量 UTF-8 解码：多字节字符跨帧时不能逐事件 decode，否则产生 U+FFFD
+    final stdoutDecoder = Utf8Decoder(allowMalformed: true);
+    final stderrDecoder = Utf8Decoder(allowMalformed: true);
     int exitCode = 0;
     String? exitError;
+    bool sawEndEvent = false;
+    bool sawEndStream = false;
 
     final payload = {
       'process': {
         'cmd': '/bin/bash',
         'args': ['-l', '-c', command],
         if (opts.cwd != null) 'cwd': opts.cwd,
-        if (opts.user != null) 'user': opts.user,
         if (opts.envs.isNotEmpty) 'envs': opts.envs,
       },
       'stdin': false,
@@ -66,6 +89,7 @@ class Commands {
       path: '/process.Process/Start',
       request: payload,
       cancelToken: cancelToken,
+      user: opts.user,
     );
 
     void completeResult() {
@@ -86,6 +110,17 @@ class Commands {
 
     final sub = stream.listen(
       (frame) {
+        // 0x02 尾帧:Connect trailer,可能携带服务端错误 {code,message}/{error}
+        if (frame.flag == ConnectFrameFlag.endOfStream) {
+          sawEndStream = true;
+          final trailer = frame.jsonMap;
+          final trailerError = trailer?['error'] ?? trailer?['message'];
+          if (trailerError != null && trailerError.toString().trim().isNotEmpty) {
+            exitError = 'envd 流式调用错误: $trailerError';
+          }
+          return;
+        }
+
         final map = frame.jsonMap;
         if (map == null) return;
 
@@ -107,37 +142,57 @@ class Commands {
             if (outBase64 != null) {
               String text;
               try {
-                text = utf8.decode(base64Decode(outBase64));
+                text = stdoutDecoder.convert(base64Decode(outBase64));
               } catch (_) {
                 text = outBase64;
               }
-              stdoutBuffer.write(text);
-              opts.onStdout?.call(text);
+              if (text.isNotEmpty) {
+                stdoutBuffer.write(text);
+                opts.onStdout?.call(text);
+              }
             }
 
             if (errBase64 != null) {
               String text;
               try {
-                text = utf8.decode(base64Decode(errBase64));
+                text = stderrDecoder.convert(base64Decode(errBase64));
               } catch (_) {
                 text = errBase64;
               }
-              stderrBuffer.write(text);
-              opts.onStderr?.call(text);
+              if (text.isNotEmpty) {
+                stderrBuffer.write(text);
+                opts.onStderr?.call(text);
+              }
             }
           }
 
-          // 3. end 事件 (proto 字段为 exit_code,JSON codec 下兼容 exitCode)
+          // 3. end 事件:优先解析当前规范的 status 字符串,兼容旧 exit_code/exitCode
           if (event['end'] is Map) {
             final end = event['end'];
-            exitCode = ((end['exit_code'] ?? end['exitCode']) as num?)
-                    ?.toInt() ??
-                0;
+            sawEndEvent = true;
+            exitCode = _parseExitCode(end);
             exitError = end['error']?.toString();
           }
         }
       },
-      onDone: completeResult,
+      onDone: () {
+        // 冲刷残留的多字节 UTF-8 序列
+        try {
+          final rest = stdoutDecoder.convert(const []);
+          if (rest.isNotEmpty) stdoutBuffer.write(rest);
+        } catch (_) {}
+        try {
+          final rest = stderrDecoder.convert(const []);
+          if (rest.isNotEmpty) stderrBuffer.write(rest);
+        } catch (_) {}
+        // 流结束但从未收到 end 事件 = 命令未正常完成,不能静默按成功处理
+        if (exitError == null && !sawEndEvent) {
+          exitError = sawEndStream
+              ? '进程流在收到 end 事件前被服务端关闭'
+              : '进程流异常结束,未收到 end 事件';
+        }
+        completeResult();
+      },
       onError: (Object e) {
         if (!pidCompleter.isCompleted) pidCompleter.completeError(e);
         if (!completer.isCompleted) completer.completeError(e);

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
+import '../models/errors.dart';
 import '../models/pty_models.dart';
 import '../transport/connect_transport.dart';
 
@@ -20,12 +21,13 @@ class Pty {
     final payload = {
       'process': {
         'cmd': '/bin/bash',
-        'args': ['-l'],
+        'args': ['-i', '-l'],
         if (opts.cwd != null) 'cwd': opts.cwd,
-        if (opts.user != null) 'user': opts.user,
         'envs': {
           'TERM': 'xterm-256color',
           'COLORTERM': 'truecolor',
+          'LANG': 'C.UTF-8',
+          'LC_ALL': 'C.UTF-8',
           ...opts.envs,
         },
       },
@@ -37,9 +39,13 @@ class Pty {
       path: '/process.Process/Start',
       request: payload,
       cancelToken: cancelToken,
+      user: opts.user,
     );
 
-    stream.listen(
+    // 保存订阅,超时/失败/回调退出时取消,避免悬空监听占用连接
+    late final StreamSubscription<ConnectFrame> sub;
+    var pidReceived = false;
+    sub = stream.listen(
       (frame) {
         final map = frame.jsonMap;
         if (map == null) return;
@@ -48,6 +54,7 @@ class Pty {
         if (event is Map) {
           if (event['start'] is Map) {
             final pid = (event['start']['pid'] as num?)?.toInt() ?? 0;
+            pidReceived = true;
             if (!pidCompleter.isCompleted) pidCompleter.complete(pid);
           }
 
@@ -64,12 +71,29 @@ class Pty {
       onError: (e) {
         if (!pidCompleter.isCompleted) pidCompleter.completeError(e);
       },
+      onDone: () {
+        // 流结束但未收到 start 事件 = PTY 启动失败
+        if (!pidReceived && !pidCompleter.isCompleted) {
+          pidCompleter.completeError(
+            const SandboxException('PTY 创建失败: 未收到 start 事件,流已结束'),
+          );
+        }
+      },
     );
 
-    final pid = await pidCompleter.future.timeout(
-      const Duration(seconds: 15),
-      onTimeout: () => 0,
-    );
+    int pid;
+    try {
+      pid = await pidCompleter.future.timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          unawaited(sub.cancel());
+          throw const SandboxException('PTY 创建超时: 15 秒内未收到 start 事件');
+        },
+      );
+    } catch (e) {
+      unawaited(sub.cancel());
+      rethrow;
+    }
 
     return PtyHandle(
       pid: pid,

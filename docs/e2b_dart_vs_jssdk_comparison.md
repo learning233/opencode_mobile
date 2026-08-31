@@ -46,12 +46,12 @@
 
 | JS SDK (`sandbox/commands/index.ts`) | Dart SDK (`services/commands.dart`) | 比对说明 |
 | :--- | :--- | :--- |
-| `commands.run(cmd, opts)` | `commands.run(cmd, opts)` | ✅ 阻塞等待执行完毕，返回 `CommandResult` |
+| `commands.run(cmd, opts)` | `commands.run(cmd, opts)` | ✅ 退出码从 `end.status` 解析（`exit_code` 已废弃） |
 | `commands.run(cmd, { background: true })` | `commands.start(cmd, opts)` | ✅ 异步启动，返回 `CommandHandle` (含 `pid`) |
 | `handle.wait()` | `handle.wait()` | ✅ 等待后台进程执行完成并获取结果 |
 | `handle.kill()` | `handle.kill()` | ✅ 发送 SIGTERM / SIGKILL 终止进程 |
-| `handle.sendStdin(data)` | `handle.sendStdin(data)` | ✅ 向进程写入标准输入 |
-| `handle.closeStdin()` | `handle.closeStdin()` | ✅ 发送 EOF 关闭输入流 |
+| `handle.sendStdin(data)` | `handle.sendStdin(data)` | ⚠️ 需命令以 `stdin:true` 启动；当前实现固定 `stdin:false`，此方法实际不可用 |
+| `handle.closeStdin()` | `handle.closeStdin()` | ⚠️ 同上，受 `stdin:false` 限制 |
 | `commands.connect(pid, opts)` | *(可直接通过 handle)* | ℹ️ JS SDK 额外支持对已存在 pid 进行重连 attach |
 
 ---
@@ -64,10 +64,10 @@
 | `files.read(path, { format: 'bytes' })`| `files.readBytes(path, user)` | ✅ 二进制字节读取 |
 | `files.write(path, data, opts)` | `files.write(path, data, user)` | ✅ 文本写入 |
 | `files.write(path, bytes, opts)` | `files.writeBytes(path, bytes)` | ✅ 二进制写入（基于 Octet-Stream） |
-| `files.list(path)` | `files.list(path)` | ✅ 列出目录项（返回 `List<EntryInfo>`） |
+| `files.list(path)` | `files.list(path)` | ✅ 走 `ListDir` RPC（含 depth=1） |
 | `files.makeDir(path)` | `files.makeDir(path)` | ✅ 创建目录 |
 | `files.remove(path)` | `files.remove(path)` | ✅ 删除文件/目录 |
-| `files.exists(path)` | `files.exists(path)` | ✅ 检查文件/目录是否存在 |
+| `files.exists(path)` | `files.exists(path)` | ✅ 走 `Stat` RPC；仅 NotFound 返回 false |
 | `files.watchDir(path)` | *(通过 ConnectTransport 流接收)* | ℹ️ 目录实时变动长连接事件流 |
 
 ---
@@ -87,11 +87,11 @@
 
 | JS SDK (`sandbox/git/index.ts`) | Dart SDK (`services/git.dart`) | 比对说明 |
 | :--- | :--- | :--- |
-| `git.clone(url, opts)` | `git.clone(url, targetDir, branch)`| ✅ 注入 `GIT_TERMINAL_PROMPT=0` 防交互卡死 |
-| `git.checkout(branch)` | `git.checkout(branch, cwd)` | ✅ 分支检出 |
+| `git.clone(url, opts)` | `git.clone(url, targetDir, branch)`| ✅ 参数已 shell-quote；注入 `GIT_TERMINAL_PROMPT=0` |
+| `git.checkout(branch)` | `git.checkout(branch, cwd)` | ✅ 分支检出（已 shell-quote） |
 | `git.status()` | `git.status(cwd)` | ✅ `git status --porcelain` 解析 |
-| `git.commit(msg)` | `git.commit(msg, cwd)` | ✅ 自动 `add -A` 并提交 |
-| `git.push(opts)` | `git.push(remote, branch, cwd)` | ✅ 推送远端 |
+| `git.commit(msg)` | `git.commit(msg, cwd)` | ✅ 自动 `add -A` 并提交（已 shell-quote） |
+| `git.push(opts)` | `git.push(remote, branch, cwd)` | ✅ 推送远端（已 shell-quote） |
 
 ---
 
@@ -128,6 +128,6 @@ graph LR
 
 ## 四、比对总结
 
-1. **核心覆盖率**：针对 OpenCode Mobile 移动端运行所需的所有功能（沙盒生命周期、进程执行与后台守护、PTY 终端流、Git 仓库克隆检出、文件读写签名），Dart SDK 的覆盖率达到 **100%**。
+1. **核心覆盖率**：针对 OpenCode Mobile 移动端运行所需的主要功能（沙盒生命周期、进程执行与后台守护、PTY 终端流、Git 仓库克隆检出、文件读写签名）Dart SDK 均已实现，但**不是协议 100% 对齐**：命令 stdin 默认关闭、PTY 需 `-i` 交互参数、文件目录走 `ListDir`/`Stat`、退出码解析 `status`、文件签名参数为 `signature_expiration` 等细节与官方 SDK 存在差异，详见上文各表。
 2. **免除了 Node 外部依赖**：用 Dart 原生实现了 Connect-RPC 的封包/解包与流处理，无需引入庞大的 gRPC 外部三方编译链，体积极其小巧。
 3. **架构清晰解耦**：完全复刻了 JS SDK 的 `Sandbox` -> `Commands` / `Files` / `Pty` / `Git` 树状门面结构，调用方式与官方文档一致。

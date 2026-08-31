@@ -22,7 +22,7 @@ class Git {
       args.add(targetDir);
     }
 
-    final cmd = 'git ${args.join(" ")}';
+    final cmd = 'git ${args.map(_shellQuote).join(' ')}';
     return commands.run(
       cmd,
       opts: const CommandOpts(
@@ -34,7 +34,7 @@ class Git {
   /// 检出指定分支
   Future<CommandResult> checkout(String branch, {String? cwd}) async {
     return commands.run(
-      'git checkout $branch',
+      'git checkout ${_shellQuote(branch)}',
       opts: CommandOpts(cwd: cwd),
     );
   }
@@ -50,22 +50,31 @@ class Git {
 
   /// 提交变更
   Future<CommandResult> commit(String message, {String? cwd}) async {
-    final escapedMsg = message.replaceAll('"', '\\"');
     return commands.run(
-      'git add -A && git commit -m "$escapedMsg"',
+      'git add -A && git commit -m ${_shellQuote(message)}',
       opts: CommandOpts(cwd: cwd),
     );
   }
 
   /// 推送至远端
   Future<CommandResult> push({String? remote = 'origin', String? branch, String? cwd}) async {
-    final branchArg = (branch != null && branch.isNotEmpty) ? ' $branch' : '';
+    final effectiveRemote = (remote != null && remote.isNotEmpty) ? remote : 'origin';
+    final branchArg = (branch != null && branch.isNotEmpty)
+        ? ' ${_shellQuote(branch)}'
+        : '';
     return commands.run(
-      'git push $remote$branchArg',
+      'git push ${_shellQuote(effectiveRemote)}$branchArg',
       opts: CommandOpts(
         cwd: cwd,
         envs: const {'GIT_TERMINAL_PROMPT': '0'},
       ),
     );
+  }
+
+  /// POSIX shell 参数引用：仅含安全字符时不加引号，否则用单引号包裹并转义内嵌引号。
+  static String _shellQuote(String arg) {
+    if (arg.isEmpty) return "''";
+    if (RegExp(r'^[A-Za-z0-9_@%+=:,./-]+$').hasMatch(arg)) return arg;
+    return "'${arg.replaceAll("'", "'\"'\"'")}'";
   }
 }

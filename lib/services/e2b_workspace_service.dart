@@ -82,8 +82,25 @@ class E2bWorkspaceService {
   static const String e2bApiBase = 'https://api.e2b.app';
   static const Duration _defaultHttpTimeout = Duration(seconds: 15);
 
-  /// 判定 URL 是否为 E2B 云端沙盒端点(全局统一判据)
-  static bool isCloudUrl(String? url) => url != null && url.contains('e2b.app');
+  /// 判定 URL 是否为 E2B 云端沙盒端点(全局统一判据)。
+  /// 严格按 host 解析,覆盖官方支持域 e2b.app / e2b.dev / e2b.pro / e2b-staging.dev,
+  /// 避免把自建服务器(如含 e2b.app 的任意文本)误判为云端。
+  static const List<String> _cloudDomains = [
+    'e2b.app',
+    'e2b.dev',
+    'e2b.pro',
+    'e2b-staging.dev',
+  ];
+
+  static bool isCloudUrl(String? url) {
+    if (url == null || url.isEmpty) return false;
+    final host = Uri.tryParse(url)?.host;
+    if (host == null || host.isEmpty) return false;
+    for (final d in _cloudDomains) {
+      if (host == d || host.endsWith('.$d')) return true;
+    }
+    return false;
+  }
 
   final Dio _dio = Dio(
     BaseOptions(
@@ -188,6 +205,17 @@ if [ -n "$GIT_BRANCH" ] && [ -d .git ]; then
   git checkout "$GIT_BRANCH" 2>&1 | tail -n 2 || true
 fi
 
+# 剥离 clone URL 中内嵌的 token,避免凭据持久化进 .git/config
+if [ -d .git ]; then
+  remote_url="$(git remote get-url origin 2>/dev/null || true)"
+  if [ -n "$remote_url" ]; then
+    stripped="$(printf '%s' "$remote_url" | sed -E 's#^(https?://)[^/@]+@#\1#')"
+    if [ "$stripped" != "$remote_url" ]; then
+      git remote set-url origin "$stripped" 2>/dev/null || true
+    fi
+  fi
+fi
+
 echo "Starting opencode serve on 0.0.0.0:4096..."
 setsid nohup env OPENCODE_SERVER_PASSWORD="$BOOTSTRAP_PASSWORD" \
   opencode serve --hostname 0.0.0.0 --port 4096 \
@@ -257,11 +285,8 @@ exit 43
         'PORT': '4096',
       };
 
-      // 注入 Git 凭据与仓库配置
-      if (config.gitToken.trim().isNotEmpty) {
-        envVars['GITHUB_TOKEN'] = config.gitToken.trim();
-        envVars['GIT_TOKEN'] = config.gitToken.trim();
-      }
+      // 注入 Git 提交者配置;Token 不再注入全局环境(GITHUB_TOKEN/GIT_TOKEN),
+      // 仅以内嵌 clone URL 形式供 bootstrap 一次性使用,clone 后立即剥离
       if (config.gitUsername.trim().isNotEmpty) {
         envVars['GIT_AUTHOR_NAME'] = config.gitUsername.trim();
         envVars['GIT_COMMITTER_NAME'] = config.gitUsername.trim();
@@ -341,7 +366,10 @@ exit 43
           endpointUrl: endpointUrl,
           password: password,
           envdAccessToken: sandbox.envdAccessToken,
-          error: 'OpenCode 服务启动失败: ${bootstrap.error}$logPart',
+          error: _maskSecrets(
+            'OpenCode 服务启动失败: ${bootstrap.error}$logPart',
+            config,
+          ),
         );
       }
 
@@ -426,6 +454,7 @@ exit 43
           sandboxId: sandboxId,
           apiKey: apiKey,
           envdAccessToken: config.activeSandboxEnvdToken,
+          timeout: max(600, config.ttlHours * 3600),
         ),
       );
 
@@ -470,7 +499,10 @@ exit 43
             : '';
         return E2bSandboxConnectResult(
           success: false,
-          error: 'OpenCode 服务启动失败: ${bootstrap.error}$logPart',
+          error: _maskSecrets(
+            'OpenCode 服务启动失败: ${bootstrap.error}$logPart',
+            config,
+          ),
         );
       }
 
@@ -589,6 +621,21 @@ exit 43
       AppLogger.e('OpenCode bootstrap failed with unexpected error', e);
       return E2bBootstrapResult(success: false, error: '执行引导脚本失败: $e');
     }
+  }
+
+  /// 从错误/日志文本中抹掉已配置的敏感值(Git Token、沙盒密码),防止
+  /// clone 失败输出或日志尾部把凭据透出到 UI。
+  String _maskSecrets(String input, CloudWorkspaceConfig config) {
+    var out = input;
+    final token = config.gitToken.trim();
+    if (token.isNotEmpty && out.contains(token)) {
+      out = out.replaceAll(token, '***');
+    }
+    final pw = config.activeSandboxPassword ?? '';
+    if (pw.isNotEmpty && out.contains(pw)) {
+      out = out.replaceAll(pw, '***');
+    }
+    return out;
   }
 
   String _mapBootstrapExitCode(int exitCode, String? detail) {
@@ -924,7 +971,8 @@ fi
         opts: SandboxListOpts(apiKey: cleanKey),
         dio: _dio,
       );
-      final result = list.map((j) => E2bSandboxInfo.fromJson(j)).toList();
+      final result =
+          list.sandboxes.map((j) => E2bSandboxInfo.fromJson(j)).toList();
       AppLogger.i('Fetched ${result.length} E2B sandboxes via Sandbox.list');
       return result;
     } catch (e) {

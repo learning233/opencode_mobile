@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class ConnectionConfig {
   final String apiKey;
   final String domain;
@@ -52,6 +54,7 @@ class ConnectionConfig {
     required String sandboxId,
     int port = 49983,
     bool streaming = false,
+    String? user,
   }) {
     return {
       'Connect-Protocol-Version': '1',
@@ -61,8 +64,12 @@ class ConnectionConfig {
       'E2b-Sandbox-Id': sandboxId,
       'E2b-Sandbox-Port': port.toString(),
       if (envdAccessToken != null && envdAccessToken!.isNotEmpty)
-        'X-Access-Token': envdAccessToken!,
-      if (apiKey.isNotEmpty) 'X-API-Key': apiKey,
+        'X-Access-Token': envdAccessToken!
+      else if (apiKey.isNotEmpty)
+        'X-API-Key': apiKey,
+      // 官方用 Basic header 传递执行用户(process 请求体里没有 user 字段)
+      if (user != null && user.isNotEmpty)
+        'Authorization': 'Basic ${base64Encode(utf8.encode('$user:'))}',
       if (streaming) 'Keepalive-Ping-Interval': '50',
     };
   }

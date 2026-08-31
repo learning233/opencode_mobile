@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
+import '../models/errors.dart';
 import '../models/filesystem_models.dart';
 import '../transport/connect_transport.dart';
 import '../transport/signature.dart';
@@ -26,18 +27,7 @@ class Filesystem {
 
   /// 读取二进制文件内容
   Future<Uint8List> readBytes(String path, {String? user}) async {
-    final token = transport.config.envdAccessToken ?? transport.config.apiKey;
-    final sig = E2bSignature.getSignature(
-      path: path,
-      operation: 'read',
-      user: user ?? '',
-      expirationInSeconds: 300,
-      envdAccessToken: token,
-    );
-
-    final url =
-        '${transport.config.getSandboxEnvdUrl(sandboxId)}/files?path=${Uri.encodeComponent(path)}&signature=${sig.signature}&expiration=${sig.expiration ?? ''}&username=${Uri.encodeComponent(user ?? '')}';
-
+    final url = await _buildFileUrl(path, user: user, operation: 'read');
     final res = await _dio.get<List<int>>(
       url,
       options: Options(
@@ -56,18 +46,7 @@ class Filesystem {
 
   /// 写入二进制文件内容
   Future<void> writeBytes(String path, Uint8List data, {String? user}) async {
-    final token = transport.config.envdAccessToken ?? transport.config.apiKey;
-    final sig = E2bSignature.getSignature(
-      path: path,
-      operation: 'write',
-      user: user ?? '',
-      expirationInSeconds: 300,
-      envdAccessToken: token,
-    );
-
-    final url =
-        '${transport.config.getSandboxEnvdUrl(sandboxId)}/files?path=${Uri.encodeComponent(path)}&signature=${sig.signature}&expiration=${sig.expiration ?? ''}&username=${Uri.encodeComponent(user ?? '')}';
-
+    final url = await _buildFileUrl(path, user: user, operation: 'write');
     await _dio.post(
       url,
       options: Options(
@@ -80,12 +59,48 @@ class Filesystem {
     );
   }
 
+  /// 构造 /files 请求 URL。仅当存在 envdAccessToken 时生成签名（官方规范：
+  /// 无 token 的沙盒直接发无签名请求）；过期参数名必须是
+  /// `signature_expiration`，且用 Uri.queryParameters 正确编码 base64 中的 `+`。
+  Future<String> _buildFileUrl(
+    String path, {
+    String? user,
+    required String operation,
+  }) async {
+    final base = transport.config.getSandboxEnvdUrl(sandboxId);
+    final uri = Uri.parse('$base/files').replace(
+      queryParameters: {
+        'path': path,
+        if (user != null && user.isNotEmpty) 'username': user,
+      },
+    );
+
+    final token = transport.config.envdAccessToken;
+    if (token == null || token.isEmpty) return uri.toString();
+
+    final sig = E2bSignature.getSignature(
+      path: path,
+      operation: operation,
+      user: user ?? '',
+      expirationInSeconds: 300,
+      envdAccessToken: token,
+    );
+    return uri.replace(
+      queryParameters: {
+        ...uri.queryParameters,
+        'signature': sig.signature,
+        if (sig.expiration != null)
+          'signature_expiration': sig.expiration.toString(),
+      },
+    ).toString();
+  }
+
   /// 列出目录中的文件与子目录
   Future<List<EntryInfo>> list(String path) async {
     final res = await transport.unaryCall(
       sandboxId: sandboxId,
-      path: '/filesystem.Filesystem/List',
-      request: {'path': path},
+      path: '/filesystem.Filesystem/ListDir',
+      request: {'path': path, 'depth': 1},
     );
 
     final rawEntries = res['entries'] as List?;
@@ -115,12 +130,16 @@ class Filesystem {
     );
   }
 
-  /// 检查路径是否存在
+  /// 检查路径是否存在（走 Stat；仅 NotFound 返回 false，其余错误抛出）
   Future<bool> exists(String path) async {
     try {
-      final entries = await list(path);
-      return entries.isNotEmpty;
-    } catch (_) {
+      await transport.unaryCall(
+        sandboxId: sandboxId,
+        path: '/filesystem.Filesystem/Stat',
+        request: {'path': path},
+      );
+      return true;
+    } on SandboxNotFoundException {
       return false;
     }
   }

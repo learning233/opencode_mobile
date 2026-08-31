@@ -9,6 +9,16 @@ import 'services/pty.dart';
 import 'transport/connect_transport.dart';
 import 'transport/connection_config.dart';
 
+/// 沙盒列表分页结果
+class SandboxListResult {
+  final List<Map<String, dynamic>> sandboxes;
+
+  /// 下一页游标;为空表示没有更多
+  final String? nextToken;
+
+  const SandboxListResult({required this.sandboxes, this.nextToken});
+}
+
 /// E2B 沙盒实体类 (对应 JS/Python SDK 中的 Sandbox)
 class Sandbox {
   final String sandboxId;
@@ -260,8 +270,8 @@ class Sandbox {
     }
   }
 
-  /// 查询用户当前所有沙盒
-  static Future<List<Map<String, dynamic>>> list({
+  /// 查询用户当前所有沙盒 (v2 端点,支持分页)
+  static Future<SandboxListResult> list({
     SandboxListOpts opts = const SandboxListOpts(),
     Dio? dio,
   }) async {
@@ -274,13 +284,14 @@ class Sandbox {
 
     try {
       final res = await client.get(
-        '${config.apiUrl}/sandboxes',
+        '${config.apiUrl}/v2/sandboxes',
         options: Options(
           headers: config.getApiHeaders(),
           validateStatus: (status) => true,
         ),
         queryParameters: {
-          if (opts.states != null) 'state': opts.states,
+          // v2 接口的 state 参数要求逗号分隔(style: form, explode: false)
+          if (opts.states != null) 'state': opts.states!.join(','),
           'limit': opts.limit,
           if (opts.nextToken != null) 'nextToken': opts.nextToken,
         },
@@ -290,17 +301,27 @@ class Sandbox {
         _throwControlPlaneError(res.statusCode, res.data, '获取沙盒列表');
       }
 
+      List<Map<String, dynamic>> sandboxes;
       final data = res.data;
       if (data is List) {
-        return data.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
-      }
-      if (data is Map && data['sandboxes'] is List) {
-        return (data['sandboxes'] as List)
+        sandboxes = data
             .whereType<Map>()
             .map((e) => Map<String, dynamic>.from(e))
             .toList();
+      } else if (data is Map && data['sandboxes'] is List) {
+        sandboxes = (data['sandboxes'] as List)
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+      } else {
+        sandboxes = [];
       }
-      return [];
+
+      final nextToken = res.headers.value('x-next-token');
+      return SandboxListResult(
+        sandboxes: sandboxes,
+        nextToken: (nextToken == null || nextToken.isEmpty) ? null : nextToken,
+      );
     } on DioException catch (e) {
       throw SandboxException('获取沙盒列表失败: ${e.message}', cause: e);
     }

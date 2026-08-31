@@ -141,13 +141,13 @@ class GitRepoService {
     try {
       final uri = Uri.parse(cleanUrl);
       final host = uri.host;
-      final hostWithPort = uri.hasPort ? '$host:${uri.port}' : host;
-      final path = uri.path;
-
-      if (host.contains('github.com') || host.contains('gitlab.com')) {
-        return 'https://oauth2:$cleanToken@$hostWithPort$path';
-      }
-      return 'https://$cleanToken@$hostWithPort$path';
+      // 用 Uri.replace(userInfo: ...) 构造,自动对 token 做 URL 编码
+      final isGithubLike = host.contains('github.com') || host.contains('gitlab');
+      final userInfo = isGithubLike ? 'oauth2:$cleanToken' : cleanToken;
+      final updated = uri.replace(
+        userInfo: userInfo,
+      );
+      return updated.toString();
     } catch (_) {
       return cleanUrl;
     }

@@ -109,7 +109,8 @@ E2B 的 `envd` 服务（端口 49983）使用 Connect-RPC 协议标准。每次�
 | `E2b-Sandbox-Id` | `izz06i52v927k3g5dy73o` | 目标沙盒 ID，供边缘网关路由 |
 | `E2b-Sandbox-Port` | `49983` | 内部 envd 端口 |
 | `X-Access-Token` | `envd_token_***` | 沙盒专属访问令牌 |
-| `X-API-Key` | `e2b_***` | 用户 API Key（兜底凭证） |
+| `Authorization` | `Basic base64(user:)` | 可选:指定执行用户 |
+| `X-API-Key` | `e2b_***` | 仅当沙盒无 envdAccessToken 时兜底,不作为数据面常规凭据 |
 | `Keepalive-Ping-Interval` | `50` | 保持长连接心跳周期（秒） |
 
 ---
@@ -138,7 +139,8 @@ E2B 的 `envd` 服务（端口 49983）使用 Connect-RPC 协议标准。每次�
 * **响应帧事件 (`ProcessEvent`)**：
   - `start`：`{ "pid": 1234 }`
   - `data`：`{ "stdout": "<base64>", "stderr": "<base64>" }`
-  - `end`：`{ "exit_code": 0, "exited": true, "error": "" }`
+  - `end`：`{ "status": "exit status 0", "exited": true, "error": "" }`
+    (`exit_code` 已废弃且服务端不保证填充,客户端需从 `status` 解析退出码)
 
 #### (2) `SendInput` (Unary)
 * **端点**：`POST /process.Process/SendInput`
@@ -195,9 +197,12 @@ E2B 的 `envd` 服务（端口 49983）使用 Connect-RPC 协议标准。每次�
 
 ### 3. 文件子系统 (`filesystem.Filesystem`)
 
-* **文件读取**：`POST /filesystem.Filesystem/Read`（支持文本与二进制流）；
-* **文件写入**：`POST /filesystem.Filesystem/Write`；
-* **目录列出**：`POST /filesystem.Filesystem/List`；
+> 注:文件读写走 HTTP `GET/POST /files`(可选签名),目录操作为以下 RPC。
+
+* **目录列出**：`POST /filesystem.Filesystem/ListDir`（请求体含 `path` 与 `depth`）；
+* **文件/目录元信息**：`POST /filesystem.Filesystem/Stat`（`exists`/`getInfo` 依赖它）；
+* **创建目录**：`POST /filesystem.Filesystem/MakeDir`；
+* **删除**：`POST /filesystem.Filesystem/Remove`；
 * **目录监视**：`POST /filesystem.Filesystem/WatchDir`（Server Streaming 实时回传文件增删改事件）。
 
 ---
@@ -224,7 +229,7 @@ String generateSignature({
 
   final bytes = utf8.encode(raw);
   final digest = sha256.convert(bytes);
-  final base64Hash = base64Url.encode(digest.bytes).replaceAll('=', '');
+  final base64Hash = base64.encode(digest.bytes).replaceAll('=', '');
   return 'v1_$base64Hash';
 }
 ```

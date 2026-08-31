@@ -127,7 +127,10 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
       return;
     }
     if (mounted) setState(() => _cloudChecking = true);
-    final status = await E2bWorkspaceService.instance.probeSandboxHealth(url);
+    final status = await E2bWorkspaceService.instance.probeSandboxHealth(
+      url,
+      password: config.activeSandboxPassword,
+    );
     if (mounted) {
       setState(() {
         _activeProbeStatus = status;
@@ -296,6 +299,12 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
           await Global.settings.updateCloudWorkspaceConfig(
             (curr) => curr.copyWith(activeSandboxStatus: 'paused'),
           );
+          // 暂停当前沙盒后端点不可达,统一断开 keepalive / Sidecar / SSE
+          E2bWorkspaceService.instance.stopKeepAlive();
+          SidecarManager.instance.stop();
+          if (Get.isRegistered<SessionController>()) {
+            Get.find<SessionController>().disconnectSse();
+          }
         }
         Snack.success('沙盒 ${item.sandboxId} 已挂起休眠');
         await _fetchSandboxList();
@@ -371,6 +380,12 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
           await Global.settings.updateCloudWorkspaceConfig(
             (curr) => curr.copyWith(clearActiveSandbox: true),
           );
+          // 销毁当前沙盒后全局仍指向已失效端点,必须统一 teardown
+          E2bWorkspaceService.instance.stopKeepAlive();
+          SidecarManager.instance.stop();
+          if (Get.isRegistered<SessionController>()) {
+            Get.find<SessionController>().disconnectSse();
+          }
         }
         Snack.success('沙盒 ${item.sandboxId} 已销毁释放');
         await _fetchSandboxList();
@@ -524,7 +539,8 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
     final hasKey = cloudConfig.e2bApiKey.trim().isNotEmpty;
     final activeId = cloudConfig.activeSandboxId;
     // Global.serverUrl 仅在健康检查通过后写入,代表真实已建立的连接
-    final connectedNow = Global.serverUrl.contains('e2b.app') &&
+    final connectedNow =
+        E2bWorkspaceService.isCloudUrl(Global.serverUrl) &&
         activeId != null &&
         activeId.isNotEmpty &&
         Global.serverUrl.contains(activeId);

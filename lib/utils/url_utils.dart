@@ -52,6 +52,17 @@ String? buildPreviewUrl(String serverUrl, String port) {
   final uri = Uri.tryParse(normalizeWebUrl(serverUrl));
   if (uri == null || uri.host.isEmpty) return null;
 
+  final host = uri.host;
+  // E2B 云沙盒:预览端口是主机名前缀 {port}-{sandboxId}.{domain},
+  // 不是 host:port 形式。从 4096-{id}.e2b.app 解析出 id 后拼 {port}-{id}.{domain}。
+  final cloudMatch =
+      RegExp(r'^(\d+)-(.+?)\.([a-z0-9-]+(?:\.[a-z0-9-]+)+)$').firstMatch(host);
+  if (cloudMatch != null) {
+    final id = cloudMatch.group(2)!;
+    final domain = cloudMatch.group(3)!;
+    return 'https://$portNum-$id.$domain';
+  }
+
   final scheme = uri.scheme.isEmpty ? 'http' : uri.scheme;
   return '$scheme://${uri.host}:$portNum';
 }

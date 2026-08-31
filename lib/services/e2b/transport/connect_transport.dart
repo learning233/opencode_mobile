@@ -152,9 +152,14 @@ class ConnectTransport {
     required String path,
     required Map<String, dynamic> request,
     CancelToken? cancelToken,
+    String? user,
   }) async* {
     final url = '${config.getSandboxEnvdUrl(sandboxId)}$path';
-    final headers = config.getEnvdHeaders(sandboxId: sandboxId, streaming: true);
+    final headers = config.getEnvdHeaders(
+      sandboxId: sandboxId,
+      streaming: true,
+      user: user,
+    );
 
     try {
       final res = await _dio.post<ResponseBody>(
@@ -202,9 +207,11 @@ class ConnectTransport {
     }
   }
 
-  /// 按 HTTP 状态映射 envd 错误
+  /// 按 HTTP 状态映射 envd 错误。所有非 2xx 都必须进入错误解析，
+  /// 不能把 400/409/429 等错误响应当作成功。
   void _throwForStatus(int? statusCode, String sandboxId, String path) {
     if (statusCode == null) return;
+    if (statusCode >= 200 && statusCode < 300) return;
     if (statusCode == 401 || statusCode == 403) {
       throw SandboxAuthenticationException(
         'envd 鉴权失败 (HTTP $statusCode), X-Access-Token 无效或缺失: $path',
@@ -212,6 +219,18 @@ class ConnectTransport {
     }
     if (statusCode == 404) {
       throw SandboxNotFoundException('沙盒 $sandboxId 未找到或已终止 (404): $path');
+    }
+    if (statusCode == 409) {
+      throw SandboxException('envd 请求冲突 (HTTP 409): $path',
+          statusCode: statusCode);
+    }
+    if (statusCode == 429) {
+      throw SandboxException('envd 请求被限流 (HTTP 429): $path',
+          statusCode: statusCode);
+    }
+    if (statusCode >= 400 && statusCode < 500) {
+      throw SandboxException('envd 请求无效 (HTTP $statusCode): $path',
+          statusCode: statusCode);
     }
     if (statusCode >= 500) {
       throw SandboxException('envd 服务异常 (HTTP $statusCode): $path',

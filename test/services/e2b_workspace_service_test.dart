@@ -263,6 +263,9 @@ void main() {
       // 就绪判定必须 curl 探测本机端口,不能只看进程名/固定 sleep
       expect(script.contains('127.0.0.1:4096'), isTrue);
       expect(script.contains('setsid nohup'), isTrue);
+      // 克隆目录用 GitHub 项目名(basename 去除 .git),并防御 ".." 等危险值
+      expect(script.contains('basename "\$GIT_CLONE_URL" .git'), isTrue);
+      expect(script.contains('REPO_DIR="\$HOME/\$REPO_NAME"'), isTrue);
     });
   });
 

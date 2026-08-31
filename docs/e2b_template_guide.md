@@ -71,7 +71,7 @@ e2b template list         # 记下模板 ID,形如 <your-username>/opencode
 | opencode 安装 | 构建期 `npm i -g opencode-ai` | 运行时缺失才装(curl 脚本 → npm 兜底,退出码 42) |
 | serve 拉起 | envd 随沙盒启动自动执行 | 检测 4096 已监听则跳过;否则补拉起(带密码) |
 | 密码 | 无(模板不知道密码) | 创建时注入 `OPENCODE_SERVER_PASSWORD` 并落盘 `~/.opencode_pw` |
-| Git 仓库 | 无 | 创建时注入 `GIT_CLONE_URL`/`GIT_BRANCH`,clone 到 `~/workspace` |
+| Git 仓库 | 无 | 创建时注入 `GIT_CLONE_URL`/`GIT_BRANCH`,clone 到 `~/<GitHub项目名>`(未绑仓库时 `~/workspace`) |
 
 > 注意:模板 start_cmd 拉起的 serve **没有密码**,公网健康检查会返回 401。
 > App 的 bootstrap 会检测到 4096 已有监听进程,若密码不一致会以注入密码重启 serve;

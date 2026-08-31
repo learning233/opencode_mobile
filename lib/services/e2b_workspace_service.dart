@@ -144,12 +144,26 @@ if ! command -v opencode > /dev/null 2>&1; then
 fi
 echo "opencode version: $(opencode --version 2>&1 | head -n 1)"
 
+# 克隆目录用 GitHub 项目名;未绑定仓库时回退到 ~/workspace
 mkdir -p "$HOME/workspace"
-if [ -n "$GIT_CLONE_URL" ] && [ ! -d "$HOME/workspace/.git" ]; then
-  echo "Cloning git repository..."
-  git clone "$GIT_CLONE_URL" "$HOME/workspace" 2>&1 | tail -n 3 || true
+REPO_DIR=""
+if [ -n "$GIT_CLONE_URL" ]; then
+  REPO_NAME="$(basename "$GIT_CLONE_URL" .git)"
+  case "$REPO_NAME" in
+    ""|"."|".."|*/*) REPO_NAME="" ;;
+  esac
+  if [ -n "$REPO_NAME" ]; then
+    REPO_DIR="$HOME/$REPO_NAME"
+  fi
 fi
-cd "$HOME/workspace" 2>/dev/null || cd "$HOME"
+
+if [ -n "$REPO_DIR" ] && [ ! -d "$REPO_DIR/.git" ]; then
+  echo "Cloning git repository into $REPO_DIR ..."
+  rm -rf "$REPO_DIR"
+  git clone "$GIT_CLONE_URL" "$REPO_DIR" 2>&1 | tail -n 3 || true
+fi
+cd "$REPO_DIR" 2>/dev/null || cd "$HOME/workspace" 2>/dev/null || cd "$HOME"
+echo "Working directory: $(pwd)"
 if [ -n "$GIT_BRANCH" ] && [ -d .git ]; then
   git checkout "$GIT_BRANCH" 2>&1 | tail -n 2 || true
 fi

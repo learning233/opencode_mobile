@@ -6,7 +6,6 @@ import '../../../api/sidecar_manager.dart';
 import '../../../controllers/project_controller.dart';
 import '../../../controllers/session_controller.dart';
 import '../../../controllers/settings_controller.dart';
-import '../../../e2b/e2b.dart';
 import '../../../init.dart';
 import '../../../models/cloud_workspace_config.dart';
 import '../../../models/e2b_sandbox_info.dart';
@@ -52,12 +51,15 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
   @override
   void initState() {
     super.initState();
-    _urlCtrl.text = Global.serverUrl;
-    _userCtrl.text = Global.serverUsername;
-    _passCtrl.text = Global.serverPassword;
+    _urlCtrl.text = Global.selfHostedServerUrl;
+    _userCtrl.text = Global.selfHostedServerUsername;
+    _passCtrl.text = Global.selfHostedServerPassword;
 
     final cloudConfig = Global.settings.cloudWorkspaceConfig;
-    if (cloudConfig.hasActiveSandbox || Global.serverUrl.contains('e2b.app')) {
+    final argMode = Get.arguments is Map ? (Get.arguments as Map)['mode'] as int? : null;
+    if (argMode != null) {
+      _selectedMode = argMode;
+    } else if (cloudConfig.hasActiveSandbox || E2bWorkspaceService.isCloudUrl(Global.serverUrl)) {
       _selectedMode = 1;
     }
 
@@ -202,76 +204,29 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
     final config = Global.settings.cloudWorkspaceConfig;
     setState(() => _isActionInProgress = true);
     try {
-      Snack.info('正在连接沙盒...');
-
       _connectCancelToken?.cancel();
       _connectCancelToken = CancelToken();
 
-      // 真实 connect:校验存在性;paused 沙盒自动唤醒(201),并刷新 envdAccessToken
-      final sandbox = await Sandbox.connect(
-        SandboxConnectOpts(
-          sandboxId: item.sandboxId,
-          apiKey: config.e2bApiKey,
-          envdAccessToken: config.activeSandboxEnvdToken,
-        ),
-      );
-
-      // 密码解析:优先用该沙盒对应的存储密码,缺失时从沙盒内恢复
-      var password = (config.activeSandboxId == item.sandboxId
-              ? config.activeSandboxPassword
-              : null) ??
-          '';
-      if (password.isEmpty) {
-        Snack.info('正在恢复沙盒访问凭据...');
-        password = await E2bWorkspaceService.instance
-                .recoverPassword(sandbox) ??
-            '';
-      }
-      if (password.isEmpty) {
-        Snack.error('无法恢复该沙盒的 OpenCode 密码，请销毁后重新创建');
-        return;
-      }
-
-      // 确保沙盒内已安装并启动 opencode serve(失败必须中止)
-      Snack.info('正在拉起沙盒内 OpenCode 服务...');
-      final bootstrap = await E2bWorkspaceService.instance
-          .ensureOpenCodeRunning(
-        sandboxId: item.sandboxId,
-        apiKey: config.e2bApiKey,
-        password: password,
+      final res = await E2bWorkspaceService.instance.connectSandbox(
         config: config,
-        sandbox: sandbox,
+        sandboxId: item.sandboxId,
         endpointUrl: item.endpointUrl,
-      );
-
-      if (!bootstrap.success) {
-        final logPart = (bootstrap.logTail?.isNotEmpty == true)
-            ? '\n${bootstrap.logTail}'
-            : '';
-        Snack.error('OpenCode 服务启动失败: ${bootstrap.error}$logPart');
-        return;
-      }
-
-      if (_connectCancelToken?.isCancelled == true) return;
-
-      // 轮询健康检查等待就绪
-      final health = await E2bWorkspaceService.instance.waitForHealthy(
-        endpointUrl: item.endpointUrl,
-        password: password,
-        maxRetries: 30,
-        sandbox: sandbox,
+        onProgress: (msg) {
+          if (mounted) Snack.info(msg);
+        },
         cancelToken: _connectCancelToken,
       );
 
       if (_connectCancelToken?.isCancelled == true) return;
 
-      if (!health.healthy) {
+      if (!res.success) {
         if (mounted) {
-          Snack.error(health.failReason ?? 'OpenCode 服务未能在预期时间内就绪');
+          Snack.error(res.error ?? '连接沙盒失败');
         }
         return;
       }
 
+      final password = res.password!;
       final result = await SidecarManager.instance.updateConnection(
         item.endpointUrl,
         'opencode',
@@ -290,7 +245,7 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
           activeSandboxId: item.sandboxId,
           activeSandboxUrl: item.endpointUrl,
           activeSandboxPassword: password,
-          activeSandboxEnvdToken: sandbox.envdAccessToken,
+          activeSandboxEnvdToken: res.envdAccessToken,
           activeSandboxStatus: 'running',
           lastConnectedAt: DateTime.now(),
         );
@@ -303,7 +258,7 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
         timeoutSeconds: config.ttlHours * 3600 < 600
             ? 600
             : config.ttlHours * 3600,
-        domain: sandbox.connectionConfig.domain,
+        domain: res.domain,
       );
 
       try {
@@ -319,10 +274,8 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
         _navigatedAway = true;
         Get.offNamed(AppRoutes.home);
       }
-    } on SandboxException catch (e) {
-      if (mounted) Snack.error('连接沙盒失败: ${e.message}');
     } catch (e) {
-      if (mounted) Snack.error('连接沙盒遇到异常: $e');
+      if (mounted) Snack.error('连接失败: $e');
     } finally {
       if (mounted) setState(() => _isActionInProgress = false);
     }
@@ -429,6 +382,21 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
     }
   }
 
+  Future<void> _openCloudWorkspaceSheet({bool onlyConfig = false}) async {
+    await CloudWorkspaceSheet.show(
+      context,
+      onlyConfig: onlyConfig,
+      onLaunch: (cfg) => CloudWorkspaceLaunchDialog.show(context, config: cfg),
+    );
+    if (mounted) {
+      setState(() {});
+      _refreshCloudStatus();
+      if (Global.settings.cloudWorkspaceConfig.e2bApiKey.trim().isNotEmpty) {
+        _fetchSandboxList();
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -445,13 +413,7 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
             IconButton(
               tooltip: LocaleKeys.e2bConfigWorkspace.tr,
               icon: const Icon(Icons.tune),
-              onPressed: () {
-                CloudWorkspaceSheet.show(
-                  context,
-                  onlyConfig: true,
-                  onLaunch: (_) => _fetchSandboxList(),
-                );
-              },
+              onPressed: () => _openCloudWorkspaceSheet(onlyConfig: true),
             ),
           ],
         ],
@@ -461,6 +423,7 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
         children: [
           // 顶部模式切换 (自建 vs 云端)
           SegmentedButton<int>(
+            showSelectedIcon: false,
             segments: [
               ButtonSegment(
                 value: 0,
@@ -653,13 +616,7 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
             )
           : IconButton(
               icon: const Icon(Icons.settings_outlined),
-              onPressed: () {
-                CloudWorkspaceSheet.show(
-                  context,
-                  onlyConfig: true,
-                  onLaunch: (_) => _refreshCloudStatus(),
-                );
-              },
+              onPressed: () => _openCloudWorkspaceSheet(onlyConfig: true),
             ),
     );
   }
@@ -768,13 +725,7 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
               ),
               const SizedBox(height: 16),
               FilledButton.icon(
-                onPressed: () {
-                  CloudWorkspaceSheet.show(
-                    context,
-                    onlyConfig: true,
-                    onLaunch: (_) => _fetchSandboxList(),
-                  );
-                },
+                onPressed: () => _openCloudWorkspaceSheet(onlyConfig: false),
                 icon: const Icon(Icons.key),
                 label: Text(LocaleKeys.e2bConfigApiKey.tr),
               ),
@@ -837,15 +788,7 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
                   ),
                   onPressed: _isActionInProgress
                       ? null
-                      : () {
-                          CloudWorkspaceSheet.show(
-                            context,
-                            onLaunch: (cfg) => CloudWorkspaceLaunchDialog.show(
-                              context,
-                              config: cfg,
-                            ),
-                          );
-                        },
+                      : () => _openCloudWorkspaceSheet(),
                   icon: const Icon(Icons.add, size: 18),
                   label: Text(LocaleKeys.e2bCreateSandbox.tr),
                 ),
@@ -925,15 +868,7 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
                   ),
                   const SizedBox(height: 20),
                   FilledButton.icon(
-                    onPressed: () {
-                      CloudWorkspaceSheet.show(
-                        context,
-                        onLaunch: (cfg) => CloudWorkspaceLaunchDialog.show(
-                          context,
-                          config: cfg,
-                        ),
-                      );
-                    },
+                    onPressed: () => _openCloudWorkspaceSheet(),
                     icon: const Icon(Icons.rocket_launch),
                     label: Text(LocaleKeys.e2bLaunchWorkspace.tr),
                   ),

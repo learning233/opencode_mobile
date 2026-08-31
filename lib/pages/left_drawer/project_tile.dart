@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../api/models/project.dart';
+import '../../init.dart';
+import '../../services/e2b_workspace_service.dart';
 import '../../utils/layout_utils.dart';
 import '../../utils/translations.dart';
 
@@ -22,10 +24,11 @@ class ProjectTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isTablet = isTabletLayout(context);
+    final isCloud = E2bWorkspaceService.isCloudUrl(Global.serverUrl);
 
     return ListTile(
       leading: Icon(
-        Icons.folder,
+        isCloud ? Icons.cloud_outlined : Icons.folder,
         size: 20,
         color: isActive
             ? theme.colorScheme.primary

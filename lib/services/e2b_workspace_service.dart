@@ -57,6 +57,23 @@ class E2bHealthResult {
   final String? failReason;
 }
 
+/// 连接已有沙盒的完整流程结果(连接→凭据→部署→健康)
+class E2bSandboxConnectResult {
+  const E2bSandboxConnectResult({
+    required this.success,
+    this.password,
+    this.envdAccessToken,
+    this.domain = 'e2b.app',
+    this.error,
+  });
+
+  final bool success;
+  final String? password;
+  final String? envdAccessToken;
+  final String domain;
+  final String? error;
+}
+
 /// E2B 云端沙盒与工作区服务
 class E2bWorkspaceService {
   static final E2bWorkspaceService instance = E2bWorkspaceService._internal();
@@ -64,6 +81,9 @@ class E2bWorkspaceService {
 
   static const String e2bApiBase = 'https://api.e2b.app';
   static const Duration _defaultHttpTimeout = Duration(seconds: 15);
+
+  /// 判定 URL 是否为 E2B 云端沙盒端点(全局统一判据)
+  static bool isCloudUrl(String? url) => url != null && url.contains('e2b.app');
 
   final Dio _dio = Dio(
     BaseOptions(
@@ -373,6 +393,139 @@ exit 43
     } catch (e) {
       AppLogger.e('E2B launchWorkspace unexpected error', e);
       return E2bLaunchResult(success: false, error: '未知异常: $e');
+    }
+  }
+
+  /// 连接并拉起已有沙盒的完整流程 (连接唤醒 → 密码恢复 → 服务常驻 → 健康验证)
+  Future<E2bSandboxConnectResult> connectSandbox({
+    required CloudWorkspaceConfig config,
+    required String sandboxId,
+    required String endpointUrl,
+    void Function(String stepMessage)? onProgress,
+    CancelToken? cancelToken,
+    int maxRetries = 30,
+    Sandbox? sandbox,
+  }) async {
+    final apiKey = config.e2bApiKey.trim();
+    if (apiKey.isEmpty) {
+      return const E2bSandboxConnectResult(
+        success: false,
+        error: 'E2B API Key 不能为空，请先在设置中填写',
+      );
+    }
+
+    if (cancelToken?.isCancelled == true) {
+      return const E2bSandboxConnectResult(success: false, error: '操作已取消');
+    }
+
+    try {
+      // 1. 真实 connect: 校验存在性 + 自动唤醒 paused 沙盒(201) + 刷新 token
+      onProgress?.call('正在连接沙盒并验证状态...');
+      sandbox ??= await Sandbox.connect(
+        SandboxConnectOpts(
+          sandboxId: sandboxId,
+          apiKey: apiKey,
+          envdAccessToken: config.activeSandboxEnvdToken,
+        ),
+      );
+
+      if (cancelToken?.isCancelled == true) {
+        return const E2bSandboxConnectResult(success: false, error: '操作已取消');
+      }
+
+      // 2. 密码解析: 优先用该沙盒对应的存储密码, 缺失时从沙盒内 recover
+      var password = (config.activeSandboxId == sandboxId
+              ? config.activeSandboxPassword
+              : null) ??
+          '';
+      if (password.isEmpty) {
+        onProgress?.call('正在恢复沙盒访问凭据...');
+        password = await recoverPassword(sandbox) ?? '';
+      }
+      if (password.isEmpty) {
+        return const E2bSandboxConnectResult(
+          success: false,
+          error: '无法恢复该沙盒的 OpenCode 密码，请销毁后重新创建',
+        );
+      }
+
+      if (cancelToken?.isCancelled == true) {
+        return const E2bSandboxConnectResult(success: false, error: '操作已取消');
+      }
+
+      // 3. 确保沙盒内已安装并启动 opencode serve
+      onProgress?.call('正在拉起沙盒内 OpenCode 服务...');
+      final bootstrap = await ensureOpenCodeRunning(
+        sandboxId: sandboxId,
+        apiKey: apiKey,
+        password: password,
+        config: config,
+        sandbox: sandbox,
+        endpointUrl: endpointUrl,
+      );
+
+      if (!bootstrap.success) {
+        final logPart = (bootstrap.logTail?.isNotEmpty == true)
+            ? '\n\n沙盒内 /tmp/opencode.log 尾部:\n${bootstrap.logTail}'
+            : '';
+        return E2bSandboxConnectResult(
+          success: false,
+          error: 'OpenCode 服务启动失败: ${bootstrap.error}$logPart',
+        );
+      }
+
+      if (cancelToken?.isCancelled == true) {
+        return const E2bSandboxConnectResult(success: false, error: '操作已取消');
+      }
+
+      // 4. 轮询健康检查等待就绪
+      onProgress?.call('正在验证服务健康状态...');
+      final health = await waitForHealthy(
+        endpointUrl: endpointUrl,
+        password: password,
+        maxRetries: maxRetries,
+        sandbox: sandbox,
+        cancelToken: cancelToken,
+        onProgress: onProgress,
+      );
+
+      if (!health.healthy) {
+        return E2bSandboxConnectResult(
+          success: false,
+          error: health.failReason ?? 'OpenCode 服务未能在预期时间内就绪',
+        );
+      }
+
+      return E2bSandboxConnectResult(
+        success: true,
+        password: password,
+        envdAccessToken: sandbox.envdAccessToken,
+        domain: sandbox.connectionConfig.domain,
+      );
+    } on SandboxNotFoundException catch (e) {
+      AppLogger.w('E2B SandboxNotFoundException: $e');
+      return const E2bSandboxConnectResult(
+        success: false,
+        error: '沙盒不存在或已过期销毁，请新建沙盒',
+      );
+    } on SandboxAuthenticationException catch (e) {
+      AppLogger.e('E2B SandboxAuthenticationException: $e');
+      return E2bSandboxConnectResult(
+        success: false,
+        error: 'E2B API Key 认证失败: ${e.message}',
+      );
+    } on SandboxException catch (e) {
+      AppLogger.e('E2B SandboxException: ${e.message}', e);
+      return E2bSandboxConnectResult(
+        success: false,
+        error: 'E2B 沙盒连接异常: ${e.message}',
+      );
+    } catch (e) {
+      AppLogger.e('E2B connectSandbox unexpected error', e);
+      return E2bSandboxConnectResult(
+        success: false,
+        error: '连接沙盒遇到未知错误: $e',
+      );
     }
   }
 

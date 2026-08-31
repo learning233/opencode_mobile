@@ -255,3 +255,21 @@ serve 从未被拉起。`recoverPassword` 存在同款自匹配。
 * 启动后从「固定 sleep 2 检查一次」改为**轮询等待端口就绪(最多约 30 秒)**,
   进程中途退出立即 `exit 43` 并输出 `/tmp/opencode.log`;
 * serve 以 `setsid nohup` 脱离会话启动;密码落盘 `~/.opencode_pw` 移至脚本最前。
+
+### 补充更新(2026-08-31 第四轮:双后端架构、连接下沉与冷启动唤醒)
+
+1. **共享连接流程下沉 (`connectSandbox`)**：
+   * 将「Sandbox.connect 自动唤醒 → 密码解析恢复 → ensureOpenCodeRunning 部署保障 → waitForHealthy 健康验证」四步收拢至 `E2bWorkspaceService.connectSandbox`，消除 `SplashPage` 与 `OpencodeConnectionPage` 间的重复逻辑。
+2. **SplashPage 双登录与 4s 快速探测**：
+   * 顶部引入 `SegmentedButton` 自由切换自建与云端模式；
+   * 云端冷启动采用 4 秒快速探测，命中 200 直接进入主页并开启 keep-alive；未就绪停留在面板引导用户一键唤醒并连接，杜绝盲目轮询与误计费。
+3. **会话与抽屉后端统一标识**：
+   * 通过 `E2bWorkspaceService.isCloudUrl` 统一判定；
+   * 左抽屉项目列表及右抽屉会话列表展示对应的云朵 / 自建服务器图标，设置中心 Connection Hub 项增加动态副标题展示当前后端信息。
+4. **自建与云端配置彻底隔离**：
+   * 在 `AppSettingsStore` 新增 `self_hosted_server_*` 独立字段，`Global.persistServerConnection` 仅在自建连接时同步更新，连接沙盒绝不覆盖自建服务器 IP 与密码。
+5. **项目列表跨端清理与弹窗响应式刷新**：
+   * `ProjectController.refreshAfterConnect` 清理旧内存；`fetchProjects` 移除跨端 `localOnly` 幽灵项目合并，严格展示当前后端的真实项目；
+   * `CloudWorkspaceSheet` 保存 Key 流程改为异步落盘，退出后立即触发连接页 `setState` 与 `_fetchSandboxList`。
+
+

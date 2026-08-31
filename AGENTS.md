@@ -37,6 +37,7 @@ Flutter（Android/iOS/Web）客户端，通过 Basic Auth 连接远程 `opencode
 - `updateConnection` 已内置 generation + `CancelToken` 串行化（新连接/`stop()` 取消在途健康检查），Splash/连接页**无需再加并发锁**
 - 健康检查固定 `connectTimeout: 5s`、至多 3 次、401 快速失败；勿去掉超时，否则启动页会长时间阻塞
 - HTTP 请求收到 401/403 会置全局 `OpenCodeClient.unauthorized`（`resetUnauthorized()` 恢复）；SSE 侧仍是独立的 `SseClient.isCredentialFailed`，两者作用域不同
+- 切后端/连接刷新（`ProjectController.refreshAfterConnect`）：切换后端必须清空旧 `projects` 内存；`fetchProjects` 严格以当前后端返回的列表为准，禁止跨端合并 `localOnly` 幽灵项目；`_restoreLastProject` 无法匹配时默认选中当前后端首个项目，禁止把宿主机路径（如 Windows 盘符）强行注入 Linux 沙盒容器
 
 ## 文档（中文）
 

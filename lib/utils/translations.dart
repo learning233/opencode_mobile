@@ -148,6 +148,18 @@ class LocaleKeys {
   static const e2bConfigApiKey = "e2b_config_api_key";
   static const e2bCurrentlyConnected = "e2b_currently_connected";
   static const e2bConnectSandbox = "e2b_connect_sandbox";
+  static const e2bConnectLastSandbox = "e2b_connect_last_sandbox";
+  static const e2bWakeAndConnect = "e2b_wake_and_connect";
+  static const e2bManageSandboxes = "e2b_manage_sandboxes";
+  static const e2bSandboxNotReadyWakeHint = "e2b_sandbox_not_ready_wake_hint";
+  static const e2bCloudBackend = "e2b_cloud_backend";
+  static const selfHostedBackend = "self_hosted_backend";
+  static const e2bNoApiKey = "e2b_no_api_key";
+  static const e2bNoApiKeyDesc = "e2b_no_api_key_desc";
+  static const e2bNewSandbox = "e2b_new_sandbox";
+  static const switchToSelfHosted = "switch_to_self_hosted";
+  static const connectionDisconnected = "connection_disconnected";
+  static const e2bClearInvalidSandbox = "e2b_clear_invalid_sandbox";
   static const e2bConfirmDestroy = "e2b_confirm_destroy";
   static const e2bConfirmDestroyDesc = "e2b_confirm_destroy_desc";
   static const e2bSandboxStatusRunning = "e2b_status_running";
@@ -902,6 +914,8 @@ class LocaleKeys {
   static const mobileServerUrl = "mobile_server_url";
   static const mobileServerUrlRequired = "mobile_server_url_required";
   static const mobileConnectSidecar = "mobile_connect_sidecar";
+  static const mobileConnectServer = "mobile_connect_server";
+  static const mobileConnecting = "mobile_connecting";
   static const mobileStatus = "mobile_status";
   static const mobilePassword = "mobile_password";
   static const mobileNoProjects = "mobile_no_projects";
@@ -1365,6 +1379,18 @@ class Messages extends Translations {
     LocaleKeys.e2bConfigApiKey: '配置 API Key',
     LocaleKeys.e2bCurrentlyConnected: '当前连接',
     LocaleKeys.e2bConnectSandbox: '进入沙盒',
+    LocaleKeys.e2bConnectLastSandbox: '连接上次沙盒',
+    LocaleKeys.e2bWakeAndConnect: '唤醒并连接',
+    LocaleKeys.e2bManageSandboxes: '管理沙盒',
+    LocaleKeys.e2bSandboxNotReadyWakeHint: '上次沙盒未就绪，可一键唤醒并连接',
+    LocaleKeys.e2bCloudBackend: 'E2B 云端',
+    LocaleKeys.selfHostedBackend: '自建服务器',
+    LocaleKeys.e2bNoApiKey: '未配置 E2B API Key',
+    LocaleKeys.e2bNoApiKeyDesc: '使用云端工作区前，请先在设置中填写 E2B API Key。',
+    LocaleKeys.e2bNewSandbox: '新建沙盒',
+    LocaleKeys.switchToSelfHosted: '切换至自建服务器',
+    LocaleKeys.connectionDisconnected: '未连接',
+    LocaleKeys.e2bClearInvalidSandbox: '清除无效沙盒记录',
     LocaleKeys.e2bConfirmDestroy: '确认销毁沙盒？',
     LocaleKeys.e2bConfirmDestroyDesc: '销毁后该沙盒将被彻底删除，未推送到 Git 的文件将丢失。',
     LocaleKeys.e2bSandboxStatusRunning: '运行中',
@@ -2129,6 +2155,8 @@ class Messages extends Translations {
     LocaleKeys.mobileServerUrl: '服务器地址',
     LocaleKeys.mobileServerUrlRequired: '请填写服务器地址',
     LocaleKeys.mobileConnectSidecar: '连接到 Sidecar 服务器',
+    LocaleKeys.mobileConnectServer: '连接服务器',
+    LocaleKeys.mobileConnecting: '连接中…',
     LocaleKeys.mobileStatus: '状态：@status',
     LocaleKeys.mobilePassword: '密码',
     LocaleKeys.mobileNoProjects: '暂无项目',
@@ -2581,6 +2609,20 @@ class Messages extends Translations {
     LocaleKeys.e2bConfigApiKey: 'Configure API Key',
     LocaleKeys.e2bCurrentlyConnected: 'Connected',
     LocaleKeys.e2bConnectSandbox: 'Connect',
+    LocaleKeys.e2bConnectLastSandbox: 'Connect Last Sandbox',
+    LocaleKeys.e2bWakeAndConnect: 'Wake & Connect',
+    LocaleKeys.e2bManageSandboxes: 'Manage Sandboxes',
+    LocaleKeys.e2bSandboxNotReadyWakeHint:
+        'Previous sandbox is not ready. You can wake and connect.',
+    LocaleKeys.e2bCloudBackend: 'E2B Cloud',
+    LocaleKeys.selfHostedBackend: 'Self-Hosted',
+    LocaleKeys.e2bNoApiKey: 'No E2B API Key Configured',
+    LocaleKeys.e2bNoApiKeyDesc:
+        'Please configure your E2B API Key in settings before using Cloud Workspace.',
+    LocaleKeys.e2bNewSandbox: 'New Sandbox',
+    LocaleKeys.switchToSelfHosted: 'Switch to Self-Hosted',
+    LocaleKeys.connectionDisconnected: 'Disconnected',
+    LocaleKeys.e2bClearInvalidSandbox: 'Clear Invalid Sandbox',
     LocaleKeys.e2bConfirmDestroy: 'Destroy Sandbox?',
     LocaleKeys.e2bConfirmDestroyDesc: 'The sandbox will be permanently terminated. Uncommitted changes will be lost.',
     LocaleKeys.e2bSandboxStatusRunning: 'Running',
@@ -3418,6 +3460,8 @@ class Messages extends Translations {
     LocaleKeys.mobileServerUrl: 'Server URL',
     LocaleKeys.mobileServerUrlRequired: 'Server URL is required',
     LocaleKeys.mobileConnectSidecar: 'Connect to Sidecar Server',
+    LocaleKeys.mobileConnectServer: 'Connect to Server',
+    LocaleKeys.mobileConnecting: 'Connecting…',
     LocaleKeys.mobileStatus: 'Status: @status',
     LocaleKeys.mobilePassword: 'Password',
     LocaleKeys.mobileNoProjects: 'No projects',

@@ -6,6 +6,7 @@ import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api/endpoints.dart';
 import 'models/quick_phrase.dart';
+import 'services/e2b_workspace_service.dart';
 import 'utils/app_logger.dart';
 import 'utils/app_settings_store.dart';
 import 'utils/app_theme.dart';
@@ -158,6 +159,12 @@ class Global {
   /// Whether the user has ever saved server settings.
   static bool get hasServerSettings => settings.serverUrl != null;
 
+  /// Whether the user has ever saved self-hosted server settings.
+  static bool get hasSelfHostedSettings =>
+      settings.selfHostedServerUrl != null ||
+      (settings.serverUrl != null &&
+          !E2bWorkspaceService.isCloudUrl(settings.serverUrl));
+
   static String get serverUrl =>
       settings.serverUrl ?? ApiEndpoints.baseLocalUrl;
   static set serverUrl(String v) => settings.setServerUrl(v);
@@ -167,6 +174,39 @@ class Global {
 
   static String get serverPassword => settings.serverPassword ?? '';
   static set serverPassword(String v) => settings.setServerPassword(v);
+
+  /// 独立保存的自建服务器地址(不被 E2B 云端沙盒覆盖)
+  static String get selfHostedServerUrl {
+    final saved = settings.selfHostedServerUrl;
+    if (saved != null && saved.isNotEmpty) return saved;
+    final curr = settings.serverUrl;
+    if (curr != null && curr.isNotEmpty && !E2bWorkspaceService.isCloudUrl(curr)) {
+      return curr;
+    }
+    return ApiEndpoints.baseLocalUrl;
+  }
+
+  /// 独立保存的自建服务器用户名
+  static String get selfHostedServerUsername {
+    final saved = settings.selfHostedServerUsername;
+    if (saved != null && saved.isNotEmpty) return saved;
+    final curr = settings.serverUrl;
+    if (curr != null && curr.isNotEmpty && !E2bWorkspaceService.isCloudUrl(curr)) {
+      return settings.serverUsername ?? 'opencode';
+    }
+    return 'opencode';
+  }
+
+  /// 独立保存的自建服务器密码
+  static String get selfHostedServerPassword {
+    final saved = settings.selfHostedServerPassword;
+    if (saved != null && saved.isNotEmpty) return saved;
+    final curr = settings.serverUrl;
+    if (curr != null && curr.isNotEmpty && !E2bWorkspaceService.isCloudUrl(curr)) {
+      return settings.serverPassword ?? '';
+    }
+    return '';
+  }
 
   /// 连接成功后持久化服务器配置：显式 Future 供 SidecarManager await，
   /// 写库失败记日志而非静默丢弃（fire-and-forget 会在连接后立刻被杀时丢配置）。
@@ -179,6 +219,13 @@ class Global {
       await settings.setServerUrl(url);
       await settings.setServerUsername(username);
       await settings.setServerPassword(password);
+
+      // 自建服务器连接时，独立同步持久化自建配置，绝不被云端沙盒覆盖
+      if (!E2bWorkspaceService.isCloudUrl(url)) {
+        await settings.setSelfHostedServerUrl(url);
+        await settings.setSelfHostedServerUsername(username);
+        await settings.setSelfHostedServerPassword(password);
+      }
     } catch (e) {
       AppLogger.e('Failed to persist server connection settings', e);
     }

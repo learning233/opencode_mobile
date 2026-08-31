@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../../init.dart';
@@ -17,17 +19,17 @@ class CloudWorkspaceSheet extends StatefulWidget {
   });
 
   final CloudWorkspaceConfig initialConfig;
-  final void Function(CloudWorkspaceConfig config) onSave;
+  final FutureOr<void> Function(CloudWorkspaceConfig config) onSave;
   final void Function(CloudWorkspaceConfig config)? onLaunch;
   final bool onlyConfig;
 
-  static Future<void> show(
+  static Future<bool?> show(
     BuildContext context, {
     bool onlyConfig = false,
     void Function(CloudWorkspaceConfig config)? onLaunch,
   }) {
     final current = Global.settings.cloudWorkspaceConfig;
-    return showModalBottomSheet(
+    return showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -110,22 +112,26 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
     );
   }
 
-  void _saveOnly() {
+  Future<void> _saveOnly() async {
     final cfg = _buildConfig();
-    widget.onSave(cfg);
-    Snack.success(LocaleKeys.save.tr);
-    Navigator.of(context).pop();
+    await widget.onSave(cfg);
+    if (mounted) {
+      Snack.success(LocaleKeys.save.tr);
+      Navigator.of(context).pop(true);
+    }
   }
 
-  void _saveAndLaunch() {
+  Future<void> _saveAndLaunch() async {
     final cfg = _buildConfig();
     if (cfg.e2bApiKey.isEmpty) {
       Snack.error(LocaleKeys.e2bApiKeyHint.tr);
       return;
     }
-    widget.onSave(cfg);
-    Navigator.of(context).pop();
-    widget.onLaunch?.call(cfg);
+    await widget.onSave(cfg);
+    if (mounted) {
+      Navigator.of(context).pop(true);
+      widget.onLaunch?.call(cfg);
+    }
   }
 
   Future<void> _fetchAndSelectRepo() async {
@@ -397,6 +403,7 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
           ),
           const SizedBox(height: 10),
           SegmentedButton<int>(
+            showSelectedIcon: false,
             segments: const [
               ButtonSegment(value: 1, label: Text('1h')),
               ButtonSegment(value: 2, label: Text('2h')),

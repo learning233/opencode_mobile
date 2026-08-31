@@ -2,8 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import '../../controllers/session_controller.dart';
 import '../../api/models/session.dart';
+import '../../controllers/session_controller.dart';
+import '../../init.dart';
+import '../../services/e2b_workspace_service.dart';
 import '../../utils/snackbar_utils.dart';
 import '../../utils/translations.dart';
 
@@ -249,6 +251,15 @@ class _SessionListPageState extends State<SessionListPage> {
                       ),
                       child: ListTile(
                         selected: isOpened,
+                        leading: Icon(
+                          E2bWorkspaceService.isCloudUrl(Global.serverUrl)
+                              ? Icons.cloud_outlined
+                              : Icons.dns_outlined,
+                          size: 20,
+                          color: isOpened
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.onSurfaceVariant,
+                        ),
                         title: Text(
                           s.displayName,
                           style: TextStyle(

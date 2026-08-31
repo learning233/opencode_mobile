@@ -54,6 +54,8 @@ class ProjectController extends GetxController {
   }
 
   Future<void> refreshAfterConnect() async {
+    projects.clear();
+    activeProject.value = null;
     await fetchProjects();
     _restoreLastProject();
   }
@@ -69,19 +71,13 @@ class ProjectController extends GetxController {
         selectProject(match);
         return;
       }
-      // Server doesn't have this project yet — restore from local storage.
-      // Only meaningful when lastId is a real path (locally-added project whose
-      // id == worktree == path). Server IDs are "global" or a hex hash and must
-      // NOT be reused as a worktree, or activeDirectory would point at garbage.
-      if (lastId.contains('/') || lastId.contains(r'\')) {
-        final local = ProjectModel(id: lastId, worktree: lastId);
-        projects.insert(0, local);
-        selectProject(local);
-        return;
-      }
     }
-    if (projects.isNotEmpty && activeProject.value == null) {
+    // If last project is not on this server (e.g. switched server/sandbox),
+    // pick the first project available on the current server.
+    if (projects.isNotEmpty) {
       selectProject(projects.first);
+    } else {
+      activeProject.value = null;
     }
   }
 
@@ -119,20 +115,9 @@ class ProjectController extends GetxController {
           }
         }
 
-        // Some remote servers only return the global workspace entry via /project.
-        // Preserve local projects that the server doesn't know about yet.
-        final localOnly = projects.where((p) {
-          return !uniqueProjects.any(
-            (s) => s.id == p.id || s.worktree == p.worktree,
-          );
-        }).toList();
+        projects.assignAll(uniqueProjects);
 
-        projects.assignAll([...uniqueProjects, ...localOnly]);
-
-        // Re-point activeProject to the canonical entry after the merge: a
-        // locally-added project (id == worktree == path) may have been replaced
-        // by the server's version under a hashed id with the same worktree.
-        // Without this, the list highlight (compared by id) would silently drop.
+        // Re-point activeProject to the canonical entry after the update
         final active = activeProject.value;
         if (active != null) {
           final reResolved = projects.firstWhereOrNull(
@@ -140,7 +125,11 @@ class ProjectController extends GetxController {
           );
           if (reResolved != null && reResolved.id != active.id) {
             activeProject.value = reResolved;
+          } else if (reResolved == null && projects.isNotEmpty) {
+            selectProject(projects.first);
           }
+        } else if (projects.isNotEmpty) {
+          selectProject(projects.first);
         }
       }
     } catch (e) {

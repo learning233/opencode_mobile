@@ -28,6 +28,9 @@ class AppSettingsStore {
   static const _serverUrl = 'server_url';
   static const _serverUsername = 'server_username';
   static const _serverPassword = 'server_password';
+  static const _selfHostedServerUrl = 'self_hosted_server_url';
+  static const _selfHostedServerUsername = 'self_hosted_server_username';
+  static const _selfHostedServerPassword = 'self_hosted_server_password';
   static const _openedSessionIds = 'opened_session_ids';
   static const _projectOpenedSessionIds = 'project_opened_session_ids_map';
   static const _projectPreviewPorts = 'project_preview_ports_map';
@@ -97,6 +100,20 @@ class AppSettingsStore {
   String? get serverPassword => _prefs.getString(_serverPassword);
   Future<void> setServerPassword(String value) =>
       _prefs.setString(_serverPassword, value);
+
+  String? get selfHostedServerUrl => _prefs.getString(_selfHostedServerUrl);
+  Future<void> setSelfHostedServerUrl(String value) =>
+      _prefs.setString(_selfHostedServerUrl, value);
+
+  String? get selfHostedServerUsername =>
+      _prefs.getString(_selfHostedServerUsername);
+  Future<void> setSelfHostedServerUsername(String value) =>
+      _prefs.setString(_selfHostedServerUsername, value);
+
+  String? get selfHostedServerPassword =>
+      _prefs.getString(_selfHostedServerPassword);
+  Future<void> setSelfHostedServerPassword(String value) =>
+      _prefs.setString(_selfHostedServerPassword, value);
 
   List<String> get openedSessionIds {
     final raw = _prefs.getStringList(_openedSessionIds);

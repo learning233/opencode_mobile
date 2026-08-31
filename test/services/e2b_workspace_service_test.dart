@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:opencode_app/e2b/e2b.dart';
+import 'package:opencode_app/init.dart';
 import 'package:opencode_app/models/cloud_workspace_config.dart';
 import 'package:opencode_app/models/e2b_sandbox_info.dart';
 import 'package:opencode_app/services/e2b_workspace_service.dart';
@@ -134,6 +135,41 @@ void main() {
       final loaded = store.cloudWorkspaceConfig;
       expect(loaded.e2bApiKey, 'test-key-456');
       expect(loaded.toolchains, containsAll(['dart', 'rust', 'python']));
+    });
+
+    test('persists selfHostedServer settings and preserves them when connecting to cloud',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      Global.settings = AppSettingsStore(prefs);
+
+      // 1. 用户连接自建服务器
+      await Global.persistServerConnection(
+        url: 'http://192.168.1.100:4096',
+        username: 'my_user',
+        password: 'my_password',
+      );
+
+      expect(Global.serverUrl, 'http://192.168.1.100:4096');
+      expect(Global.selfHostedServerUrl, 'http://192.168.1.100:4096');
+      expect(Global.selfHostedServerUsername, 'my_user');
+      expect(Global.selfHostedServerPassword, 'my_password');
+
+      // 2. 用户切换连接 E2B 云端沙盒
+      await Global.persistServerConnection(
+        url: 'https://4096-sbx-9988.e2b.app',
+        username: 'opencode',
+        password: 'temporary_sandbox_secret',
+      );
+
+      // 当前运行时连接变为沙盒
+      expect(Global.serverUrl, 'https://4096-sbx-9988.e2b.app');
+      expect(Global.serverPassword, 'temporary_sandbox_secret');
+
+      // 但自建服务器表单配置依然完整保留！
+      expect(Global.selfHostedServerUrl, 'http://192.168.1.100:4096');
+      expect(Global.selfHostedServerUsername, 'my_user');
+      expect(Global.selfHostedServerPassword, 'my_password');
     });
   });
 
@@ -498,4 +534,145 @@ void main() {
       expect(pw, 'recovered-pw');
     });
   });
+
+  group('E2bWorkspaceService isCloudUrl tests', () {
+    test('identifies cloud and self-hosted URLs correctly', () {
+      expect(E2bWorkspaceService.isCloudUrl('https://4096-sbx123.e2b.app'), isTrue);
+      expect(E2bWorkspaceService.isCloudUrl('https://49983-sbx-abc.e2b.app'), isTrue);
+      expect(E2bWorkspaceService.isCloudUrl('http://e2b.app:4096'), isTrue);
+      expect(E2bWorkspaceService.isCloudUrl('http://192.168.1.100:4096'), isFalse);
+      expect(E2bWorkspaceService.isCloudUrl('http://localhost:4096'), isFalse);
+      expect(E2bWorkspaceService.isCloudUrl(''), isFalse);
+      expect(E2bWorkspaceService.isCloudUrl(null), isFalse);
+    });
+  });
+
+  group('E2bWorkspaceService connectSandbox tests', () {
+    final service = E2bWorkspaceService.instance;
+    tearDown(service.stopKeepAlive);
+
+    test('connectSandbox fails fast when apiKey is empty', () async {
+      final res = await service.connectSandbox(
+        config: CloudWorkspaceConfig(e2bApiKey: ''),
+        sandboxId: 'sbx-1',
+        endpointUrl: 'https://4096-sbx-1.e2b.app',
+      );
+      expect(res.success, isFalse);
+      expect(res.error, contains('E2B API Key 不能为空'));
+    });
+
+    test('connectSandbox happy path with existing sandbox and mock healthy server',
+        () async {
+      service.healthDioForTest = Dio()
+        ..httpClientAdapter = FakeHttpAdapter((options, body) async {
+          return ResponseBody.fromString('{"healthy":true}', 200);
+        });
+
+      final adapter = FakeHttpAdapter((options, body) async {
+        if (options.uri.path.endsWith('/connect')) {
+          return ResponseBody.fromString(
+            jsonEncode({
+              'sandboxID': 'sbx-connect-ok',
+              'envdAccessToken': 'tok_envd_123',
+              'domain': 'e2b.app',
+            }),
+            200,
+            headers: {'content-type': ['application/json']},
+          );
+        }
+        return ResponseBody.fromString('not found', 404);
+      });
+
+      final sandbox = await Sandbox.connect(
+        SandboxConnectOpts(sandboxId: 'sbx-connect-ok', apiKey: 'test-key'),
+        dio: Dio()..httpClientAdapter = adapter,
+      );
+
+      final config = CloudWorkspaceConfig(
+        e2bApiKey: 'test-key',
+        activeSandboxId: 'sbx-connect-ok',
+        activeSandboxPassword: 'my-stored-password',
+      );
+
+      final result = await service.connectSandbox(
+        config: config,
+        sandboxId: 'sbx-connect-ok',
+        endpointUrl: 'https://4096-sbx-connect-ok.e2b.app',
+        sandbox: sandbox,
+      );
+
+      expect(result.success, isTrue);
+      expect(result.password, 'my-stored-password');
+      expect(result.envdAccessToken, 'tok_envd_123');
+      expect(result.domain, 'e2b.app');
+    });
+
+    test('connectSandbox recovers password from sandbox when missing in config',
+        () async {
+      service.healthDioForTest = Dio()
+        ..httpClientAdapter = FakeHttpAdapter((options, body) async {
+          return ResponseBody.fromString('{"healthy":true}', 200);
+        });
+
+      final adapter = FakeHttpAdapter((options, body) async {
+        if (options.uri.path.endsWith('/connect')) {
+          return ResponseBody.fromString(
+            jsonEncode({
+              'sandboxID': 'sbx-recover-ok',
+              'envdAccessToken': 'tok_recover',
+              'domain': 'e2b.app',
+            }),
+            200,
+            headers: {'content-type': ['application/json']},
+          );
+        }
+        if (options.uri.path.contains('process.Process/Start')) {
+          return ResponseBody(
+            Stream.fromIterable([
+              framedEvents([
+                {
+                  'event': {'start': {'pid': 10}},
+                },
+                {
+                  'event': {
+                    'data': {
+                      'stdout': base64Encode(utf8.encode('recovered-secret\n')),
+                    },
+                  },
+                },
+                {
+                  'event': {'end': {'exit_code': 0}},
+                },
+              ]),
+            ]),
+            200,
+          );
+        }
+        return ResponseBody.fromString('not found', 404);
+      });
+
+      final sandbox = await Sandbox.connect(
+        SandboxConnectOpts(sandboxId: 'sbx-recover-ok', apiKey: 'test-key'),
+        dio: Dio()..httpClientAdapter = adapter,
+      );
+
+      final config = CloudWorkspaceConfig(
+        e2bApiKey: 'test-key',
+        activeSandboxId: 'sbx-recover-ok',
+        activeSandboxPassword: '', // 没有密码，触发恢复
+      );
+
+      final result = await service.connectSandbox(
+        config: config,
+        sandboxId: 'sbx-recover-ok',
+        endpointUrl: 'https://4096-sbx-recover-ok.e2b.app',
+        sandbox: sandbox,
+      );
+
+      expect(result.success, isTrue);
+      expect(result.password, 'recovered-secret');
+      expect(result.envdAccessToken, 'tok_recover');
+    });
+  });
 }
+

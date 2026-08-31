@@ -1,9 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:isolate';
 import 'dart:math' as math;
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:dio/dio.dart' show CancelToken, DioException, DioExceptionType;
 import 'package:get/get.dart';
@@ -979,8 +978,9 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       List<({PickedImage image, String base64})> sendEncoded = const [];
       if (images.isNotEmpty) {
         try {
-          sendEncoded = await Isolate.run(
-            () => compressAndEncodeImagesSync(images),
+          sendEncoded = await compute(
+            compressAndEncodeImagesSync,
+            images,
           );
         } catch (e) {
           AppLogger.e('compress images (vision) failed: $e');
@@ -1894,14 +1894,15 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     var encoded = const <String>[];
     if (images.isNotEmpty) {
       try {
-        final results = await Isolate.run(
-          () => compressAndEncodeImagesSync(images),
+        final results = await compute(
+          compressAndEncodeImagesSync,
+          images,
         );
         sendImages = [for (final r in results) r.image];
         encoded = [for (final r in results) r.base64];
       } catch (e) {
         AppLogger.e('compress images failed: $e');
-        // 隔离区失败兜底：主 isolate 用原图原样编码。
+        // 后台任务失败兜底：主 isolate 用原图原样编码。
         sendImages = images;
         encoded = [for (final img in images) base64Encode(img.bytes)];
       }

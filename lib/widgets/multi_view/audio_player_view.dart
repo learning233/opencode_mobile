@@ -1,9 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:isolate';
-import 'dart:typed_data';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../api/endpoints.dart';
@@ -12,6 +11,14 @@ import '../../controllers/project_controller.dart';
 import '../../controllers/tablet_tool_controller.dart';
 import '../../utils/app_logger.dart';
 import '../../utils/translations.dart';
+
+export '../../utils/file_kind.dart' show isAudioFilePath, kAudioExtensions;
+
+/// Top-level function for safe compute execution without capturing class instances.
+Uint8List _decodeAudioBase64Sync(String raw) {
+  final clean = raw.replaceAll(RegExp(r'\s+'), '');
+  return base64Decode(clean);
+}
 
 /// Audio player view with play/pause, seek, volume, and time display.
 class AudioPlayerView extends StatefulWidget {
@@ -46,6 +53,7 @@ class _AudioPlayerViewState extends State<AudioPlayerView> {
   StreamSubscription? _durationSub;
   StreamSubscription? _positionSub;
   StreamSubscription? _stateSub;
+  StreamSubscription? _completeSub;
   int _requestSeq = 0;
 
   @override
@@ -111,8 +119,9 @@ class _AudioPlayerViewState extends State<AudioPlayerView> {
         }
 
         // 数 MB base64 的正则清洗 + 解码放后台 isolate，打开大附件不占 UI 线程。
-        final Uint8List bytes = await Isolate.run(
-          () => base64Decode(base64Content.replaceAll(RegExp(r'\s+'), '')),
+        final Uint8List bytes = await compute(
+          _decodeAudioBase64Sync,
+          base64Content,
         );
         // isolate 解码期间可能已有更新的请求完成或页面已销毁，丢弃过期结果。
         if (seq != _requestSeq || !mounted) return;
@@ -161,6 +170,14 @@ class _AudioPlayerViewState extends State<AudioPlayerView> {
     _stateSub = _player.onPlayerStateChanged.listen((s) {
       if (mounted) setState(() => _state = s);
     });
+    _completeSub = _player.onPlayerComplete.listen((_) {
+      if (mounted) {
+        setState(() {
+          _position = Duration.zero;
+          _state = PlayerState.completed;
+        });
+      }
+    });
   }
 
   Future<void> _loadAudio() async {
@@ -207,6 +224,7 @@ class _AudioPlayerViewState extends State<AudioPlayerView> {
     _durationSub?.cancel();
     _positionSub?.cancel();
     _stateSub?.cancel();
+    _completeSub?.cancel();
     _player.dispose();
     super.dispose();
   }
@@ -220,7 +238,12 @@ class _AudioPlayerViewState extends State<AudioPlayerView> {
     } else if (_state == PlayerState.paused) {
       await _player.resume();
     } else {
-      await _player.play(BytesSource(_bytes!));
+      await _player.play(
+        BytesSource(
+          _bytes!,
+          mimeType: _mimeFor(widget.filePath),
+        ),
+      );
     }
   }
 

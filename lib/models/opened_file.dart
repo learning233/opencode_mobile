@@ -1,7 +1,10 @@
+import '../utils/file_kind.dart';
+
 class OpenedFile {
   final String path;
   final String name;
   final String? worktree;
+  final FileKind kind;
   final String? initialContent;
   int? targetLine;
 
@@ -9,9 +12,10 @@ class OpenedFile {
     required this.path,
     required this.name,
     this.worktree,
+    FileKind? kind,
     this.initialContent,
     this.targetLine,
-  });
+  }) : kind = kind ?? detectFileKind(path);
 
   @override
   bool operator ==(Object other) =>

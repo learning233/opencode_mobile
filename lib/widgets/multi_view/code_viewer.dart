@@ -17,8 +17,11 @@ import '../../controllers/tablet_tool_controller.dart';
 import '../../init.dart';
 import '../../utils/app_logger.dart';
 import '../../utils/diff_paths.dart';
+import '../../utils/file_kind.dart';
 import '../../utils/snackbar_utils.dart';
 import '../../utils/translations.dart';
+import 'audio_player_view.dart';
+import 'image_viewer.dart';
 
 class FileEditorPage extends StatefulWidget {
   final String filePath;
@@ -52,6 +55,8 @@ class _FileEditorPageState extends State<FileEditorPage> {
   StreamSubscription<int>? _reconnectSub;
   Timer? _reloadDebounce;
   bool _isLoading = false;
+  bool _isImage = false;
+  bool _isAudio = false;
   String? _error;
   int _requestSeq = 0;
   Worker? _wordWrapWorker;
@@ -107,7 +112,11 @@ class _FileEditorPageState extends State<FileEditorPage> {
       _wordWrap = Global.settings.editorWordWrap;
       initial = widget.initialContent;
     }
-    if (initial != null) {
+    if (isImageFilePath(widget.filePath)) {
+      _isImage = true;
+      _controller = _createController();
+      _initFindController();
+    } else if (initial != null) {
       _controller = _createController(text: initial);
       _initFindController();
       if (widget.initialLine != null) {
@@ -251,6 +260,26 @@ class _FileEditorPageState extends State<FileEditorPage> {
       if (response.statusCode == 200) {
         final parsed = FileContent.parse(response.data);
         if (parsed.isBinary) {
+          if (parsed.mimeType?.startsWith('image/') == true ||
+              isImageFilePath(widget.filePath)) {
+            if (mounted) {
+              setState(() {
+                _isImage = true;
+                _isLoading = false;
+              });
+            }
+            return;
+          }
+          if (parsed.mimeType?.startsWith('audio/') == true ||
+              isAudioFilePath(widget.filePath)) {
+            if (mounted) {
+              setState(() {
+                _isAudio = true;
+                _isLoading = false;
+              });
+            }
+            return;
+          }
           if (mounted) {
             setState(() {
               _error = LocaleKeys.unsupportedBinaryFile.trParams({
@@ -554,12 +583,23 @@ class _FileEditorPageState extends State<FileEditorPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isImage || isImageFilePath(widget.filePath)) {
+      return ImageViewer(
+        filePath: widget.filePath,
+        worktree: widget.worktree,
+      );
+    }
+    if (_isAudio || isAudioFilePath(widget.filePath)) {
+      return AudioPlayerView(
+        filePath: widget.filePath,
+        worktree: widget.worktree,
+      );
+    }
+
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final isMarkdown =
-        widget.fileName.toLowerCase().endsWith('.md') ||
-        widget.fileName.toLowerCase().endsWith('.markdown');
+    final isMarkdown = isMarkdownFilePath(widget.fileName);
 
     if (_isLoading) {
       return Scaffold(

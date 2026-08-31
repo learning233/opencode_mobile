@@ -2,8 +2,11 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../controllers/tablet_tool_controller.dart';
+import '../../utils/file_kind.dart';
 import '../../utils/translations.dart';
+import '../../widgets/multi_view/audio_player_view.dart';
 import '../../widgets/multi_view/code_viewer.dart';
+import '../../widgets/multi_view/image_viewer.dart';
 import '../../widgets/browser/in_app_browser_view.dart';
 import '../../pages/home/terminal_page.dart';
 import 'review_page.dart';
@@ -318,16 +321,33 @@ class _TabletToolPanelState extends State<TabletToolPanel>
                   },
                   itemBuilder: (context, index) {
                     final file = files[index];
-                    return FileEditorPage(
-                      key: ValueKey(
-                        'tablet_code_${TabletToolController.fileKey(file.path, file.worktree)}',
-                      ),
-                      filePath: file.path,
-                      fileName: file.name,
-                      worktree: file.worktree,
-                      initialContent: file.initialContent,
-                      initialLine: file.targetLine,
+                    final tabKey = ValueKey(
+                      'tablet_tab_${TabletToolController.fileKey(file.path, file.worktree)}',
                     );
+                    switch (file.kind) {
+                      case FileKind.image:
+                        return ImageViewer(
+                          key: tabKey,
+                          filePath: file.path,
+                          worktree: file.worktree,
+                        );
+                      case FileKind.audio:
+                        return AudioPlayerView(
+                          key: tabKey,
+                          filePath: file.path,
+                          worktree: file.worktree,
+                        );
+                      case FileKind.code:
+                      case FileKind.markdown:
+                        return FileEditorPage(
+                          key: tabKey,
+                          filePath: file.path,
+                          fileName: file.name,
+                          worktree: file.worktree,
+                          initialContent: file.initialContent,
+                          initialLine: file.targetLine,
+                        );
+                    }
                   },
                 );
               }),
@@ -500,7 +520,9 @@ class _TabletToolPanelState extends State<TabletToolPanel>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        CupertinoIcons.doc,
+                        isImageFilePath(file.name)
+                            ? CupertinoIcons.photo
+                            : CupertinoIcons.doc,
                         size: 14,
                         color: isActive
                             ? theme.colorScheme.primary

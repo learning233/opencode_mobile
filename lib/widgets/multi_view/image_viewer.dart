@@ -1,8 +1,7 @@
 import 'dart:convert';
-import 'dart:isolate';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../api/endpoints.dart';
@@ -11,6 +10,14 @@ import '../../controllers/project_controller.dart';
 import '../../controllers/tablet_tool_controller.dart';
 import '../../utils/app_logger.dart';
 import '../../utils/translations.dart';
+
+export '../../utils/file_kind.dart' show isImageFilePath, kImageExtensions;
+
+/// Top-level function for safe compute execution without capturing class instances.
+Uint8List _decodeBase64Sync(String raw) {
+  final clean = raw.replaceAll(RegExp(r'\s+'), '');
+  return base64Decode(clean);
+}
 
 /// Image viewer with zoom controls and dimension info.
 class ImageViewer extends StatefulWidget {
@@ -37,7 +44,6 @@ class _ImageViewerState extends State<ImageViewer> {
   Uint8List? _bytes;
   bool _isLoading = false;
   String? _error;
-  String _fileName = '';
   int _requestSeq = 0;
 
   static const double _minScale = 0.1;
@@ -47,7 +53,6 @@ class _ImageViewerState extends State<ImageViewer> {
   @override
   void initState() {
     super.initState();
-    _fileName = widget.filePath.split(RegExp(r'[/\\]')).last;
     if (widget.bytes != null) {
       _bytes = widget.bytes;
       _decodeImageInfo();
@@ -105,8 +110,9 @@ class _ImageViewerState extends State<ImageViewer> {
         }
 
         // 数 MB base64 的正则清洗 + 解码放后台 isolate，打开大附件不占 UI 线程。
-        final Uint8List bytes = await Isolate.run(
-          () => base64Decode(base64Content.replaceAll(RegExp(r'\s+'), '')),
+        final Uint8List bytes = await compute(
+          _decodeBase64Sync,
+          base64Content,
         );
         // isolate 解码期间可能已有更新的请求完成或页面已销毁，丢弃过期结果。
         if (seq != _requestSeq || !mounted) return;
@@ -207,20 +213,15 @@ class _ImageViewerState extends State<ImageViewer> {
     if (_isLoading) {
       return Scaffold(
         appBar: AppBar(
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(_fileName, style: const TextStyle(fontSize: 16)),
-              Text(
-                widget.filePath,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
+          toolbarHeight: 40,
+          title: Text(
+            widget.filePath,
+            style: TextStyle(
+              fontSize: 11,
+              color: theme.colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.normal,
+            ),
+            overflow: TextOverflow.ellipsis,
           ),
         ),
         body: const Center(child: CircularProgressIndicator()),
@@ -230,40 +231,41 @@ class _ImageViewerState extends State<ImageViewer> {
     if (_error != null) {
       return Scaffold(
         appBar: AppBar(
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(_fileName, style: const TextStyle(fontSize: 16)),
-              Text(
-                widget.filePath,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
+          toolbarHeight: 40,
+          title: Text(
+            widget.filePath,
+            style: TextStyle(
+              fontSize: 11,
+              color: theme.colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.normal,
+            ),
+            overflow: TextOverflow.ellipsis,
           ),
         ),
         body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Text(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.broken_image_outlined,
+                  size: 48,
+                  color: theme.colorScheme.error,
+                ),
+                const SizedBox(height: 12),
+                Text(
                   _error!,
                   style: TextStyle(color: theme.colorScheme.error),
                   textAlign: TextAlign.center,
                 ),
-              ),
-              const SizedBox(height: 12),
-              FilledButton.tonal(
-                onPressed: _fetchImageBytes,
-                child: Text(LocaleKeys.retry.tr),
-              ),
-            ],
+                const SizedBox(height: 16),
+                FilledButton.tonal(
+                  onPressed: _fetchImageBytes,
+                  child: Text(LocaleKeys.retry.tr),
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -271,21 +273,23 @@ class _ImageViewerState extends State<ImageViewer> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(_fileName, style: const TextStyle(fontSize: 16)),
-            Text(
-              widget.filePath,
-              style: TextStyle(
-                fontSize: 11,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
+        toolbarHeight: 40,
+        title: Text(
+          widget.filePath,
+          style: TextStyle(
+            fontSize: 11,
+            color: theme.colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.normal,
+          ),
+          overflow: TextOverflow.ellipsis,
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(CupertinoIcons.refresh, size: 18),
+            tooltip: LocaleKeys.reload.tr,
+            onPressed: _fetchImageBytes,
+          ),
+        ],
       ),
       body: Column(
         children: [

@@ -3,8 +3,11 @@ import 'package:get/get.dart';
 import '../../controllers/tablet_tool_controller.dart';
 import '../../pages/left_drawer/left_drawer.dart';
 import '../../pages/left_drawer/left_panel_content.dart';
+import '../../utils/file_kind.dart';
 import '../../utils/translations.dart';
+import '../../widgets/multi_view/audio_player_view.dart';
 import '../../widgets/multi_view/code_viewer.dart';
+import '../../widgets/multi_view/image_viewer.dart';
 
 /// Unified Multi-Tab File Editor Page for Mobile & Tablet.
 class FilePage extends StatefulWidget {
@@ -164,16 +167,33 @@ class _FilePageState extends State<FilePage> {
                     },
                     itemBuilder: (context, index) {
                       final file = files[index];
-                      return FileEditorPage(
-                        key: ValueKey(
-                          'file_page_${TabletToolController.fileKey(file.path, file.worktree)}',
-                        ),
-                        filePath: file.path,
-                        fileName: file.name,
-                        worktree: file.worktree,
-                        initialContent: file.initialContent,
-                        initialLine: file.targetLine,
+                      final tabKey = ValueKey(
+                        'file_tab_${TabletToolController.fileKey(file.path, file.worktree)}',
                       );
+                      switch (file.kind) {
+                        case FileKind.image:
+                          return ImageViewer(
+                            key: tabKey,
+                            filePath: file.path,
+                            worktree: file.worktree,
+                          );
+                        case FileKind.audio:
+                          return AudioPlayerView(
+                            key: tabKey,
+                            filePath: file.path,
+                            worktree: file.worktree,
+                          );
+                        case FileKind.code:
+                        case FileKind.markdown:
+                          return FileEditorPage(
+                            key: tabKey,
+                            filePath: file.path,
+                            fileName: file.name,
+                            worktree: file.worktree,
+                            initialContent: file.initialContent,
+                            initialLine: file.targetLine,
+                          );
+                      }
                     },
                   );
                 }),
@@ -352,7 +372,9 @@ class _FilePageState extends State<FilePage> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        Icons.insert_drive_file_outlined,
+                        isImageFilePath(file.name)
+                            ? Icons.image_outlined
+                            : Icons.insert_drive_file_outlined,
                         size: 14,
                         color: isActive
                             ? theme.colorScheme.primary

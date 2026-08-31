@@ -102,6 +102,70 @@ class LocaleKeys {
   static const opencodeSettingsTitle = "settings_opencode_title";
   static const tabAbout = "settings_tab_about";
 
+  // ── Settings – Cloud Workspace (E2B) ──
+  static const connModeSelfHosted = "conn_mode_self_hosted";
+  static const connModeCloud = "conn_mode_cloud";
+  static const e2bTitle = "e2b_title";
+  static const e2bDesc = "e2b_desc";
+  static const e2bApiKey = "e2b_api_key";
+  static const e2bApiKeyHint = "e2b_api_key_hint";
+  static const e2bTemplate = "e2b_template";
+  static const e2bTemplateHint = "e2b_template_hint";
+  static const e2bToolchains = "e2b_toolchains";
+  static const e2bToolchainDart = "e2b_toolchain_dart";
+  static const e2bToolchainRust = "e2b_toolchain_rust";
+  static const e2bToolchainCpp = "e2b_toolchain_cpp";
+  static const e2bToolchainPython = "e2b_toolchain_python";
+  static const e2bGitConfig = "e2b_git_config";
+  static const e2bGitRepo = "e2b_git_repo";
+  static const e2bGitRepoHint = "e2b_git_repo_hint";
+  static const e2bGitBranch = "e2b_git_branch";
+  static const e2bGitToken = "e2b_git_token";
+  static const e2bGitTokenHint = "e2b_git_token_hint";
+  static const e2bGitUsername = "e2b_git_username";
+  static const e2bGitEmail = "e2b_git_email";
+  static const e2bLlmConfig = "e2b_llm_config";
+  static const e2bAnthropicKey = "e2b_anthropic_key";
+  static const e2bOpenAiKey = "e2b_openai_key";
+  static const e2bGeminiKey = "e2b_gemini_key";
+  static const e2bDeepseekKey = "e2b_deepseek_key";
+  static const e2bTtlHours = "e2b_ttl_hours";
+  static const e2bTtlDesc = "e2b_ttl_desc";
+  static const e2bAutoPause = "e2b_auto_pause";
+  static const e2bAutoPauseDesc = "e2b_auto_pause_desc";
+  static const e2bLaunchWorkspace = "e2b_launch_workspace";
+  static const e2bLaunchingWorkspace = "e2b_launching_workspace";
+  static const e2bPauseSandbox = "e2b_pause_sandbox";
+  static const e2bResumeSandbox = "e2b_resume_sandbox";
+  static const e2bDestroySandbox = "e2b_destroy_sandbox";
+  static const e2bSandboxList = "e2b_sandbox_list";
+  static const e2bCreateSandbox = "e2b_create_sandbox";
+  static const e2bRefreshList = "e2b_refresh_list";
+  static const e2bNoSandboxes = "e2b_no_sandboxes";
+  static const e2bNoSandboxesDesc = "e2b_no_sandboxes_desc";
+  static const e2bApiKeyRequired = "e2b_api_key_required";
+  static const e2bApiKeyRequiredDesc = "e2b_api_key_required_desc";
+  static const e2bConfigApiKey = "e2b_config_api_key";
+  static const e2bCurrentlyConnected = "e2b_currently_connected";
+  static const e2bConnectSandbox = "e2b_connect_sandbox";
+  static const e2bConfirmDestroy = "e2b_confirm_destroy";
+  static const e2bConfirmDestroyDesc = "e2b_confirm_destroy_desc";
+  static const e2bSandboxStatusRunning = "e2b_status_running";
+  static const e2bSandboxStatusPaused = "e2b_status_paused";
+  static const e2bSandboxDashboard = "e2b_sandbox_dashboard";
+  static const e2bConfigWorkspace = "e2b_config_workspace";
+  static const e2bFetchRepos = "e2b_fetch_repos";
+  static const e2bFetchingRepos = "e2b_fetching_repos";
+  static const e2bSelectRepo = "e2b_select_repo";
+  static const e2bSearchRepos = "e2b_search_repos";
+  static const e2bNoReposFound = "e2b_no_repos_found";
+  static const e2bGitTokenRequiredForRepos = "e2b_git_token_required_for_repos";
+  static const e2bProvidersConfig = "e2b_providers_config";
+  static const e2bConfigured = "e2b_configured";
+  static const e2bNotConfigured = "e2b_not_configured";
+  static const e2bCustomBaseUrl = "e2b_custom_base_url";
+  static const e2bCustomBaseUrlHint = "e2b_custom_base_url_hint";
+
   // ── Settings – General ──
   static const secAppearance = "gen_sec_appearance";
   static const colorTheme = "gen_color_theme";
@@ -1255,6 +1319,70 @@ class Messages extends Translations {
     LocaleKeys.opencodeSettingsTitle: 'OpenCode 设置',
     LocaleKeys.tabAbout: '关于',
 
+    // ── Settings – Cloud Workspace (E2B) ──
+    LocaleKeys.connModeSelfHosted: '自建服务器',
+    LocaleKeys.connModeCloud: '☁️ E2B 云端沙盒',
+    LocaleKeys.e2bTitle: 'E2B 云端开发工作区',
+    LocaleKeys.e2bDesc: '无需本地服务器，基于 E2B MicroVM 秒级拉起专属云端 Linux 与 OpenCode 环境。',
+    LocaleKeys.e2bApiKey: 'E2B API Key',
+    LocaleKeys.e2bApiKeyHint: '从 e2b.dev/dashboard 获取的 API Key',
+    LocaleKeys.e2bTemplate: '沙盒模板 ID',
+    LocaleKeys.e2bTemplateHint: '默认 opencode (官方预建)',
+    LocaleKeys.e2bToolchains: '预装开发工具链',
+    LocaleKeys.e2bToolchainDart: '🎯 Dart SDK',
+    LocaleKeys.e2bToolchainRust: '🦀 Rust & Cargo',
+    LocaleKeys.e2bToolchainCpp: '🛠️ C/C++ (Clang/Make)',
+    LocaleKeys.e2bToolchainPython: '🐍 Python 3',
+    LocaleKeys.e2bGitConfig: 'Git 仓库自动同步',
+    LocaleKeys.e2bGitRepo: '仓库地址',
+    LocaleKeys.e2bGitRepoHint: 'https://github.com/owner/repo.git',
+    LocaleKeys.e2bGitBranch: '分支名 (默认 main)',
+    LocaleKeys.e2bGitToken: 'GitHub / Gitee Token',
+    LocaleKeys.e2bGitTokenHint: 'Personal Access Token',
+    LocaleKeys.e2bGitUsername: 'Git 提交者姓名',
+    LocaleKeys.e2bGitEmail: 'Git 提交者邮箱',
+    LocaleKeys.e2bLlmConfig: '云端大模型 API Key 注入',
+    LocaleKeys.e2bAnthropicKey: 'Anthropic API Key',
+    LocaleKeys.e2bOpenAiKey: 'OpenAI API Key',
+    LocaleKeys.e2bGeminiKey: 'Gemini API Key',
+    LocaleKeys.e2bDeepseekKey: 'DeepSeek API Key',
+    LocaleKeys.e2bTtlHours: '云端保活周期',
+    LocaleKeys.e2bTtlDesc: '设置云端实例保持运行的时长。手机锁屏或离线期间，云端 Agent 仍会持续执行长任务。',
+    LocaleKeys.e2bAutoPause: '空闲自动休眠 (Auto-Pause)',
+    LocaleKeys.e2bAutoPauseDesc: '仅在 Agent 任务已全部完成且空闲时，自动快照挂起沙盒以暂停计费并保留代码。',
+    LocaleKeys.e2bLaunchWorkspace: '🚀 一键启动云工作区',
+    LocaleKeys.e2bLaunchingWorkspace: '正在启动 E2B 云端沙盒...',
+    LocaleKeys.e2bPauseSandbox: '挂起休眠',
+    LocaleKeys.e2bResumeSandbox: '秒级唤醒',
+    LocaleKeys.e2bDestroySandbox: '彻底销毁沙盒',
+    LocaleKeys.e2bSandboxList: '沙盒实例列表',
+    LocaleKeys.e2bCreateSandbox: '新建沙盒',
+    LocaleKeys.e2bRefreshList: '刷新列表',
+    LocaleKeys.e2bNoSandboxes: '暂无运行中的沙盒',
+    LocaleKeys.e2bNoSandboxesDesc: '点击右上角「新建沙盒」一键拉起 MicroVM 开发环境',
+    LocaleKeys.e2bApiKeyRequired: '需要配置 E2B API Key',
+    LocaleKeys.e2bApiKeyRequiredDesc: '配置 API Key 后可直接在手机上查看与管理所有云端沙盒',
+    LocaleKeys.e2bConfigApiKey: '配置 API Key',
+    LocaleKeys.e2bCurrentlyConnected: '当前连接',
+    LocaleKeys.e2bConnectSandbox: '进入沙盒',
+    LocaleKeys.e2bConfirmDestroy: '确认销毁沙盒？',
+    LocaleKeys.e2bConfirmDestroyDesc: '销毁后该沙盒将被彻底删除，未推送到 Git 的文件将丢失。',
+    LocaleKeys.e2bSandboxStatusRunning: '运行中',
+    LocaleKeys.e2bSandboxStatusPaused: '🟡 已挂起休眠',
+    LocaleKeys.e2bSandboxDashboard: '云端沙盒控制台',
+    LocaleKeys.e2bConfigWorkspace: '配置云工作区',
+    LocaleKeys.e2bFetchRepos: '🔍 获取项目列表',
+    LocaleKeys.e2bFetchingRepos: '正在获取仓库列表...',
+    LocaleKeys.e2bSelectRepo: '选择要拉取的项目',
+    LocaleKeys.e2bSearchRepos: '搜索项目名称...',
+    LocaleKeys.e2bNoReposFound: '未找到匹配的仓库',
+    LocaleKeys.e2bGitTokenRequiredForRepos: '请先填写 Personal Access Token 以便获取您的项目列表',
+    LocaleKeys.e2bProvidersConfig: 'AI 大模型供应商配置',
+    LocaleKeys.e2bConfigured: '已配置',
+    LocaleKeys.e2bNotConfigured: '未设置',
+    LocaleKeys.e2bCustomBaseUrl: '自定义 API Base URL',
+    LocaleKeys.e2bCustomBaseUrlHint: 'https://api.openai.com/v1',
+
     // ── Settings – General ──
     LocaleKeys.secAppearance: '外观与布局',
     LocaleKeys.colorTheme: '颜色主题',
@@ -2406,6 +2534,70 @@ class Messages extends Translations {
     LocaleKeys.tabConnection: 'Connection',
     LocaleKeys.opencodeSettingsTitle: 'OpenCode Settings',
     LocaleKeys.tabAbout: 'About',
+
+    // ── Settings – Cloud Workspace (E2B) ──
+    LocaleKeys.connModeSelfHosted: 'Self-Hosted',
+    LocaleKeys.connModeCloud: '☁️ E2B Cloud',
+    LocaleKeys.e2bTitle: 'E2B Cloud Workspace',
+    LocaleKeys.e2bDesc: 'Provision isolated MicroVM Linux & OpenCode sandbox in seconds via E2B.',
+    LocaleKeys.e2bApiKey: 'E2B API Key',
+    LocaleKeys.e2bApiKeyHint: 'API Key from e2b.dev/dashboard',
+    LocaleKeys.e2bTemplate: 'Sandbox Template ID',
+    LocaleKeys.e2bTemplateHint: 'Default: opencode (official pre-built)',
+    LocaleKeys.e2bToolchains: 'Development Toolchains',
+    LocaleKeys.e2bToolchainDart: '🎯 Dart SDK',
+    LocaleKeys.e2bToolchainRust: '🦀 Rust & Cargo',
+    LocaleKeys.e2bToolchainCpp: '🛠️ C/C++ (Clang/Make)',
+    LocaleKeys.e2bToolchainPython: '🐍 Python 3',
+    LocaleKeys.e2bGitConfig: 'Git Auto-Clone & Sync',
+    LocaleKeys.e2bGitRepo: 'Repository URL',
+    LocaleKeys.e2bGitRepoHint: 'https://github.com/owner/repo.git',
+    LocaleKeys.e2bGitBranch: 'Branch (default: main)',
+    LocaleKeys.e2bGitToken: 'GitHub / Gitee Token',
+    LocaleKeys.e2bGitTokenHint: 'Personal Access Token',
+    LocaleKeys.e2bGitUsername: 'Git Author Name',
+    LocaleKeys.e2bGitEmail: 'Git Author Email',
+    LocaleKeys.e2bLlmConfig: 'Cloud LLM API Key Injection',
+    LocaleKeys.e2bAnthropicKey: 'Anthropic API Key',
+    LocaleKeys.e2bOpenAiKey: 'OpenAI API Key',
+    LocaleKeys.e2bGeminiKey: 'Gemini API Key',
+    LocaleKeys.e2bDeepseekKey: 'DeepSeek API Key',
+    LocaleKeys.e2bTtlHours: 'Cloud Retention TTL',
+    LocaleKeys.e2bTtlDesc: 'Cloud sandbox stays active even when mobile screen is locked or offline.',
+    LocaleKeys.e2bAutoPause: 'Auto-Pause when Idle',
+    LocaleKeys.e2bAutoPauseDesc: 'Auto-snapshot and pause sandbox only when agent is idle to save costs and preserve state.',
+    LocaleKeys.e2bLaunchWorkspace: '🚀 Launch Cloud Workspace',
+    LocaleKeys.e2bLaunchingWorkspace: 'Launching E2B Sandbox...',
+    LocaleKeys.e2bPauseSandbox: 'Pause',
+    LocaleKeys.e2bResumeSandbox: 'Resume',
+    LocaleKeys.e2bDestroySandbox: 'Destroy Sandbox',
+    LocaleKeys.e2bSandboxList: 'Sandbox List',
+    LocaleKeys.e2bCreateSandbox: 'New Sandbox',
+    LocaleKeys.e2bRefreshList: 'Refresh List',
+    LocaleKeys.e2bNoSandboxes: 'No Running Sandboxes',
+    LocaleKeys.e2bNoSandboxesDesc: 'Click "New Sandbox" in the top right to launch a MicroVM workspace',
+    LocaleKeys.e2bApiKeyRequired: 'E2B API Key Required',
+    LocaleKeys.e2bApiKeyRequiredDesc: 'Configure your API key to view and manage cloud sandboxes on mobile',
+    LocaleKeys.e2bConfigApiKey: 'Configure API Key',
+    LocaleKeys.e2bCurrentlyConnected: 'Connected',
+    LocaleKeys.e2bConnectSandbox: 'Connect',
+    LocaleKeys.e2bConfirmDestroy: 'Destroy Sandbox?',
+    LocaleKeys.e2bConfirmDestroyDesc: 'The sandbox will be permanently terminated. Uncommitted changes will be lost.',
+    LocaleKeys.e2bSandboxStatusRunning: 'Running',
+    LocaleKeys.e2bSandboxStatusPaused: '🟡 Paused',
+    LocaleKeys.e2bSandboxDashboard: 'Sandbox Dashboard',
+    LocaleKeys.e2bConfigWorkspace: 'Configure Cloud Workspace',
+    LocaleKeys.e2bFetchRepos: '🔍 Fetch My Repos',
+    LocaleKeys.e2bFetchingRepos: 'Fetching repositories...',
+    LocaleKeys.e2bSelectRepo: 'Select Repository to Clone',
+    LocaleKeys.e2bSearchRepos: 'Search repository name...',
+    LocaleKeys.e2bNoReposFound: 'No repositories found',
+    LocaleKeys.e2bGitTokenRequiredForRepos: 'Please enter Personal Access Token first to fetch your repositories',
+    LocaleKeys.e2bProvidersConfig: 'AI Model Providers Configuration',
+    LocaleKeys.e2bConfigured: 'Configured',
+    LocaleKeys.e2bNotConfigured: 'Not Set',
+    LocaleKeys.e2bCustomBaseUrl: 'Custom API Base URL',
+    LocaleKeys.e2bCustomBaseUrlHint: 'https://api.openai.com/v1',
 
     // ── Settings – General ──
     LocaleKeys.secAppearance: 'Appearance & Layout',

@@ -1,0 +1,483 @@
+import 'dart:convert';
+
+import 'package:dio/dio.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:opencode_app/e2b/e2b.dart';
+import 'package:opencode_app/models/cloud_workspace_config.dart';
+import 'package:opencode_app/models/e2b_sandbox_info.dart';
+import 'package:opencode_app/services/e2b_workspace_service.dart';
+import 'package:opencode_app/services/git_repo_service.dart';
+import 'package:opencode_app/utils/app_logger.dart';
+import 'package:opencode_app/utils/app_settings_store.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../helpers/fake_http_adapter.dart';
+
+void main() {
+  setUpAll(() async {
+    await AppLogger.init(logDir: './build/test_logs');
+  });
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  group('CloudWorkspaceConfig Tests', () {
+    test('default values are set correctly', () {
+      final config = CloudWorkspaceConfig();
+      expect(config.e2bApiKey, '');
+      expect(config.templateId, 'opencode');
+      expect(config.toolchains, containsAll(['dart', 'rust']));
+      expect(config.ttlHours, 2);
+      expect(config.autoPause, true);
+      expect(config.hasActiveSandbox, false);
+    });
+
+    test('serialization and deserialization roundtrip', () {
+      final original = CloudWorkspaceConfig(
+        e2bApiKey: 'test-api-key-123',
+        templateId: 'custom-opencode',
+        toolchains: ['dart', 'rust', 'c_cpp'],
+        gitProvider: 'github',
+        gitRepoUrl: 'https://github.com/test/repo.git',
+        gitRepoFullName: 'test/repo',
+        gitBranch: 'develop',
+        gitToken: 'ghp_secret',
+        gitUsername: 'dev_user',
+        gitEmail: 'dev@test.com',
+        ttlHours: 4,
+        autoPause: false,
+        activeSandboxId: 'sbx-998877',
+        activeSandboxUrl: 'https://4096-sbx-998877.e2b.app',
+        activeSandboxPassword: 'pass_secret_123',
+        activeSandboxEnvdToken: 'envd_tok_abc',
+        activeSandboxStatus: 'running',
+        lastConnectedAt: DateTime(2026, 8, 31, 12, 0),
+      );
+
+      final serialized = original.serialize();
+      final deserialized = CloudWorkspaceConfig.deserialize(serialized);
+
+      expect(deserialized.e2bApiKey, original.e2bApiKey);
+      expect(deserialized.templateId, original.templateId);
+      expect(deserialized.toolchains, original.toolchains);
+      expect(deserialized.gitProvider, original.gitProvider);
+      expect(deserialized.gitRepoUrl, original.gitRepoUrl);
+      expect(deserialized.gitRepoFullName, original.gitRepoFullName);
+      expect(deserialized.gitBranch, original.gitBranch);
+      expect(deserialized.gitToken, original.gitToken);
+      expect(deserialized.gitUsername, original.gitUsername);
+      expect(deserialized.gitEmail, original.gitEmail);
+      expect(deserialized.ttlHours, original.ttlHours);
+      expect(deserialized.autoPause, original.autoPause);
+      expect(deserialized.activeSandboxId, original.activeSandboxId);
+      expect(deserialized.activeSandboxUrl, original.activeSandboxUrl);
+      expect(deserialized.activeSandboxPassword, original.activeSandboxPassword);
+      expect(
+        deserialized.activeSandboxEnvdToken,
+        original.activeSandboxEnvdToken,
+      );
+      expect(deserialized.activeSandboxStatus, original.activeSandboxStatus);
+      expect(deserialized.hasActiveSandbox, true);
+    });
+
+    test('copyWith works correctly with clearActiveSandbox', () {
+      final config = CloudWorkspaceConfig(
+        activeSandboxId: 'sbx-1',
+        activeSandboxUrl: 'https://4096-sbx-1.e2b.app',
+        activeSandboxPassword: 'pwd',
+        activeSandboxEnvdToken: 'tok-1',
+        activeSandboxStatus: 'running',
+      );
+      expect(config.hasActiveSandbox, true);
+
+      final cleared = config.copyWith(clearActiveSandbox: true);
+      expect(cleared.activeSandboxId, isNull);
+      expect(cleared.activeSandboxUrl, isNull);
+      expect(cleared.activeSandboxPassword, isNull);
+      expect(cleared.activeSandboxEnvdToken, isNull);
+      expect(cleared.activeSandboxStatus, isNull);
+      expect(cleared.hasActiveSandbox, false);
+    });
+  });
+
+  group('E2bWorkspaceService Tests', () {
+    test('generateSecurePassword generates distinct string of requested length', () {
+      final service = E2bWorkspaceService.instance;
+      final pwd1 = service.generateSecurePassword(16);
+      final pwd2 = service.generateSecurePassword(16);
+
+      expect(pwd1.length, 16);
+      expect(pwd2.length, 16);
+      expect(pwd1, isNot(equals(pwd2)));
+    });
+
+    test('launchWorkspace fails fast when apiKey is empty', () async {
+      final service = E2bWorkspaceService.instance;
+      final result = await service.launchWorkspace(CloudWorkspaceConfig(e2bApiKey: ''));
+      expect(result.success, false);
+      expect(result.error, contains('E2B API Key 不能为空'));
+    });
+  });
+
+  group('AppSettingsStore CloudWorkspace Integration', () {
+    test('persists and retrieves cloudWorkspaceConfig', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final store = AppSettingsStore(prefs);
+
+      expect(store.cloudWorkspaceConfig.e2bApiKey, '');
+
+      final newConfig = CloudWorkspaceConfig(
+        e2bApiKey: 'test-key-456',
+        toolchains: ['dart', 'rust', 'python'],
+      );
+      await store.setCloudWorkspaceConfig(newConfig);
+
+      final loaded = store.cloudWorkspaceConfig;
+      expect(loaded.e2bApiKey, 'test-key-456');
+      expect(loaded.toolchains, containsAll(['dart', 'rust', 'python']));
+    });
+  });
+
+  group('GitRepoService Tests', () {
+    test('buildAuthenticatedCloneUrl adds token to GitHub URL', () {
+      final service = GitRepoService.instance;
+      final authUrl = service.buildAuthenticatedCloneUrl(
+        repoUrl: 'https://github.com/my-org/my-project.git',
+        token: 'ghp_secret_token_123',
+      );
+
+      expect(
+        authUrl,
+        'https://oauth2:ghp_secret_token_123@github.com/my-org/my-project.git',
+      );
+    });
+
+    test('GitRepoItem fromGitHubJson parses correctly', () {
+      final json = {
+        'name': 'test-repo',
+        'full_name': 'owner/test-repo',
+        'clone_url': 'https://github.com/owner/test-repo.git',
+        'default_branch': 'main',
+        'private': true,
+        'description': 'A test repository',
+        'owner': {'login': 'owner'},
+      };
+
+      final item = GitRepoItem.fromGitHubJson(json);
+      expect(item.name, 'test-repo');
+      expect(item.fullName, 'owner/test-repo');
+      expect(item.cloneUrl, 'https://github.com/owner/test-repo.git');
+      expect(item.defaultBranch, 'main');
+      expect(item.isPrivate, true);
+      expect(item.description, 'A test repository');
+      expect(item.owner, 'owner');
+    });
+    test('buildAuthenticatedCloneUrl retains custom port and handles other platforms', () {
+      final service = GitRepoService.instance;
+      final gitlabUrl = service.buildAuthenticatedCloneUrl(
+        repoUrl: 'https://gitlab.company.com:8443/team/repo.git',
+        token: 'glpat_secret',
+      );
+      expect(
+        gitlabUrl,
+        'https://oauth2:glpat_secret@gitlab.company.com:8443/team/repo.git',
+      );
+
+      final giteeUrl = service.buildAuthenticatedCloneUrl(
+        repoUrl: 'https://gitee.com/user/project.git',
+        token: 'gitee_token',
+      );
+      expect(
+        giteeUrl,
+        'https://gitee_token@gitee.com/user/project.git',
+      );
+    });
+  });
+
+  group('E2bSandboxInfo Tests', () {
+    test('E2bSandboxInfo fromJson parses standard E2B listed sandbox correctly', () {
+      final json = {
+        'sandboxID': 'sbx_abc123',
+        'templateID': 'opencode',
+        'alias': 'opencode-v1',
+        'state': 'running',
+        'startedAt': '2026-08-31T04:24:09.425Z',
+        'endAt': '2026-08-31T06:24:09.425Z',
+        'cpuCount': 4,
+        'memoryMB': 4096,
+        'metadata': {
+          'repo': 'my-user/my-flutter-repo',
+          'source': 'opencode_mobile',
+        },
+      };
+
+      final info = E2bSandboxInfo.fromJson(json);
+      expect(info.sandboxId, 'sbx_abc123');
+      expect(info.templateId, 'opencode');
+      expect(info.alias, 'opencode-v1');
+      expect(info.state, 'running');
+      expect(info.isRunning, true);
+      expect(info.isPaused, false);
+      expect(info.cpuCount, 4);
+      expect(info.memoryMB, 4096);
+      expect(info.repoName, 'my-user/my-flutter-repo');
+      expect(info.endpointUrl, 'https://4096-sbx_abc123.e2b.app');
+    });
+
+    test('E2bSandboxInfo handles status fallback key', () {
+      final json = {
+        'id': 'sbx_status_123',
+        'template': 'opencode',
+        'status': 'paused',
+      };
+      final info = E2bSandboxInfo.fromJson(json);
+      expect(info.sandboxId, 'sbx_status_123');
+      expect(info.isPaused, true);
+      expect(info.isRunning, false);
+    });
+
+    test('E2bSandboxInfo handles paused state and serialization', () {
+      final info = E2bSandboxInfo(
+        sandboxId: 'sbx_paused_99',
+        templateId: 'opencode',
+        state: 'paused',
+      );
+      expect(info.isRunning, false);
+      expect(info.isPaused, true);
+      expect(info.endpointUrl, 'https://4096-sbx_paused_99.e2b.app');
+
+      final serialized = info.toJson();
+      expect(serialized['sandboxID'], 'sbx_paused_99');
+      expect(serialized['state'], 'paused');
+    });
+  });
+
+  group('E2bWorkspaceService health polling (mock HTTP)', () {
+    final service = E2bWorkspaceService.instance;
+
+    tearDown(service.stopKeepAlive);
+
+    test('waitForHealthy fails fast on 401 (password mismatch)', () async {
+      service.healthDioForTest = Dio()
+        ..httpClientAdapter = FakeHttpAdapter((options, body) async {
+          return ResponseBody.fromString('unauthorized', 401);
+        });
+
+      final res = await service.waitForHealthy(
+        endpointUrl: 'https://4096-sbx-auth.e2b.app',
+        password: 'wrong-password',
+        maxRetries: 100,
+        retryDelay: const Duration(milliseconds: 1),
+      );
+
+      expect(res.healthy, isFalse);
+      expect(res.failReason, contains('密码不匹配'));
+    });
+
+    test('waitForHealthy retries 502 then succeeds on 200', () async {
+      int calls = 0;
+      service.healthDioForTest = Dio()
+        ..httpClientAdapter = FakeHttpAdapter((options, body) async {
+          calls++;
+          if (calls <= 2) {
+            return ResponseBody.fromString(
+              '{"code":502,"message":"The sandbox is running but port is not open"}',
+              502,
+            );
+          }
+          return ResponseBody.fromString('{"healthy":true}', 200);
+        });
+
+      final res = await service.waitForHealthy(
+        endpointUrl: 'https://4096-sbx-boot.e2b.app',
+        password: 'pw',
+        maxRetries: 5,
+        retryDelay: const Duration(milliseconds: 1),
+      );
+
+      expect(res.healthy, isTrue);
+      expect(res.failReason, isNull);
+      // /api/health 与 /global/health 在第 1 轮各打一次(502),第 2 轮 /api/health 直接 200
+      expect(calls, 3);
+    });
+
+    test('waitForHealthy reports timeout reason after exhausting retries',
+        () async {
+      service.healthDioForTest = Dio()
+        ..httpClientAdapter = FakeHttpAdapter((options, body) async {
+          return ResponseBody.fromString('port not open', 502);
+        });
+
+      final res = await service.waitForHealthy(
+        endpointUrl: 'https://4096-sbx-slow.e2b.app',
+        password: 'pw',
+        maxRetries: 3,
+        retryDelay: const Duration(milliseconds: 1),
+      );
+
+      expect(res.healthy, isFalse);
+      expect(res.failReason, contains('超时'));
+    });
+  });
+
+  group('E2bWorkspaceService bootstrap (mock envd)', () {
+    test('ensureOpenCodeRunning maps exit code 42 to install failure',
+        () async {
+      final adapter = FakeHttpAdapter((options, body) async {
+        if (options.uri.path.endsWith('/connect')) {
+          return ResponseBody.fromString(
+            jsonEncode({
+              'sandboxID': 'sbx-b',
+              'envdAccessToken': 'tok',
+              'domain': 'e2b.app',
+            }),
+            200,
+            headers: {
+              'content-type': ['application/json'],
+            },
+          );
+        }
+        if (options.uri.path.contains('process.Process/Start')) {
+          return ResponseBody(
+            Stream.fromIterable([
+              framedEvents([
+                {
+                  'event': {'start': {'pid': 1}},
+                },
+                {
+                  'event': {'end': {'exit_code': 42}},
+                },
+              ]),
+            ]),
+            200,
+          );
+        }
+        // 其他请求(如读取 /tmp/opencode.log)返回 404,由调用方静默处理
+        return ResponseBody.fromString('not found', 404);
+      });
+      final dio = Dio()..httpClientAdapter = adapter;
+
+      final sandbox = await Sandbox.connect(
+        SandboxConnectOpts(sandboxId: 'sbx-b', apiKey: 'k'),
+        dio: dio,
+      );
+
+      final result = await E2bWorkspaceService.instance.ensureOpenCodeRunning(
+        sandboxId: 'sbx-b',
+        apiKey: 'k',
+        password: 'pw',
+        config: CloudWorkspaceConfig(),
+        sandbox: sandbox,
+      );
+
+      expect(result.success, isFalse);
+      expect(result.error, contains('安装失败'));
+    });
+
+    test('ensureOpenCodeRunning succeeds when script exits 0', () async {
+      final adapter = FakeHttpAdapter((options, body) async {
+        if (options.uri.path.endsWith('/connect')) {
+          return ResponseBody.fromString(
+            jsonEncode({
+              'sandboxID': 'sbx-ok',
+              'envdAccessToken': 'tok',
+              'domain': 'e2b.app',
+            }),
+            200,
+            headers: {
+              'content-type': ['application/json'],
+            },
+          );
+        }
+        if (options.uri.path.contains('process.Process/Start')) {
+          return ResponseBody(
+            Stream.fromIterable([
+              framedEvents([
+                {
+                  'event': {'start': {'pid': 2}},
+                },
+                {
+                  'event': {
+                    'data': {
+                      'stdout': base64Encode(utf8.encode('Bootstrap done')),
+                    },
+                  },
+                },
+                {
+                  'event': {'end': {'exit_code': 0}},
+                },
+              ]),
+            ]),
+            200,
+          );
+        }
+        return ResponseBody.fromString('not found', 404);
+      });
+      final dio = Dio()..httpClientAdapter = adapter;
+
+      final sandbox = await Sandbox.connect(
+        SandboxConnectOpts(sandboxId: 'sbx-ok', apiKey: 'k'),
+        dio: dio,
+      );
+
+      final result = await E2bWorkspaceService.instance.ensureOpenCodeRunning(
+        sandboxId: 'sbx-ok',
+        apiKey: 'k',
+        password: 'pw',
+        config: CloudWorkspaceConfig(),
+        sandbox: sandbox,
+      );
+
+      expect(result.success, isTrue);
+    });
+
+    test('recoverPassword reads password from sandbox', () async {
+      final adapter = FakeHttpAdapter((options, body) async {
+        if (options.uri.path.endsWith('/connect')) {
+          return ResponseBody.fromString(
+            jsonEncode({
+              'sandboxID': 'sbx-pw',
+              'envdAccessToken': 'tok',
+              'domain': 'e2b.app',
+            }),
+            200,
+            headers: {
+              'content-type': ['application/json'],
+            },
+          );
+        }
+        if (options.uri.path.contains('process.Process/Start')) {
+          return ResponseBody(
+            Stream.fromIterable([
+              framedEvents([
+                {
+                  'event': {'start': {'pid': 3}},
+                },
+                {
+                  'event': {
+                    'data': {
+                      'stdout': base64Encode(utf8.encode('recovered-pw\n')),
+                    },
+                  },
+                },
+                {
+                  'event': {'end': {'exit_code': 0}},
+                },
+              ]),
+            ]),
+            200,
+          );
+        }
+        return ResponseBody.fromString('not found', 404);
+      });
+      final dio = Dio()..httpClientAdapter = adapter;
+
+      final sandbox = await Sandbox.connect(
+        SandboxConnectOpts(sandboxId: 'sbx-pw', apiKey: 'k'),
+        dio: dio,
+      );
+
+      final pw = await E2bWorkspaceService.instance.recoverPassword(sandbox);
+      expect(pw, 'recovered-pw');
+    });
+  });
+}

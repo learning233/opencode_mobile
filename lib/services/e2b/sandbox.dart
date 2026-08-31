@@ -1,0 +1,357 @@
+import 'dart:async';
+import 'package:dio/dio.dart';
+import 'models/errors.dart';
+import 'models/sandbox_opts.dart';
+import 'services/commands.dart';
+import 'services/filesystem.dart';
+import 'services/git.dart';
+import 'services/pty.dart';
+import 'transport/connect_transport.dart';
+import 'transport/connection_config.dart';
+
+/// E2B 沙盒实体类 (对应 JS/Python SDK 中的 Sandbox)
+class Sandbox {
+  final String sandboxId;
+  final String templateId;
+  final String? envdAccessToken;
+  final ConnectionConfig connectionConfig;
+  final ConnectTransport transport;
+
+  late final Commands commands;
+  late final Filesystem files;
+  late final Pty pty;
+  late final Git git;
+
+  Sandbox._({
+    required this.sandboxId,
+    required this.templateId,
+    this.envdAccessToken,
+    required this.connectionConfig,
+    required this.transport,
+  }) {
+    commands = Commands(sandboxId: sandboxId, transport: transport);
+    files = Filesystem(
+      sandboxId: sandboxId,
+      transport: transport,
+      dio: transport.dio,
+    );
+    pty = Pty(sandboxId: sandboxId, transport: transport);
+    git = Git(commands: commands);
+  }
+
+  // ==========================
+  // 静态生命周期工厂方法
+  // ==========================
+
+  /// 创建并启动一个新的 E2B 沙盒
+  static Future<Sandbox> create({
+    SandboxCreateOpts opts = const SandboxCreateOpts(),
+    Dio? dio,
+  }) async {
+    final effectiveApiKey = opts.apiKey ?? '';
+    if (effectiveApiKey.isEmpty) {
+      throw const SandboxAuthenticationException('E2B API Key 不能为空');
+    }
+
+    final client = dio ?? Dio();
+    final config = ConnectionConfig(
+      apiKey: effectiveApiKey,
+      domain: opts.domain,
+    );
+
+    final payload = {
+      'templateID': opts.template,
+      'timeout': opts.timeout,
+      'autoPause': opts.autoPause,
+      if (opts.envVars.isNotEmpty) 'envVars': opts.envVars,
+      if (opts.metadata.isNotEmpty) 'metadata': opts.metadata,
+    };
+
+    try {
+      final res = await client.post(
+        '${config.apiUrl}/sandboxes',
+        options: Options(headers: config.getApiHeaders()),
+        data: payload,
+      );
+
+      if (res.statusCode != 200 && res.statusCode != 201) {
+        throw SandboxException(
+          '创建沙盒失败: ${res.data?['message'] ?? res.statusCode}',
+          statusCode: res.statusCode,
+        );
+      }
+
+      final data = res.data as Map;
+      final sandboxId = (data['sandboxID'] ?? data['sandboxId'] ?? data['id'])
+          ?.toString() ??
+          '';
+      final templateId =
+          data['templateID']?.toString() ?? opts.template;
+      final envdAccessToken = data['envdAccessToken']?.toString();
+
+      final fullConfig = ConnectionConfig(
+        apiKey: effectiveApiKey,
+        domain: opts.domain,
+        envdAccessToken: envdAccessToken,
+        sandboxId: sandboxId,
+      );
+
+      final transport = ConnectTransport(config: fullConfig, dio: client);
+
+      return Sandbox._(
+        sandboxId: sandboxId,
+        templateId: templateId,
+        envdAccessToken: envdAccessToken,
+        connectionConfig: fullConfig,
+        transport: transport,
+      );
+    } on DioException catch (e) {
+      throw SandboxException('E2B 创建沙盒网络异常: ${e.message}', cause: e);
+    }
+  }
+
+  /// 连接到一个已存在的 E2B 沙盒。
+  ///
+  /// 真实调用控制面 `POST /sandboxes/{id}/connect`:校验沙盒存在性,
+  /// 已休眠(paused)的沙盒会被自动唤醒(响应 201),
+  /// 并返回服务端新签发的 envdAccessToken 与 domain。
+  static Future<Sandbox> connect(
+    SandboxConnectOpts opts, {
+    Dio? dio,
+  }) async {
+    final effectiveApiKey = opts.apiKey ?? '';
+    if (effectiveApiKey.isEmpty) {
+      throw const SandboxAuthenticationException('E2B API Key 不能为空');
+    }
+
+    final client = dio ??
+        Dio(
+          BaseOptions(
+            connectTimeout: const Duration(seconds: 15),
+            sendTimeout: const Duration(seconds: 15),
+            receiveTimeout: const Duration(seconds: 30),
+          ),
+        );
+
+    final baseConfig = ConnectionConfig(apiKey: effectiveApiKey, domain: opts.domain);
+
+    try {
+      final res = await client.post(
+        '${baseConfig.apiUrl}/sandboxes/${opts.sandboxId}/connect',
+        options: Options(
+          headers: baseConfig.getApiHeaders(),
+          validateStatus: (status) => true,
+        ),
+        data: {'timeout': opts.timeout},
+      );
+
+      if (res.statusCode == 404) {
+        throw SandboxNotFoundException('沙盒 ${opts.sandboxId} 不存在或已销毁 (404)');
+      }
+      if (res.statusCode != 200 && res.statusCode != 201) {
+        final msg = res.data is Map
+            ? (res.data['message']?.toString() ?? '')
+            : (res.data?.toString() ?? '');
+        throw SandboxException(
+          '连接沙盒失败: HTTP ${res.statusCode}${msg.isEmpty ? '' : ', $msg'}',
+          statusCode: res.statusCode,
+        );
+      }
+
+      final data = res.data is Map
+          ? Map<String, dynamic>.from(res.data as Map)
+          : const <String, dynamic>{};
+      final envdAccessToken =
+          (data['envdAccessToken'] ?? opts.envdAccessToken)?.toString();
+      final respDomain = data['domain']?.toString();
+      final domain =
+          (respDomain == null || respDomain.isEmpty) ? opts.domain : respDomain;
+
+      final config = ConnectionConfig(
+        apiKey: effectiveApiKey,
+        domain: domain,
+        envdAccessToken: envdAccessToken,
+        sandboxId: opts.sandboxId,
+      );
+
+      final transport = ConnectTransport(config: config, dio: client);
+
+      return Sandbox._(
+        sandboxId: opts.sandboxId,
+        templateId: data['templateID']?.toString() ?? 'unknown',
+        envdAccessToken: envdAccessToken,
+        connectionConfig: config,
+        transport: transport,
+      );
+    } on DioException catch (e) {
+      throw SandboxException('E2B 连接沙盒网络异常: ${e.message}', cause: e);
+    }
+  }
+
+  /// 刷新沙盒 TTL (keep-alive,从当前时刻重新计时)
+  static Future<void> setTimeout(
+    String sandboxId, {
+    required String apiKey,
+    required int timeoutSeconds,
+    String domain = 'e2b.app',
+    Dio? dio,
+  }) async {
+    final client = dio ?? Dio();
+    final config = ConnectionConfig(apiKey: apiKey, domain: domain);
+    try {
+      final res = await client.post(
+        '${config.apiUrl}/sandboxes/$sandboxId/timeout',
+        options: Options(
+          headers: config.getApiHeaders(),
+          validateStatus: (status) => true,
+        ),
+        data: {'timeout': timeoutSeconds},
+      );
+      if (res.statusCode != 200 && res.statusCode != 204) {
+        throw SandboxException(
+          '刷新沙盒超时失败: HTTP ${res.statusCode}',
+          statusCode: res.statusCode,
+        );
+      }
+    } on DioException catch (e) {
+      throw SandboxException('刷新沙盒超时异常: ${e.message}', cause: e);
+    }
+  }
+
+  /// 查询用户当前所有沙盒
+  static Future<List<Map<String, dynamic>>> list({
+    SandboxListOpts opts = const SandboxListOpts(),
+    Dio? dio,
+  }) async {
+    final effectiveApiKey = opts.apiKey ?? '';
+    final client = dio ?? Dio();
+    final config = ConnectionConfig(
+      apiKey: effectiveApiKey,
+      domain: opts.domain,
+    );
+
+    try {
+      final res = await client.get(
+        '${config.apiUrl}/sandboxes',
+        options: Options(headers: config.getApiHeaders()),
+        queryParameters: {
+          if (opts.states != null) 'state': opts.states,
+          'limit': opts.limit,
+          if (opts.nextToken != null) 'nextToken': opts.nextToken,
+        },
+      );
+
+      final data = res.data;
+      if (data is List) {
+        return data.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      }
+      if (data is Map && data['sandboxes'] is List) {
+        return (data['sandboxes'] as List)
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+      }
+      return [];
+    } on DioException catch (e) {
+      throw SandboxException('获取沙盒列表失败: ${e.message}', cause: e);
+    }
+  }
+
+  /// 休眠沙盒 (Pause)
+  static Future<void> pause(
+    String sandboxId, {
+    required String apiKey,
+    String domain = 'e2b.app',
+    Dio? dio,
+  }) async {
+    final client = dio ?? Dio();
+    final config = ConnectionConfig(apiKey: apiKey, domain: domain);
+    try {
+      final res = await client.post(
+        '${config.apiUrl}/sandboxes/$sandboxId/pause',
+        options: Options(headers: config.getApiHeaders()),
+      );
+      if (res.statusCode != 200 && res.statusCode != 204) {
+        throw SandboxException('休眠沙盒失败: HTTP ${res.statusCode}');
+      }
+    } on DioException catch (e) {
+      throw SandboxException('休眠沙盒异常: ${e.message}', cause: e);
+    }
+  }
+
+  /// 唤醒沙盒 (Resume)
+  static Future<void> resume(
+    String sandboxId, {
+    required String apiKey,
+    String domain = 'e2b.app',
+    Dio? dio,
+  }) async {
+    final client = dio ?? Dio();
+    final config = ConnectionConfig(apiKey: apiKey, domain: domain);
+    try {
+      final res = await client.post(
+        '${config.apiUrl}/sandboxes/$sandboxId/resume',
+        options: Options(headers: config.getApiHeaders()),
+      );
+      if (res.statusCode != 200 && res.statusCode != 204 && res.statusCode != 201) {
+        throw SandboxException('唤醒沙盒失败: HTTP ${res.statusCode}');
+      }
+    } on DioException catch (e) {
+      throw SandboxException('唤醒沙盒异常: ${e.message}', cause: e);
+    }
+  }
+
+  /// 销毁沙盒 (Kill / Delete)
+  static Future<void> kill(
+    String sandboxId, {
+    required String apiKey,
+    String domain = 'e2b.app',
+    Dio? dio,
+  }) async {
+    final client = dio ?? Dio();
+    final config = ConnectionConfig(apiKey: apiKey, domain: domain);
+    try {
+      final res = await client.delete(
+        '${config.apiUrl}/sandboxes/$sandboxId',
+        options: Options(headers: config.getApiHeaders()),
+      );
+      if (res.statusCode != 200 && res.statusCode != 204) {
+        throw SandboxException('销毁沙盒失败: HTTP ${res.statusCode}');
+      }
+    } on DioException catch (e) {
+      throw SandboxException('销毁沙盒异常: ${e.message}', cause: e);
+    }
+  }
+
+  // ==========================
+  // 实例方法
+  // ==========================
+
+  /// 获取指定暴露端口的主机名
+  String getHost(int port) => connectionConfig.getHost(sandboxId, port);
+
+  /// 获取指定暴露端口的完整 HTTPS URL
+  String getHostUrl(int port) => connectionConfig.getHostUrl(sandboxId, port);
+
+  /// 销毁当前沙盒
+  Future<void> destroy({Dio? dio}) =>
+      Sandbox.kill(sandboxId, apiKey: connectionConfig.apiKey, domain: connectionConfig.domain, dio: dio);
+
+  /// 休眠当前沙盒
+  Future<void> pauseSandbox({Dio? dio}) =>
+      Sandbox.pause(sandboxId, apiKey: connectionConfig.apiKey, domain: connectionConfig.domain, dio: dio);
+
+  /// 唤醒当前沙盒
+  Future<void> resumeSandbox({Dio? dio}) =>
+      Sandbox.resume(sandboxId, apiKey: connectionConfig.apiKey, domain: connectionConfig.domain, dio: dio);
+
+  /// 刷新当前沙盒 TTL (keep-alive)
+  Future<void> extendTimeout(int timeoutSeconds, {Dio? dio}) =>
+      Sandbox.setTimeout(
+        sandboxId,
+        apiKey: connectionConfig.apiKey,
+        timeoutSeconds: timeoutSeconds,
+        domain: connectionConfig.domain,
+        dio: dio,
+      );
+}

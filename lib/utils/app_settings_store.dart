@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/cloud_workspace_config.dart';
 import 'app_logger.dart';
 import 'card_visibility.dart';
 
@@ -61,6 +62,7 @@ class AppSettingsStore {
   static const _editorShowLineNumbers = 'editor_show_line_numbers';
   static const _showTerminalExtraKeys = 'terminal_show_extra_keys';
   static const _showTerminalQuickCommands = 'terminal_show_quick_commands';
+  static const _cloudWorkspaceConfig = 'cloud_workspace_config_v1';
 
   bool get ptyFilterCurrentProjectOnly =>
       _prefs.getBool(_filterCurrentProjectOnly) ?? true;
@@ -394,4 +396,22 @@ class AppSettingsStore {
       _prefs.getBool(_editorShowLineNumbers) ?? true;
   Future<void> setEditorShowLineNumbers(bool value) =>
       _prefs.setBool(_editorShowLineNumbers, value);
+
+  CloudWorkspaceConfig get cloudWorkspaceConfig {
+    final raw = _prefs.getString(_cloudWorkspaceConfig);
+    return CloudWorkspaceConfig.deserialize(raw);
+  }
+
+  Future<void> setCloudWorkspaceConfig(CloudWorkspaceConfig config) =>
+      _prefs.setString(_cloudWorkspaceConfig, config.serialize());
+
+  Future<void> updateCloudWorkspaceConfig(
+    CloudWorkspaceConfig Function(CloudWorkspaceConfig current) updater,
+  ) {
+    return _enqueuePrefsWrite(() async {
+      final current = cloudWorkspaceConfig;
+      final updated = updater(current);
+      await _prefs.setString(_cloudWorkspaceConfig, updated.serialize());
+    });
+  }
 }

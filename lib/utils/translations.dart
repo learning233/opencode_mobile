@@ -1027,7 +1027,7 @@ class LocaleKeys {
   static const mobileSaveAndReconnect = "mobile_save_and_reconnect";
   static const mobileReconnecting = "mobile_reconnecting";
   static const mobileConnectionFailed = "mobile_connection_failed";
-  static const mobileEditSettings = "mobile_edit_settings";
+  static const mobileCancelConnection = "mobile_cancel_connection";
   static const mobileAutoConnecting = "mobile_auto_connecting";
   static const mobileMessageDensity = "mobile_message_density";
   static const mobileCompact = "mobile_compact";
@@ -2317,7 +2317,7 @@ class Messages extends Translations {
     LocaleKeys.mobileSaveAndReconnect: '保存并重连',
     LocaleKeys.mobileReconnecting: '正在重连…',
     LocaleKeys.mobileConnectionFailed: '连接失败',
-    LocaleKeys.mobileEditSettings: '编辑设置',
+    LocaleKeys.mobileCancelConnection: '取消连接',
     LocaleKeys.mobileAutoConnecting: '正在自动连接 @url…',
     LocaleKeys.mobileMessageDensity: '消息密度',
     LocaleKeys.mobileCompact: '紧凑',
@@ -3693,7 +3693,7 @@ class Messages extends Translations {
     LocaleKeys.mobileSaveAndReconnect: 'Save & Reconnect',
     LocaleKeys.mobileReconnecting: 'Reconnecting...',
     LocaleKeys.mobileConnectionFailed: 'Connection failed',
-    LocaleKeys.mobileEditSettings: 'Edit settings',
+    LocaleKeys.mobileCancelConnection: 'Cancel Connection',
     LocaleKeys.mobileAutoConnecting: 'Auto-connecting to @url...',
     LocaleKeys.mobileMessageDensity: 'Message density',
     LocaleKeys.mobileCompact: 'Compact',

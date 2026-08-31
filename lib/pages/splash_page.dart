@@ -366,7 +366,7 @@ class _SplashPageState extends State<SplashPage> {
                   }
                   setState(() => _autoConnecting = false);
                 },
-                child: Text(LocaleKeys.mobileEditSettings.tr),
+                child: Text(LocaleKeys.mobileCancelConnection.tr),
               ),
             ],
           ),

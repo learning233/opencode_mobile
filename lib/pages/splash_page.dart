@@ -698,9 +698,9 @@ class _SplashPageState extends State<SplashPage> {
                                   context,
                                   onLaunch: (cfg) =>
                                       CloudWorkspaceLaunchDialog.show(
-                                    context,
-                                    config: cfg,
-                                  ),
+                                        context,
+                                        config: cfg,
+                                      ),
                                 );
                                 if (mounted) setState(() {});
                               },
@@ -859,14 +859,6 @@ class _SplashPageState extends State<SplashPage> {
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            Text(
-              LocaleKeys.e2bDesc.tr,
-              style: TextStyle(
-                fontSize: 13,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
             const SizedBox(height: 20),
             FilledButton.icon(
               onPressed: isBusy
@@ -889,8 +881,9 @@ class _SplashPageState extends State<SplashPage> {
               onPressed: isBusy
                   ? null
                   : () async {
-                      final selected =
-                          await E2bSandboxPickerSheet.show(context);
+                      final selected = await E2bSandboxPickerSheet.show(
+                        context,
+                      );
                       if (selected != null && mounted) {
                         await _onSelectAndSwitchSandbox(selected);
                       }

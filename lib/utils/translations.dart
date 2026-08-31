@@ -106,7 +106,6 @@ class LocaleKeys {
   static const connModeSelfHosted = "conn_mode_self_hosted";
   static const connModeCloud = "conn_mode_cloud";
   static const e2bTitle = "e2b_title";
-  static const e2bDesc = "e2b_desc";
   static const e2bApiKey = "e2b_api_key";
   static const e2bApiKeyHint = "e2b_api_key_hint";
   static const e2bTemplate = "e2b_template";
@@ -119,11 +118,6 @@ class LocaleKeys {
   static const e2bFetchTemplatesFailed = "e2b_fetch_templates_failed";
   static const e2bOfficialTemplate = "e2b_official_template";
   static const e2bCustomTemplate = "e2b_custom_template";
-  static const e2bToolchains = "e2b_toolchains";
-  static const e2bToolchainDart = "e2b_toolchain_dart";
-  static const e2bToolchainRust = "e2b_toolchain_rust";
-  static const e2bToolchainCpp = "e2b_toolchain_cpp";
-  static const e2bToolchainPython = "e2b_toolchain_python";
   static const e2bGitConfig = "e2b_git_config";
   static const e2bGitRepo = "e2b_git_repo";
   static const e2bGitRepoHint = "e2b_git_repo_hint";
@@ -132,11 +126,8 @@ class LocaleKeys {
   static const e2bGitTokenHint = "e2b_git_token_hint";
   static const e2bGitUsername = "e2b_git_username";
   static const e2bGitEmail = "e2b_git_email";
-  static const e2bLlmConfig = "e2b_llm_config";
-  static const e2bAnthropicKey = "e2b_anthropic_key";
-  static const e2bOpenAiKey = "e2b_openai_key";
-  static const e2bGeminiKey = "e2b_gemini_key";
-  static const e2bDeepseekKey = "e2b_deepseek_key";
+  static const e2bCredentials = "e2b_credentials";
+  static const e2bKeepAliveConfig = "e2b_keep_alive_config";
   static const e2bTtlHours = "e2b_ttl_hours";
   static const e2bTtlDesc = "e2b_ttl_desc";
   static const e2bAutoPause = "e2b_auto_pause";
@@ -1396,17 +1387,10 @@ class Messages extends Translations {
     // ── Settings – Cloud Workspace (E2B) ──
     LocaleKeys.connModeSelfHosted: '自建服务器',
     LocaleKeys.connModeCloud: 'E2B 云端沙盒',
-    LocaleKeys.e2bTitle: 'E2B 云端开发工作区',
-    LocaleKeys.e2bDesc: '无需本地服务器，基于 E2B MicroVM 秒级拉起专属云端 Linux 与 OpenCode 环境。',
-    LocaleKeys.e2bApiKey: 'E2B API Key',
+    LocaleKeys.e2bTitle: 'E2B 云端沙盒',
     LocaleKeys.e2bApiKeyHint: '从 e2b.dev/dashboard 获取的 API Key',
     LocaleKeys.e2bTemplate: '沙盒模板 ID',
     LocaleKeys.e2bTemplateHint: '默认 opencode (官方预建)',
-    LocaleKeys.e2bToolchains: '预装开发工具链',
-    LocaleKeys.e2bToolchainDart: '🎯 Dart SDK',
-    LocaleKeys.e2bToolchainRust: '🦀 Rust & Cargo',
-    LocaleKeys.e2bToolchainCpp: '🛠️ C/C++ (Clang/Make)',
-    LocaleKeys.e2bToolchainPython: '🐍 Python 3',
     LocaleKeys.e2bGitConfig: 'Git 仓库自动同步',
     LocaleKeys.e2bGitRepo: '仓库地址',
     LocaleKeys.e2bGitRepoHint: 'https://github.com/owner/repo.git',
@@ -1415,11 +1399,8 @@ class Messages extends Translations {
     LocaleKeys.e2bGitTokenHint: 'Personal Access Token',
     LocaleKeys.e2bGitUsername: 'Git 提交者姓名',
     LocaleKeys.e2bGitEmail: 'Git 提交者邮箱',
-    LocaleKeys.e2bLlmConfig: '云端大模型 API Key 注入',
-    LocaleKeys.e2bAnthropicKey: 'Anthropic API Key',
-    LocaleKeys.e2bOpenAiKey: 'OpenAI API Key',
-    LocaleKeys.e2bGeminiKey: 'Gemini API Key',
-    LocaleKeys.e2bDeepseekKey: 'DeepSeek API Key',
+    LocaleKeys.e2bCredentials: 'E2B 凭据与模板',
+    LocaleKeys.e2bKeepAliveConfig: '保活与自动化',
     LocaleKeys.e2bTtlHours: '云端保活周期',
     LocaleKeys.e2bTtlDesc: '设置云端实例保持运行的时长。手机锁屏或离线期间，云端 Agent 仍会持续执行长任务。',
     LocaleKeys.e2bAutoPause: '空闲自动休眠 (Auto-Pause)',
@@ -1478,7 +1459,7 @@ class Messages extends Translations {
     LocaleKeys.e2bGitProjectAndAuth: 'GitHub 项目与授权',
     LocaleKeys.e2bGitPatLabel: 'GitHub Personal Access Token (PAT)',
     LocaleKeys.e2bGitPatHint: 'ghp_xxxx (具备 repo 读写权限)',
-    LocaleKeys.e2bFetchAndSelectRepo: '🔍 获取并选择我的 GitHub 项目',
+    LocaleKeys.e2bFetchAndSelectRepo: '获取并选择我的 GitHub 项目',
     LocaleKeys.e2bSelectedRepoWithBranch: '已选仓库: @repo (@branch)',
     LocaleKeys.e2bGitRepoUrlOptionalHint: '可选：或直接粘贴 GitHub 仓库地址',
     LocaleKeys.e2bFetchReposFailed: '获取 GitHub 仓库失败: @error',
@@ -2687,18 +2668,11 @@ class Messages extends Translations {
     // ── Settings – Cloud Workspace (E2B) ──
     LocaleKeys.connModeSelfHosted: 'Self-Hosted',
     LocaleKeys.connModeCloud: 'E2B Cloud',
-    LocaleKeys.e2bTitle: 'E2B Cloud Workspace',
-    LocaleKeys.e2bDesc:
-        'Provision isolated MicroVM Linux & OpenCode sandbox in seconds via E2B.',
+    LocaleKeys.e2bTitle: 'E2B Cloud Sandbox',
     LocaleKeys.e2bApiKey: 'E2B API Key',
     LocaleKeys.e2bApiKeyHint: 'API Key from e2b.dev/dashboard',
     LocaleKeys.e2bTemplate: 'Sandbox Template ID',
     LocaleKeys.e2bTemplateHint: 'Default: opencode (official pre-built)',
-    LocaleKeys.e2bToolchains: 'Development Toolchains',
-    LocaleKeys.e2bToolchainDart: '🎯 Dart SDK',
-    LocaleKeys.e2bToolchainRust: '🦀 Rust & Cargo',
-    LocaleKeys.e2bToolchainCpp: '🛠️ C/C++ (Clang/Make)',
-    LocaleKeys.e2bToolchainPython: '🐍 Python 3',
     LocaleKeys.e2bGitConfig: 'Git Auto-Clone & Sync',
     LocaleKeys.e2bGitRepo: 'Repository URL',
     LocaleKeys.e2bGitRepoHint: 'https://github.com/owner/repo.git',
@@ -2707,12 +2681,9 @@ class Messages extends Translations {
     LocaleKeys.e2bGitTokenHint: 'Personal Access Token',
     LocaleKeys.e2bGitUsername: 'Git Author Name',
     LocaleKeys.e2bGitEmail: 'Git Author Email',
-    LocaleKeys.e2bLlmConfig: 'Cloud LLM API Key Injection',
-    LocaleKeys.e2bAnthropicKey: 'Anthropic API Key',
-    LocaleKeys.e2bOpenAiKey: 'OpenAI API Key',
-    LocaleKeys.e2bGeminiKey: 'Gemini API Key',
-    LocaleKeys.e2bDeepseekKey: 'DeepSeek API Key',
-    LocaleKeys.e2bTtlHours: 'Cloud Retention TTL',
+    LocaleKeys.e2bCredentials: 'E2B Credentials & Template',
+    LocaleKeys.e2bKeepAliveConfig: 'Keep-alive & Automation',
+    LocaleKeys.e2bTtlHours: 'Keep-alive Period',
     LocaleKeys.e2bTtlDesc:
         'Cloud sandbox stays active even when mobile screen is locked or offline.',
     LocaleKeys.e2bAutoPause: 'Auto-Pause when Idle',
@@ -2778,7 +2749,7 @@ class Messages extends Translations {
     LocaleKeys.e2bGitProjectAndAuth: 'GitHub Repository & Auth',
     LocaleKeys.e2bGitPatLabel: 'GitHub Personal Access Token (PAT)',
     LocaleKeys.e2bGitPatHint: 'ghp_xxxx (with repo read/write access)',
-    LocaleKeys.e2bFetchAndSelectRepo: '🔍 Fetch & Select My GitHub Repos',
+    LocaleKeys.e2bFetchAndSelectRepo: 'Fetch & Select My GitHub Repos',
     LocaleKeys.e2bSelectedRepoWithBranch: 'Selected: @repo (@branch)',
     LocaleKeys.e2bGitRepoUrlOptionalHint:
         'Optional: or paste Git clone URL directly',

@@ -991,14 +991,11 @@ fi
     if (cleanKey.isEmpty) return [];
 
     try {
-      final rawList = await Sandbox.listTemplates(
-        apiKey: cleanKey,
-        dio: _dio,
+      final rawList = await Sandbox.listTemplates(apiKey: cleanKey, dio: _dio);
+      final result = rawList.map((j) => E2bTemplateInfo.fromJson(j)).toList();
+      AppLogger.i(
+        'Fetched ${result.length} E2B templates via Sandbox.listTemplates',
       );
-      final result = rawList
-          .map((j) => E2bTemplateInfo.fromJson(j))
-          .toList();
-      AppLogger.i('Fetched ${result.length} E2B templates via Sandbox.listTemplates');
       return result;
     } catch (e) {
       AppLogger.w('E2B fetchTemplates failed: $e');

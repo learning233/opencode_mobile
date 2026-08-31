@@ -55,6 +55,7 @@ class CloudWorkspaceSheet extends StatefulWidget {
 class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
   late TextEditingController _apiKeyCtrl;
   late TextEditingController _templateCtrl;
+  late TextEditingController _passwordCtrl;
   late TextEditingController _repoCtrl;
   late TextEditingController _repoFullNameCtrl;
   late TextEditingController _tokenCtrl;
@@ -65,6 +66,7 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
 
   late int _ttlHours;
   late bool _autoPause;
+  bool _obscurePassword = true;
   bool _isFetchingRepos = false;
   bool _isFetchingTemplates = false;
 
@@ -74,6 +76,9 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
     final cfg = widget.initialConfig;
     _apiKeyCtrl = TextEditingController(text: cfg.e2bApiKey);
     _templateCtrl = TextEditingController(text: cfg.templateId);
+    _passwordCtrl = TextEditingController(
+      text: widget.onlyConfig ? cfg.sandboxPassword : '',
+    );
     _repoCtrl = TextEditingController(text: cfg.gitRepoUrl);
     _repoFullNameCtrl = TextEditingController(text: cfg.gitRepoFullName);
     _tokenCtrl = TextEditingController(text: cfg.gitToken);
@@ -90,6 +95,7 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
   void dispose() {
     _apiKeyCtrl.dispose();
     _templateCtrl.dispose();
+    _passwordCtrl.dispose();
     _repoCtrl.dispose();
     _repoFullNameCtrl.dispose();
     _tokenCtrl.dispose();
@@ -102,7 +108,7 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
       templateId: _templateCtrl.text.trim().isEmpty
           ? 'opencode'
           : _templateCtrl.text.trim(),
-      toolchains: const [],
+      sandboxPassword: _passwordCtrl.text.trim(),
       gitProvider: 'github',
       gitRepoUrl: _repoCtrl.text.trim(),
       gitRepoFullName: _repoFullNameCtrl.text.trim(),
@@ -256,6 +262,7 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
                     obscureText: true,
                     decoration: InputDecoration(
                       isDense: true,
+                      floatingLabelBehavior: FloatingLabelBehavior.always,
                       labelText: LocaleKeys.e2bApiKey.tr,
                       hintText: LocaleKeys.e2bApiKeyHint.tr,
                       border: const OutlineInputBorder(),
@@ -269,6 +276,7 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
                     autocorrect: false,
                     decoration: InputDecoration(
                       isDense: true,
+                      floatingLabelBehavior: FloatingLabelBehavior.always,
                       labelText: LocaleKeys.e2bTemplate.tr,
                       hintText: LocaleKeys.e2bTemplateHint.tr,
                       border: const OutlineInputBorder(),
@@ -286,6 +294,31 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
                         onPressed: _isFetchingTemplates
                             ? null
                             : _fetchAndSelectTemplate,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _passwordCtrl,
+                    keyboardType: TextInputType.visiblePassword,
+                    enableSuggestions: false,
+                    autocorrect: false,
+                    obscureText: _obscurePassword,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      floatingLabelBehavior: FloatingLabelBehavior.always,
+                      labelText: LocaleKeys.e2bSandboxPassword.tr,
+                      hintText: LocaleKeys.e2bSandboxPasswordHint.tr,
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
+                          size: 18,
+                        ),
+                        onPressed: () =>
+                            setState(() => _obscurePassword = !_obscurePassword),
                       ),
                     ),
                   ),

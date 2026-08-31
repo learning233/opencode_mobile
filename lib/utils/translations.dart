@@ -110,6 +110,8 @@ class LocaleKeys {
   static const e2bApiKeyHint = "e2b_api_key_hint";
   static const e2bTemplate = "e2b_template";
   static const e2bTemplateHint = "e2b_template_hint";
+  static const e2bSandboxPassword = "e2b_sandbox_password";
+  static const e2bSandboxPasswordHint = "e2b_sandbox_password_hint";
   static const e2bSelectTemplate = "e2b_select_template";
   static const e2bFetchTemplates = "e2b_fetch_templates";
   static const e2bFetchingTemplates = "e2b_fetching_templates";
@@ -1388,9 +1390,12 @@ class Messages extends Translations {
     LocaleKeys.connModeSelfHosted: '自建服务器',
     LocaleKeys.connModeCloud: 'E2B 云端沙盒',
     LocaleKeys.e2bTitle: 'E2B 云端沙盒',
+    LocaleKeys.e2bApiKey: 'E2B API Key',
     LocaleKeys.e2bApiKeyHint: '从 e2b.dev/dashboard 获取的 API Key',
     LocaleKeys.e2bTemplate: '沙盒模板 ID',
     LocaleKeys.e2bTemplateHint: '默认 opencode (官方预建)',
+    LocaleKeys.e2bSandboxPassword: 'OpenCode 密码',
+    LocaleKeys.e2bSandboxPasswordHint: '可选，留空将自动生成随机密码',
     LocaleKeys.e2bGitConfig: 'Git 仓库自动同步',
     LocaleKeys.e2bGitRepo: '仓库地址',
     LocaleKeys.e2bGitRepoHint: 'https://github.com/owner/repo.git',
@@ -2673,6 +2678,8 @@ class Messages extends Translations {
     LocaleKeys.e2bApiKeyHint: 'API Key from e2b.dev/dashboard',
     LocaleKeys.e2bTemplate: 'Sandbox Template ID',
     LocaleKeys.e2bTemplateHint: 'Default: opencode (official pre-built)',
+    LocaleKeys.e2bSandboxPassword: 'OpenCode Password',
+    LocaleKeys.e2bSandboxPasswordHint: 'Optional, auto-generated if left empty',
     LocaleKeys.e2bGitConfig: 'Git Auto-Clone & Sync',
     LocaleKeys.e2bGitRepo: 'Repository URL',
     LocaleKeys.e2bGitRepoHint: 'https://github.com/owner/repo.git',

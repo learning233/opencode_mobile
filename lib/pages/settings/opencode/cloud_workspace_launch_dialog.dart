@@ -103,6 +103,7 @@ class _CloudWorkspaceLaunchDialogState
         activeSandboxId: sandboxId,
         activeSandboxUrl: endpointUrl,
         activeSandboxPassword: password,
+        sandboxPassword: widget.config.sandboxPassword,
         activeSandboxEnvdToken: result.envdAccessToken,
         activeSandboxStatus: 'running',
         lastConnectedAt: DateTime.now(),

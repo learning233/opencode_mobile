@@ -5,7 +5,7 @@ class CloudWorkspaceConfig {
   CloudWorkspaceConfig({
     this.e2bApiKey = '',
     this.templateId = 'opencode',
-    List<String>? toolchains,
+    this.sandboxPassword = '',
     this.gitProvider = 'github',
     this.gitRepoUrl = '',
     this.gitRepoFullName = '',
@@ -21,7 +21,7 @@ class CloudWorkspaceConfig {
     this.activeSandboxEnvdToken,
     this.activeSandboxStatus,
     this.lastConnectedAt,
-  }) : toolchains = toolchains ?? ['dart', 'rust'];
+  });
 
   /// E2B 官方用户 API Key
   final String e2bApiKey;
@@ -29,8 +29,8 @@ class CloudWorkspaceConfig {
   /// 沙盒模板 ID（默认使用 E2B 官方 opencode 预建模板）
   final String templateId;
 
-  /// 开箱即用的开发工具链选配项：'dart', 'rust', 'c_cpp', 'python'
-  final List<String> toolchains;
+  /// 自定义/预设的 OpenCode 访问密码（用于 Web/多设备登录）
+  final String sandboxPassword;
 
   /// Git 平台类型: 默认 'github'
   final String gitProvider;
@@ -83,7 +83,7 @@ class CloudWorkspaceConfig {
   CloudWorkspaceConfig copyWith({
     String? e2bApiKey,
     String? templateId,
-    List<String>? toolchains,
+    String? sandboxPassword,
     String? gitProvider,
     String? gitRepoUrl,
     String? gitRepoFullName,
@@ -104,7 +104,7 @@ class CloudWorkspaceConfig {
     return CloudWorkspaceConfig(
       e2bApiKey: e2bApiKey ?? this.e2bApiKey,
       templateId: templateId ?? this.templateId,
-      toolchains: toolchains ?? List<String>.from(this.toolchains),
+      sandboxPassword: sandboxPassword ?? this.sandboxPassword,
       gitProvider: gitProvider ?? this.gitProvider,
       gitRepoUrl: gitRepoUrl ?? this.gitRepoUrl,
       gitRepoFullName: gitRepoFullName ?? this.gitRepoFullName,
@@ -139,7 +139,7 @@ class CloudWorkspaceConfig {
     return {
       'e2b_api_key': e2bApiKey,
       'template_id': templateId,
-      'toolchains': toolchains,
+      'sandbox_password': sandboxPassword,
       'git_provider': gitProvider,
       'git_repo_url': gitRepoUrl,
       'git_repo_full_name': gitRepoFullName,
@@ -162,11 +162,7 @@ class CloudWorkspaceConfig {
     return CloudWorkspaceConfig(
       e2bApiKey: json['e2b_api_key'] as String? ?? '',
       templateId: json['template_id'] as String? ?? 'opencode',
-      toolchains:
-          (json['toolchains'] as List<dynamic>?)
-              ?.map((e) => e.toString())
-              .toList() ??
-          ['dart', 'rust'],
+      sandboxPassword: json['sandbox_password'] as String? ?? '',
       gitProvider: json['git_provider'] as String? ?? 'github',
       gitRepoUrl: json['git_repo_url'] as String? ?? '',
       gitRepoFullName: json['git_repo_full_name'] as String? ?? '',

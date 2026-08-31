@@ -271,9 +271,11 @@ exit 43
       return const E2bLaunchResult(success: false, error: '操作已取消');
     }
 
-    final password = config.activeSandboxPassword?.isNotEmpty == true
-        ? config.activeSandboxPassword!
-        : generateSecurePassword();
+    final password = config.sandboxPassword.trim().isNotEmpty
+        ? config.sandboxPassword.trim()
+        : (config.activeSandboxPassword?.isNotEmpty == true
+            ? config.activeSandboxPassword!
+            : generateSecurePassword());
 
     Sandbox? sandbox;
     try {
@@ -319,18 +321,12 @@ exit 43
           template: templateName,
           timeout: timeoutSeconds,
           autoPause: config.autoPause,
-          envVars: {
-            ...envVars,
-            if (config.toolchains.isNotEmpty)
-              'TOOLCHAINS': config.toolchains.join(','),
-          },
+          envVars: envVars,
           metadata: {
             'source': 'opencode_mobile',
             'created_at': DateTime.now().toIso8601String(),
             if (config.gitRepoFullName.isNotEmpty)
               'repo': config.gitRepoFullName,
-            if (config.toolchains.isNotEmpty)
-              'toolchains': config.toolchains.join(','),
           },
         ),
         dio: _dio,

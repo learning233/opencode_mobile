@@ -25,7 +25,7 @@ void main() {
       final config = CloudWorkspaceConfig();
       expect(config.e2bApiKey, '');
       expect(config.templateId, 'opencode');
-      expect(config.toolchains, containsAll(['dart', 'rust']));
+      expect(config.sandboxPassword, '');
       expect(config.ttlHours, 2);
       expect(config.autoPause, true);
       expect(config.hasActiveSandbox, false);
@@ -35,7 +35,7 @@ void main() {
       final original = CloudWorkspaceConfig(
         e2bApiKey: 'test-api-key-123',
         templateId: 'custom-opencode',
-        toolchains: ['dart', 'rust', 'c_cpp'],
+        sandboxPassword: 'custom_pw_123',
         gitProvider: 'github',
         gitRepoUrl: 'https://github.com/test/repo.git',
         gitRepoFullName: 'test/repo',
@@ -58,7 +58,7 @@ void main() {
 
       expect(deserialized.e2bApiKey, original.e2bApiKey);
       expect(deserialized.templateId, original.templateId);
-      expect(deserialized.toolchains, original.toolchains);
+      expect(deserialized.sandboxPassword, original.sandboxPassword);
       expect(deserialized.gitProvider, original.gitProvider);
       expect(deserialized.gitRepoUrl, original.gitRepoUrl);
       expect(deserialized.gitRepoFullName, original.gitRepoFullName);
@@ -136,13 +136,13 @@ void main() {
 
       final newConfig = CloudWorkspaceConfig(
         e2bApiKey: 'test-key-456',
-        toolchains: ['dart', 'rust', 'python'],
+        sandboxPassword: 'pw_test_789',
       );
       await store.setCloudWorkspaceConfig(newConfig);
 
       final loaded = store.cloudWorkspaceConfig;
       expect(loaded.e2bApiKey, 'test-key-456');
-      expect(loaded.toolchains, containsAll(['dart', 'rust', 'python']));
+      expect(loaded.sandboxPassword, 'pw_test_789');
     });
 
     test(

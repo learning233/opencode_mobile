@@ -7,6 +7,7 @@ import '../../../models/cloud_workspace_config.dart';
 import '../../../services/git_repo_service.dart';
 import '../../../utils/snackbar_utils.dart';
 import '../../../utils/translations.dart';
+import 'e2b_template_picker_sheet.dart';
 import 'git_repo_picker_sheet.dart';
 
 class CloudWorkspaceSheet extends StatefulWidget {
@@ -28,16 +29,19 @@ class CloudWorkspaceSheet extends StatefulWidget {
     bool onlyConfig = false,
     void Function(CloudWorkspaceConfig config)? onLaunch,
   }) {
-    final current = Global.settings.cloudWorkspaceConfig;
+    final cfg = Global.settings.cloudWorkspaceConfig;
     return showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (ctx) => CloudWorkspaceSheet(
-        initialConfig: current,
+        initialConfig: cfg,
         onlyConfig: onlyConfig,
-        onSave: (cfg) async {
-          await Global.settings.setCloudWorkspaceConfig(cfg);
+        onSave: (newCfg) async {
+          await Global.settings.setCloudWorkspaceConfig(newCfg);
         },
         onLaunch: onLaunch,
       ),
@@ -59,10 +63,10 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
   String _gitUsername = '';
   String _gitEmail = '';
 
-  late Set<String> _selectedToolchains;
   late int _ttlHours;
   late bool _autoPause;
   bool _isFetchingRepos = false;
+  bool _isFetchingTemplates = false;
 
   @override
   void initState() {
@@ -78,7 +82,6 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
     _gitUsername = cfg.gitUsername;
     _gitEmail = cfg.gitEmail;
 
-    _selectedToolchains = Set<String>.from(cfg.toolchains);
     _ttlHours = cfg.ttlHours;
     _autoPause = cfg.autoPause;
   }
@@ -99,7 +102,7 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
       templateId: _templateCtrl.text.trim().isEmpty
           ? 'opencode'
           : _templateCtrl.text.trim(),
-      toolchains: _selectedToolchains.toList(),
+      toolchains: const [],
       gitProvider: 'github',
       gitRepoUrl: _repoCtrl.text.trim(),
       gitRepoFullName: _repoFullNameCtrl.text.trim(),
@@ -131,6 +134,29 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
     if (mounted) {
       Navigator.of(context).pop(true);
       widget.onLaunch?.call(cfg);
+    }
+  }
+
+  Future<void> _fetchAndSelectTemplate() async {
+    final apiKey = _apiKeyCtrl.text.trim();
+    if (apiKey.isEmpty) {
+      Snack.error(LocaleKeys.e2bApiKeyRequired.tr);
+      return;
+    }
+
+    setState(() => _isFetchingTemplates = true);
+    try {
+      final selected = await E2bTemplatePickerSheet.show(
+        context,
+        apiKey: apiKey,
+      );
+      if (selected != null && mounted) {
+        setState(() {
+          _templateCtrl.text = selected.templateId;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isFetchingTemplates = false);
     }
   }
 
@@ -261,46 +287,39 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
               helperText: LocaleKeys.e2bTemplateHelper.tr,
               border: const OutlineInputBorder(),
               prefixIcon: const Icon(Icons.layers_outlined),
+              suffixIcon: IconButton(
+                icon: _isFetchingTemplates
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.list_alt),
+                tooltip: LocaleKeys.e2bFetchTemplates.tr,
+                onPressed:
+                    _isFetchingTemplates ? null : _fetchAndSelectTemplate,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.tonalIcon(
+              onPressed:
+                  _isFetchingTemplates ? null : _fetchAndSelectTemplate,
+              icon: _isFetchingTemplates
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.tune, size: 18),
+              label: Text(LocaleKeys.e2bFetchTemplates.tr),
             ),
           ),
           const SizedBox(height: 20),
 
-          // 2. 工具链选配
-          _buildSectionHeader(
-            Icons.construction,
-            LocaleKeys.e2bToolchains.tr,
-            theme,
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildToolchainChip(
-                id: 'dart',
-                label: LocaleKeys.e2bToolchainDart.tr,
-                theme: theme,
-              ),
-              _buildToolchainChip(
-                id: 'rust',
-                label: LocaleKeys.e2bToolchainRust.tr,
-                theme: theme,
-              ),
-              _buildToolchainChip(
-                id: 'c_cpp',
-                label: LocaleKeys.e2bToolchainCpp.tr,
-                theme: theme,
-              ),
-              _buildToolchainChip(
-                id: 'python',
-                label: LocaleKeys.e2bToolchainPython.tr,
-                theme: theme,
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-
-          // 3. GitHub 仓库绑定与授权选择
+          // 2. GitHub 仓库绑定与授权选择
           _buildSectionHeader(
             Icons.merge_type,
             LocaleKeys.e2bGitProjectAndAuth.tr,
@@ -452,11 +471,13 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
               padding: const EdgeInsets.symmetric(vertical: 14),
             ),
             onPressed: widget.onlyConfig ? _saveOnly : _saveAndLaunch,
-            icon: Icon(widget.onlyConfig ? Icons.save : Icons.rocket_launch),
+            icon: Icon(
+              widget.onlyConfig ? Icons.save : Icons.add_circle_outline,
+            ),
             label: Text(
               widget.onlyConfig
                   ? LocaleKeys.save.tr
-                  : LocaleKeys.e2bLaunchWorkspace.tr,
+                  : LocaleKeys.e2bCreateAndLaunch.tr,
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
           ),
@@ -478,27 +499,6 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildToolchainChip({
-    required String id,
-    required String label,
-    required ThemeData theme,
-  }) {
-    final isSelected = _selectedToolchains.contains(id);
-    return FilterChip(
-      label: Text(label),
-      selected: isSelected,
-      onSelected: (selected) {
-        setState(() {
-          if (selected) {
-            _selectedToolchains.add(id);
-          } else {
-            _selectedToolchains.remove(id);
-          }
-        });
-      },
     );
   }
 }

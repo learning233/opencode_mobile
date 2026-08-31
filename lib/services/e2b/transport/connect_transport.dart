@@ -145,7 +145,7 @@ class ConnectTransport {
       }
       return {};
     } on DioException catch (e) {
-      throw SandboxException('Connect-RPC 请求失败: ${e.message}', cause: e);
+      throw SandboxException('Connect-RPC request failed: ${e.message}', cause: e);
     }
   }
 
@@ -209,44 +209,43 @@ class ConnectTransport {
       if (status != null) {
         _throwForStatus(status, sandboxId, path);
       }
-      throw SandboxException('Connect-RPC 流式请求失败: ${e.message}', cause: e);
+      throw SandboxException('Connect-RPC streaming request failed: ${e.message}', cause: e);
     }
   }
 
-  /// 按 HTTP 状态映射 envd 错误。所有非 2xx 都必须进入错误解析，
-  /// 不能把 400/409/429 等错误响应当作成功。
+  /// Map envd HTTP status to typed exceptions.
   void _throwForStatus(int? statusCode, String sandboxId, String path) {
     if (statusCode == null) return;
     if (statusCode >= 200 && statusCode < 300) return;
     if (statusCode == 401 || statusCode == 403) {
       throw SandboxAuthenticationException(
-        'envd 鉴权失败 (HTTP $statusCode), X-Access-Token 无效或缺失: $path',
+        'envd auth failed (HTTP $statusCode), X-Access-Token invalid or missing: $path',
       );
     }
     if (statusCode == 404) {
-      throw SandboxNotFoundException('沙盒 $sandboxId 未找到或已终止 (404): $path');
+      throw SandboxNotFoundException('Sandbox $sandboxId not found or terminated (404): $path');
     }
     if (statusCode == 409) {
       throw SandboxException(
-        'envd 请求冲突 (HTTP 409): $path',
+        'envd request conflict (HTTP 409): $path',
         statusCode: statusCode,
       );
     }
     if (statusCode == 429) {
       throw SandboxException(
-        'envd 请求被限流 (HTTP 429): $path',
+        'envd request rate-limited (HTTP 429): $path',
         statusCode: statusCode,
       );
     }
     if (statusCode >= 400 && statusCode < 500) {
       throw SandboxException(
-        'envd 请求无效 (HTTP $statusCode): $path',
+        'envd bad request (HTTP $statusCode): $path',
         statusCode: statusCode,
       );
     }
     if (statusCode >= 500) {
       throw SandboxException(
-        'envd 服务异常 (HTTP $statusCode): $path',
+        'envd server error (HTTP $statusCode): $path',
         statusCode: statusCode,
       );
     }

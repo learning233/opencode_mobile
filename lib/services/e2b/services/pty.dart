@@ -87,7 +87,7 @@ class Pty {
         const Duration(seconds: 15),
         onTimeout: () {
           unawaited(sub.cancel());
-          throw const SandboxException('PTY 创建超时: 15 秒内未收到 start 事件');
+          throw const SandboxException('PTY creation timed out: no start event received within 15s');
         },
       );
     } catch (e) {

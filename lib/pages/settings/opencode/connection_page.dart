@@ -920,8 +920,8 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
                   const SizedBox(height: 20),
                   FilledButton.icon(
                     onPressed: () => _openCloudWorkspaceSheet(),
-                    icon: const Icon(Icons.rocket_launch),
-                    label: Text(LocaleKeys.e2bLaunchWorkspace.tr),
+                    icon: const Icon(Icons.add_circle_outline),
+                    label: Text(LocaleKeys.e2bNewSandbox.tr),
                   ),
                 ],
               ),

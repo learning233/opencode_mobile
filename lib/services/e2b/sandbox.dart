@@ -53,7 +53,7 @@ class Sandbox {
   // 控制面错误处理
   // ==========================
 
-  /// 提取 E2B 控制面错误响应中的 message
+  /// Extract message from E2B control plane error response
   static String _parseServerMessage(dynamic body) {
     if (body is Map) {
       return (body['message'] ?? body['error'] ?? '').toString();
@@ -62,7 +62,7 @@ class Sandbox {
     return body.toString();
   }
 
-  /// 按控制面 HTTP 状态码抛出带服务端原始信息的异常
+  /// Throw typed exception based on control plane HTTP status code and server response body
   static Never _throwControlPlaneError(
     int? statusCode,
     dynamic body,
@@ -73,42 +73,44 @@ class Sandbox {
 
     if (statusCode == 401 || statusCode == 403) {
       throw SandboxAuthenticationException(
-        '$action失败: E2B API Key 无效或无权限 (HTTP $statusCode)$suffix',
+        'Failed to $action: invalid E2B API Key or unauthorized (HTTP $statusCode)$suffix',
       );
     }
     if (statusCode == 404) {
-      throw SandboxNotFoundException('$action失败: 目标不存在 (HTTP 404)$suffix');
+      throw SandboxNotFoundException(
+        'Failed to $action: target not found (HTTP 404)$suffix',
+      );
     }
-    // 模板相关错误给出可操作的指引
+    // Actionable guidance for template-related errors
     if (serverMsg.toLowerCase().contains('template')) {
       throw SandboxException(
-        '$action失败: 模板不存在或不可用 (HTTP $statusCode)$suffix\n'
-        '请检查 App 内配置的模板 ID,可在 E2B Dashboard → Templates 中查看可用模板',
+        'Failed to $action: template not found or unavailable (HTTP $statusCode)$suffix\n'
+        'Please check template ID in settings or view available templates in E2B Dashboard → Templates',
         statusCode: statusCode,
       );
     }
     throw SandboxException(
-      '$action失败: HTTP ${statusCode ?? '?'}$suffix',
+      'Failed to $action: HTTP ${statusCode ?? '?'}$suffix',
       statusCode: statusCode,
     );
   }
 
-  /// 判断控制面响应是否成功
+  /// Check whether control plane response is successful
   static bool _isSuccess(int? statusCode) =>
       statusCode != null && statusCode >= 200 && statusCode < 300;
 
   // ==========================
-  // 静态生命周期工厂方法
+  // Lifecycle Factory Methods
   // ==========================
 
-  /// 创建并启动一个新的 E2B 沙盒
+  /// Create and launch a new E2B Sandbox
   static Future<Sandbox> create({
     SandboxCreateOpts opts = const SandboxCreateOpts(),
     Dio? dio,
   }) async {
     final effectiveApiKey = opts.apiKey ?? '';
     if (effectiveApiKey.isEmpty) {
-      throw const SandboxAuthenticationException('E2B API Key 不能为空');
+      throw const SandboxAuthenticationException('E2B API Key cannot be empty');
     }
 
     final client = dio ?? Dio();
@@ -136,7 +138,7 @@ class Sandbox {
       );
 
       if (!_isSuccess(res.statusCode)) {
-        _throwControlPlaneError(res.statusCode, res.data, '创建沙盒');
+        _throwControlPlaneError(res.statusCode, res.data, 'create sandbox');
       }
 
       final data = res.data is Map
@@ -146,7 +148,9 @@ class Sandbox {
           (data['sandboxID'] ?? data['sandboxId'] ?? data['id'])?.toString() ??
           '';
       if (sandboxId.isEmpty) {
-        throw const SandboxException('创建沙盒失败: 服务端响应缺少 sandboxID');
+        throw const SandboxException(
+          'Failed to create sandbox: missing sandboxID in server response',
+        );
       }
       final templateId = data['templateID']?.toString() ?? opts.template;
       final envdAccessToken = data['envdAccessToken']?.toString();
@@ -168,7 +172,10 @@ class Sandbox {
         transport: transport,
       );
     } on DioException catch (e) {
-      throw SandboxException('E2B 创建沙盒网络异常: ${e.message}', cause: e);
+      throw SandboxException(
+        'Failed to create sandbox: ${e.message}',
+        cause: e,
+      );
     }
   }
 
@@ -180,7 +187,7 @@ class Sandbox {
   static Future<Sandbox> connect(SandboxConnectOpts opts, {Dio? dio}) async {
     final effectiveApiKey = opts.apiKey ?? '';
     if (effectiveApiKey.isEmpty) {
-      throw const SandboxAuthenticationException('E2B API Key 不能为空');
+      throw const SandboxAuthenticationException('E2B API Key cannot be empty');
     }
 
     final client =
@@ -209,7 +216,7 @@ class Sandbox {
       );
 
       if (!_isSuccess(res.statusCode)) {
-        _throwControlPlaneError(res.statusCode, res.data, '连接沙盒');
+        _throwControlPlaneError(res.statusCode, res.data, 'connect sandbox');
       }
 
       final data = res.data is Map
@@ -239,7 +246,7 @@ class Sandbox {
         transport: transport,
       );
     } on DioException catch (e) {
-      throw SandboxException('E2B 连接沙盒网络异常: ${e.message}', cause: e);
+      throw SandboxException('Failed to connect sandbox: ${e.message}', cause: e);
     }
   }
 
@@ -263,10 +270,10 @@ class Sandbox {
         data: {'timeout': timeoutSeconds},
       );
       if (!_isSuccess(res.statusCode)) {
-        _throwControlPlaneError(res.statusCode, res.data, '刷新沙盒超时');
+        _throwControlPlaneError(res.statusCode, res.data, 'set sandbox timeout');
       }
     } on DioException catch (e) {
-      throw SandboxException('刷新沙盒超时异常: ${e.message}', cause: e);
+      throw SandboxException('Failed to set sandbox timeout: ${e.message}', cause: e);
     }
   }
 
@@ -298,7 +305,7 @@ class Sandbox {
       );
 
       if (!_isSuccess(res.statusCode)) {
-        _throwControlPlaneError(res.statusCode, res.data, '获取沙盒列表');
+        _throwControlPlaneError(res.statusCode, res.data, 'list sandboxes');
       }
 
       List<Map<String, dynamic>> sandboxes;
@@ -323,7 +330,46 @@ class Sandbox {
         nextToken: (nextToken == null || nextToken.isEmpty) ? null : nextToken,
       );
     } on DioException catch (e) {
-      throw SandboxException('获取沙盒列表失败: ${e.message}', cause: e);
+      throw SandboxException('Failed to list sandboxes: ${e.message}', cause: e);
+    }
+  }
+
+  /// 查询用户账户下的所有沙盒模板 (GET /templates)
+  static Future<List<Map<String, dynamic>>> listTemplates({
+    required String apiKey,
+    String domain = 'e2b.app',
+    Dio? dio,
+  }) async {
+    final client = dio ?? Dio();
+    final config = ConnectionConfig(apiKey: apiKey, domain: domain);
+    try {
+      final res = await client.get(
+        '${config.apiUrl}/templates',
+        options: Options(
+          headers: config.getApiHeaders(),
+          validateStatus: (status) => true,
+        ),
+      );
+
+      if (!_isSuccess(res.statusCode)) {
+        _throwControlPlaneError(res.statusCode, res.data, 'list sandbox templates');
+      }
+
+      final data = res.data;
+      if (data is List) {
+        return data
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+      } else if (data is Map && data['templates'] is List) {
+        return (data['templates'] as List)
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+      }
+      return [];
+    } on DioException catch (e) {
+      throw SandboxException('Failed to list sandbox templates: ${e.message}', cause: e);
     }
   }
 
@@ -345,10 +391,10 @@ class Sandbox {
         ),
       );
       if (!_isSuccess(res.statusCode)) {
-        _throwControlPlaneError(res.statusCode, res.data, '休眠沙盒');
+        _throwControlPlaneError(res.statusCode, res.data, 'pause sandbox');
       }
     } on DioException catch (e) {
-      throw SandboxException('休眠沙盒异常: ${e.message}', cause: e);
+      throw SandboxException('Failed to pause sandbox: ${e.message}', cause: e);
     }
   }
 
@@ -370,10 +416,10 @@ class Sandbox {
         ),
       );
       if (!_isSuccess(res.statusCode)) {
-        _throwControlPlaneError(res.statusCode, res.data, '唤醒沙盒');
+        _throwControlPlaneError(res.statusCode, res.data, 'resume sandbox');
       }
     } on DioException catch (e) {
-      throw SandboxException('唤醒沙盒异常: ${e.message}', cause: e);
+      throw SandboxException('Failed to resume sandbox: ${e.message}', cause: e);
     }
   }
 
@@ -395,10 +441,10 @@ class Sandbox {
         ),
       );
       if (!_isSuccess(res.statusCode)) {
-        _throwControlPlaneError(res.statusCode, res.data, '销毁沙盒');
+        _throwControlPlaneError(res.statusCode, res.data, 'kill sandbox');
       }
     } on DioException catch (e) {
-      throw SandboxException('销毁沙盒异常: ${e.message}', cause: e);
+      throw SandboxException('Failed to kill sandbox: ${e.message}', cause: e);
     }
   }
 

@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import '../e2b/e2b.dart';
 import '../models/cloud_workspace_config.dart';
 import '../models/e2b_sandbox_info.dart';
+import '../models/e2b_template_info.dart';
 import '../utils/app_logger.dart';
 import 'git_repo_service.dart';
 
@@ -980,6 +981,27 @@ fi
       return result;
     } catch (e) {
       AppLogger.w('E2B fetchSandboxes failed via Sandbox.list: $e');
+      return [];
+    }
+  }
+
+  /// 获取当前 E2B 账户下的所有沙盒模板列表 (GET /templates)
+  Future<List<E2bTemplateInfo>> fetchTemplates(String apiKey) async {
+    final cleanKey = apiKey.trim();
+    if (cleanKey.isEmpty) return [];
+
+    try {
+      final rawList = await Sandbox.listTemplates(
+        apiKey: cleanKey,
+        dio: _dio,
+      );
+      final result = rawList
+          .map((j) => E2bTemplateInfo.fromJson(j))
+          .toList();
+      AppLogger.i('Fetched ${result.length} E2B templates via Sandbox.listTemplates');
+      return result;
+    } catch (e) {
+      AppLogger.w('E2B fetchTemplates failed: $e');
       return [];
     }
   }

@@ -375,7 +375,7 @@ void main() {
           isA<SandboxAuthenticationException>().having(
             (e) => e.message,
             'message',
-            allOf(contains('API Key 无效'), contains('Invalid API key')),
+            allOf(contains('invalid E2B API Key'), contains('Invalid API key')),
           ),
         ),
       );
@@ -409,7 +409,7 @@ void main() {
           isA<SandboxException>().having(
             (e) => e.message,
             'message',
-            allOf(contains('Template not found'), contains('模板不存在')),
+            allOf(contains('Template not found'), contains('template not found')),
           ),
         ),
       );

@@ -111,6 +111,14 @@ class LocaleKeys {
   static const e2bApiKeyHint = "e2b_api_key_hint";
   static const e2bTemplate = "e2b_template";
   static const e2bTemplateHint = "e2b_template_hint";
+  static const e2bSelectTemplate = "e2b_select_template";
+  static const e2bFetchTemplates = "e2b_fetch_templates";
+  static const e2bFetchingTemplates = "e2b_fetching_templates";
+  static const e2bSearchTemplates = "e2b_search_templates";
+  static const e2bNoTemplatesFound = "e2b_no_templates_found";
+  static const e2bFetchTemplatesFailed = "e2b_fetch_templates_failed";
+  static const e2bOfficialTemplate = "e2b_official_template";
+  static const e2bCustomTemplate = "e2b_custom_template";
   static const e2bToolchains = "e2b_toolchains";
   static const e2bToolchainDart = "e2b_toolchain_dart";
   static const e2bToolchainRust = "e2b_toolchain_rust";
@@ -134,6 +142,7 @@ class LocaleKeys {
   static const e2bAutoPause = "e2b_auto_pause";
   static const e2bAutoPauseDesc = "e2b_auto_pause_desc";
   static const e2bLaunchWorkspace = "e2b_launch_workspace";
+  static const e2bCreateAndLaunch = "e2b_create_and_launch";
   static const e2bLaunchingWorkspace = "e2b_launching_workspace";
   static const e2bPauseSandbox = "e2b_pause_sandbox";
   static const e2bResumeSandbox = "e2b_resume_sandbox";
@@ -1383,7 +1392,7 @@ class Messages extends Translations {
 
     // ── Settings – Cloud Workspace (E2B) ──
     LocaleKeys.connModeSelfHosted: '自建服务器',
-    LocaleKeys.connModeCloud: '☁️ E2B 云端沙盒',
+    LocaleKeys.connModeCloud: 'E2B 云端沙盒',
     LocaleKeys.e2bTitle: 'E2B 云端开发工作区',
     LocaleKeys.e2bDesc: '无需本地服务器，基于 E2B MicroVM 秒级拉起专属云端 Linux 与 OpenCode 环境。',
     LocaleKeys.e2bApiKey: 'E2B API Key',
@@ -1412,7 +1421,8 @@ class Messages extends Translations {
     LocaleKeys.e2bTtlDesc: '设置云端实例保持运行的时长。手机锁屏或离线期间，云端 Agent 仍会持续执行长任务。',
     LocaleKeys.e2bAutoPause: '空闲自动休眠 (Auto-Pause)',
     LocaleKeys.e2bAutoPauseDesc: '仅在 Agent 任务已全部完成且空闲时，自动快照挂起沙盒以暂停计费并保留代码。',
-    LocaleKeys.e2bLaunchWorkspace: '🚀 一键启动云工作区',
+    LocaleKeys.e2bLaunchWorkspace: '创建并进入沙盒',
+    LocaleKeys.e2bCreateAndLaunch: '创建并进入沙盒',
     LocaleKeys.e2bLaunchingWorkspace: '正在启动 E2B 云端沙盒...',
     LocaleKeys.e2bPauseSandbox: '挂起休眠',
     LocaleKeys.e2bResumeSandbox: '秒级唤醒',
@@ -1421,7 +1431,7 @@ class Messages extends Translations {
     LocaleKeys.e2bCreateSandbox: '新建沙盒',
     LocaleKeys.e2bRefreshList: '刷新列表',
     LocaleKeys.e2bNoSandboxes: '暂无运行中的沙盒',
-    LocaleKeys.e2bNoSandboxesDesc: '点击右上角「新建沙盒」一键拉起 MicroVM 开发环境',
+    LocaleKeys.e2bNoSandboxesDesc: '点击「新建沙盒」一键拉起云端开发环境',
     LocaleKeys.e2bApiKeyRequired: '需要配置 E2B API Key',
     LocaleKeys.e2bApiKeyRequiredDesc: '配置 API Key 后可直接在手机上查看与管理所有云端沙盒',
     LocaleKeys.e2bConfigApiKey: '配置 API Key',
@@ -1434,7 +1444,7 @@ class Messages extends Translations {
     LocaleKeys.e2bCloudBackend: 'E2B 云端',
     LocaleKeys.selfHostedBackend: '自建服务器',
     LocaleKeys.e2bNoApiKey: '未配置 E2B API Key',
-    LocaleKeys.e2bNoApiKeyDesc: '使用云端工作区前，请先在设置中填写 E2B API Key。',
+    LocaleKeys.e2bNoApiKeyDesc: '使用云端沙盒前，请先在设置中填写 E2B API Key。',
     LocaleKeys.e2bNewSandbox: '新建沙盒',
     LocaleKeys.switchToSelfHosted: '切换至自建服务器',
     LocaleKeys.connectionDisconnected: '未连接',
@@ -1444,7 +1454,7 @@ class Messages extends Translations {
     LocaleKeys.e2bSandboxStatusRunning: '运行中',
     LocaleKeys.e2bSandboxStatusPaused: '🟡 已挂起休眠',
     LocaleKeys.e2bSandboxDashboard: '云端沙盒控制台',
-    LocaleKeys.e2bConfigWorkspace: '配置云工作区',
+    LocaleKeys.e2bConfigWorkspace: '沙盒配置',
     LocaleKeys.e2bFetchRepos: '🔍 获取项目列表',
     LocaleKeys.e2bFetchingRepos: '正在获取仓库列表...',
     LocaleKeys.e2bSelectRepo: '选择要拉取的项目',
@@ -1478,6 +1488,14 @@ class Messages extends Translations {
     LocaleKeys.e2bWorkspaceReady: 'E2B 云端工作区已连接并就绪',
     LocaleKeys.e2bLaunchErrorTitle: '启动遇到问题',
     LocaleKeys.e2bSandboxPreservedHint: '沙盒实例已保留，可在连接页沙盒列表中销毁或重新连接。',
+    LocaleKeys.e2bSelectTemplate: '选择沙盒模板',
+    LocaleKeys.e2bFetchTemplates: '从账户选择模板',
+    LocaleKeys.e2bFetchingTemplates: '正在获取可用模板列表...',
+    LocaleKeys.e2bSearchTemplates: '搜索模板名称或 ID...',
+    LocaleKeys.e2bNoTemplatesFound: '未找到可用模板',
+    LocaleKeys.e2bFetchTemplatesFailed: '获取模板列表失败: @error',
+    LocaleKeys.e2bOfficialTemplate: '官方预建',
+    LocaleKeys.e2bCustomTemplate: '自定义模板',
     LocaleKeys.e2bConnectFailed: '连接沙盒失败',
     LocaleKeys.e2bServiceUnreachable: '无法连接到沙盒 OpenCode 服务',
     LocaleKeys.e2bConnectedToSandbox: '已连接至 E2B 沙盒: @id',
@@ -2662,7 +2680,7 @@ class Messages extends Translations {
 
     // ── Settings – Cloud Workspace (E2B) ──
     LocaleKeys.connModeSelfHosted: 'Self-Hosted',
-    LocaleKeys.connModeCloud: '☁️ E2B Cloud',
+    LocaleKeys.connModeCloud: 'E2B Cloud',
     LocaleKeys.e2bTitle: 'E2B Cloud Workspace',
     LocaleKeys.e2bDesc:
         'Provision isolated MicroVM Linux & OpenCode sandbox in seconds via E2B.',
@@ -2694,7 +2712,8 @@ class Messages extends Translations {
     LocaleKeys.e2bAutoPause: 'Auto-Pause when Idle',
     LocaleKeys.e2bAutoPauseDesc:
         'Auto-snapshot and pause sandbox only when agent is idle to save costs and preserve state.',
-    LocaleKeys.e2bLaunchWorkspace: '🚀 Launch Cloud Workspace',
+    LocaleKeys.e2bLaunchWorkspace: 'Create & Enter Sandbox',
+    LocaleKeys.e2bCreateAndLaunch: 'Create & Enter Sandbox',
     LocaleKeys.e2bLaunchingWorkspace: 'Launching E2B Sandbox...',
     LocaleKeys.e2bPauseSandbox: 'Pause',
     LocaleKeys.e2bResumeSandbox: 'Resume',
@@ -2704,7 +2723,7 @@ class Messages extends Translations {
     LocaleKeys.e2bRefreshList: 'Refresh List',
     LocaleKeys.e2bNoSandboxes: 'No Running Sandboxes',
     LocaleKeys.e2bNoSandboxesDesc:
-        'Click "New Sandbox" in the top right to launch a MicroVM workspace',
+        'Click "New Sandbox" to launch a cloud development environment',
     LocaleKeys.e2bApiKeyRequired: 'E2B API Key Required',
     LocaleKeys.e2bApiKeyRequiredDesc:
         'Configure your API key to view and manage cloud sandboxes on mobile',
@@ -2731,7 +2750,7 @@ class Messages extends Translations {
     LocaleKeys.e2bSandboxStatusRunning: 'Running',
     LocaleKeys.e2bSandboxStatusPaused: '🟡 Paused',
     LocaleKeys.e2bSandboxDashboard: 'Sandbox Dashboard',
-    LocaleKeys.e2bConfigWorkspace: 'Configure Cloud Workspace',
+    LocaleKeys.e2bConfigWorkspace: 'Sandbox Settings',
     LocaleKeys.e2bFetchRepos: '🔍 Fetch My Repos',
     LocaleKeys.e2bFetchingRepos: 'Fetching repositories...',
     LocaleKeys.e2bSelectRepo: 'Select Repository to Clone',
@@ -2771,6 +2790,14 @@ class Messages extends Translations {
     LocaleKeys.e2bLaunchErrorTitle: 'Launch Issue',
     LocaleKeys.e2bSandboxPreservedHint:
         'Sandbox instance is preserved. You can destroy or reconnect from sandbox list.',
+    LocaleKeys.e2bSelectTemplate: 'Select Sandbox Template',
+    LocaleKeys.e2bFetchTemplates: 'Select from My Templates',
+    LocaleKeys.e2bFetchingTemplates: 'Fetching available templates...',
+    LocaleKeys.e2bSearchTemplates: 'Search template name or ID...',
+    LocaleKeys.e2bNoTemplatesFound: 'No templates found',
+    LocaleKeys.e2bFetchTemplatesFailed: 'Failed to fetch templates: @error',
+    LocaleKeys.e2bOfficialTemplate: 'Official Pre-built',
+    LocaleKeys.e2bCustomTemplate: 'Custom Template',
     LocaleKeys.e2bConnectFailed: 'Failed to connect sandbox',
     LocaleKeys.e2bServiceUnreachable:
         'Unable to reach sandbox OpenCode service',

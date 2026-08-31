@@ -600,9 +600,6 @@ class _SplashPageState extends State<SplashPage> {
     // 状态 2: 有活跃沙盒 (可一键唤醒连接 / 新建 / 管理)
     if (config.hasActiveSandbox) {
       final sandboxId = config.activeSandboxId!;
-      final shortId = sandboxId.length > 12
-          ? '${sandboxId.substring(0, 10)}...'
-          : sandboxId;
 
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -623,41 +620,13 @@ class _SplashPageState extends State<SplashPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.cloud_outlined,
-                        color: theme.colorScheme.primary,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          LocaleKeys.e2bSandboxLabel.trParams({'id': shortId}),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primaryContainer,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          config.activeSandboxStatus ?? 'ready',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: theme.colorScheme.onPrimaryContainer,
-                          ),
-                        ),
-                      ),
-                    ],
+                  Text(
+                    sandboxId,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                   if (config.activeSandboxUrl != null) ...[
                     const SizedBox(height: 6),
@@ -859,8 +828,8 @@ class _SplashPageState extends State<SplashPage> {
                       );
                       if (mounted) setState(() {});
                     },
-              icon: const Icon(Icons.rocket_launch_outlined, size: 18),
-              label: Text(LocaleKeys.e2bLaunchWorkspace.tr),
+              icon: const Icon(Icons.add_circle_outline, size: 18),
+              label: Text(LocaleKeys.e2bNewSandbox.tr),
             ),
             const SizedBox(height: 8),
             TextButton.icon(

@@ -281,16 +281,21 @@ class _FilePageState extends State<FilePage> {
       if (activeKey != _lastEnsuredTab) {
         _lastEnsuredTab = activeKey;
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (activeKey.isNotEmpty) {
-            final key = _tabKeys[activeKey];
-            if (key?.currentContext != null) {
-              Scrollable.ensureVisible(
-                key!.currentContext!,
-                duration: const Duration(milliseconds: 250),
-                curve: Curves.easeInOut,
-                alignment: 0.5,
-              );
-            }
+          if (activeKey.isEmpty) return;
+          final key = _tabKeys[activeKey];
+          final ctx = key?.currentContext;
+          if (ctx != null) {
+            Scrollable.ensureVisible(
+              ctx,
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeInOut,
+              alignment: 0.5,
+            );
+          } else {
+            // 目标页签尚未被懒构建（在视口+cacheExtent 之外）：重置去重
+            // 标记，让后续 rebuild 重试，避免"打开文件自动滚到页签"一次性
+            // 失败后不再自愈。
+            _lastEnsuredTab = '';
           }
         });
       }

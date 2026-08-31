@@ -136,12 +136,13 @@ class _PromptInputState extends State<PromptInput> with WidgetsBindingObserver {
     if (ok) return;
     // 发送失败（排队/重试等成功路径除外）：把内容还给输入框与附件栏，
     // 避免静默丢失；用户可修改后重发。仅在各自为空时回填，不覆盖新输入。
-    if (_textController.text.trim().isEmpty) {
+    // POST 窗口内页签可能已关闭（组件卸载）：输入框已 dispose 不可写，
+    // 附件仍属会话运行时状态，可安全回填。
+    if (mounted && _textController.text.trim().isEmpty) {
       _textController.text = t;
       _textController.selection = TextSelection.fromPosition(
         TextPosition(offset: _textController.text.length),
       );
-      _hasText = true;
     }
     if (state.attachedImages.isEmpty && images.isNotEmpty) {
       state.attachedImages.addAll(images);

@@ -227,10 +227,14 @@ class _FileAttachmentState extends State<_FileAttachment> {
   Future<void> _loadImageBytes() async {
     final url = widget.part.fileUrl;
     if (url.startsWith('data:image/')) {
-      // G3：内存 provider 缓存优先（key `$messageID:$partId`，FIFO 上限 32）
-      // ——滚动往返（State 销毁重建）直接复用已解码 provider，跳过磁盘 IO
-      // 与解码。磁盘缓存只做冷启动兜底；缓存也无条目时退回解码 data: URL。
-      final key = '${widget.part.messageID}:${widget.part.id}';
+      // G3：内存 provider 缓存优先（key `$messageID:$partId:<url 哈希>`，
+      // FIFO 上限 32）——滚动往返（State 销毁重建）直接复用已解码 provider，
+      // 跳过磁盘 IO 与解码。磁盘缓存只做冷启动兜底；缓存也无条目时退回解码
+      // data: URL。
+      // 键带 URL 内容哈希：同 messageID:partId 的 URL 变化（理论防御）时
+      // 旧 provider 不再命中，重载后按新键重新解码。
+      final key =
+          '${widget.part.messageID}:${widget.part.id}:${url.hashCode}';
       final cachedProvider = _dataImageProviderCache[key];
       if (cachedProvider != null) {
         if (!mounted) return;
@@ -270,23 +274,28 @@ class _FileAttachmentState extends State<_FileAttachment> {
     if (!url.startsWith('file://')) return;
     try {
       final path = Uri.parse(url).toFilePath();
+      final file = File(path);
+      if (!await file.exists()) return;
+      // 键带 mtime/size 指纹：文件被编辑（同路径内容变化）后旧 provider
+      // 不再命中，滚回/重建时按新指纹重新读取，附件缩略图不再停留旧内容。
+      final stat = await file.stat();
+      final key =
+          '$path:${stat.size}:${stat.modified.millisecondsSinceEpoch}';
       // provider 缓存命中：跳过 IO 与解码（State 滚出视口销毁、滚回重建时
       // 会重新走 initState 加载，未缓存前每次都重复 readAsBytes）。
-      final cached = _fileImageProviderCache[path];
+      final cached = _fileImageProviderCache[key];
       if (cached != null) {
         if (!mounted) return;
         setState(() => _fileImage = cached);
         return;
       }
-      final file = File(path);
-      if (!await file.exists()) return;
       final bytes = await file.readAsBytes();
       if (!mounted) return;
       final provider = MemoryImage(bytes);
       if (_fileImageProviderCache.length >= _fileImageCacheLimit) {
         _fileImageProviderCache.remove(_fileImageProviderCache.keys.first);
       }
-      _fileImageProviderCache[path] = provider;
+      _fileImageProviderCache[key] = provider;
       if (!mounted) return;
       setState(() => _fileImage = provider);
     } catch (e) {
@@ -455,7 +464,32 @@ class _StreamingTextMarkdownState extends State<_StreamingTextMarkdown> {
     if (oldWidget.part.id != widget.part.id ||
         oldWidget.sessionId != widget.sessionId) {
       _attach();
+      return;
     }
+    // 回合中途全量重载（重连强刷）会清空通道 Map：Element 复用后 State 缓存
+    // 的 _rx 成为孤儿引用，后续 delta 写进 Map 里新建的通道而本部件不再
+    // 收到，流式文本冻结到回合结束。这里对账：
+    // - Map 已有新通道（flush 重建）：改挂新通道；
+    // - 通道缺失且回合仍在生成：重建（初值取列表当前文本，与 flush 侧
+    //   putIfAbsent 同种子），让后续 delta 恢复流入；
+    // - 通道缺失且已收尾：finalize 已把文本落列表，丢弃旧引用改读列表，
+    //   不重建——避免在流式未清空守卫（落盘/revalidate）眼里造出假状态。
+    if (_rx == null) return;
+    try {
+      final state =
+          Get.find<SessionController>().sessionRuntimeStates[widget.sessionId];
+      final current = state?.streamingPartText['${widget.part.id}\u0000text'];
+      if (current != null) {
+        if (!identical(current, _rx)) _rx = current;
+      } else if (state != null && state.isGenerating.value) {
+        _rx = state.streamingPartText.putIfAbsent(
+          '${widget.part.id}\u0000text',
+          () => widget.part.text.obs,
+        );
+      } else {
+        _rx = null;
+      }
+    } catch (_) {}
   }
 
   void _attach() {

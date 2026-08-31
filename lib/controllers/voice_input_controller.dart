@@ -27,6 +27,12 @@ class VoiceInputController extends GetxController with WidgetsBindingObserver {
   TextEditingController? _flushTarget;
   int _flushLastLen = 0;
 
+  /// 冲刷期锁定的自动发送匹配起点：stopSingleTap 会经 _setTarget(null) 把
+  /// [_voiceStartLen] 归零，若冲刷期直接读它，句尾 final 的自动发送匹配会
+  /// 退化成从 0 起全文扫描（命中用户手打的"发送"指令误发送）。锁定值与
+  /// [_flushLastLen] 同生命周期。
+  int _flushStartLen = 0;
+
   /// 当前语音流接管目标输入框时的文本长度：自动发送指令只在该流新增的
   /// 区间内匹配，避免命中用户手动键入的旧文本（如手打的"，发送。"）误发送。
   int _voiceStartLen = 0;
@@ -65,11 +71,13 @@ class VoiceInputController extends GetxController with WidgetsBindingObserver {
   void _lockFlushTarget() {
     _flushTarget = _targetTextController;
     _flushLastLen = _lastVoiceTextLength;
+    _flushStartLen = _voiceStartLen;
   }
 
   void _unlockFlushTarget() {
     _flushTarget = null;
     _flushLastLen = 0;
+    _flushStartLen = 0;
   }
 
   @override
@@ -188,7 +196,9 @@ class VoiceInputController extends GetxController with WidgetsBindingObserver {
           final sendText = _extractAutoSendText(
             target.text,
             Global.voiceSendCommand,
-            _voiceStartLen,
+            // 冲刷期用锁定值：_setTarget(null) 已把 _voiceStartLen 归零，
+            // 直接用会从 0 起全文扫描（见 _flushStartLen 注释）。
+            flushing ? _flushStartLen : _voiceStartLen,
           );
           if (sendText != null) {
             if (flushing) {

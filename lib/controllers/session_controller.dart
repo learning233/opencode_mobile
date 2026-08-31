@@ -1504,15 +1504,71 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       }
       AppLogger.e('loadMessages failed: $e');
       // 失败同样终结加载态（见 finally），但标记失败：空会话 UI 提示重试
-      // 而不是伪装成"开启对话"。seq 守卫避免切项目后写过期会话状态。
-      if (seq == _sessionFetchSeq) {
+      // 而不是伪装成"开启对话"。seq 守卫避免切项目后写过期会话状态；票据
+      // 守卫避免被 force 取代的旧请求把失败标记压到取代者头上。
+      if (seq == _sessionFetchSeq &&
+          _messageLoadTickets[sessionId] == ticket) {
         stateOf(sessionId).historyLoadFailed.value = true;
       }
     } finally {
-      if (seq == _sessionFetchSeq) {
+      // 票据仍为本请求时才终结加载态：被取代的旧请求在取代者飞行期间置
+      // true，会让空会话 UI 在"正在加载"与"开始对话"间闪跳。取代者自身的
+      // finally 负责收尾。
+      if (seq == _sessionFetchSeq &&
+          _messageLoadTickets[sessionId] == ticket) {
         stateOf(sessionId).hasLoadedHistory.value = true;
       }
     }
+  }
+
+  /// 重建消息并把当前 [parts] 回写进 raw 副本。
+  ///
+  /// delta/finalize/工具状态标记等只更新解析后的 parts（高频 delta 甚至只进
+  /// per-part 通道），而缓存落盘等消费的是 `MessageModel.raw` 的 parts 键
+  /// ——不同步会让 Sync-on-Idle 快照停留在最后一次全量 message.updated 的
+  /// 内容，冷启动读缓存渲染出截断文本。raw 按拷贝写入不污染原 map；
+  /// legacy（`parts`）与 v2（`info.content` 等）两种形状都回写，均无列表键
+  /// 且 parts 非空时补写 `parts`，并补齐 id/sessionID 供 fromJson 还原身份。
+  static MessageModel messageWithSyncedParts(
+    MessageModel message,
+    List<Part> parts,
+  ) {
+    final raw = Map<String, dynamic>.from(message.raw);
+    final partsJson = [for (final p in parts) p.raw];
+    var wrote = false;
+    final info = raw['info'];
+    if (info is Map) {
+      final infoCopy = Map<String, dynamic>.from(info);
+      for (final key in const ['parts', 'content']) {
+        if (infoCopy[key] is List) {
+          infoCopy[key] = partsJson;
+          wrote = true;
+        }
+      }
+      if (wrote) raw['info'] = infoCopy;
+    }
+    for (final key in const ['parts', 'content']) {
+      if (raw[key] is List) {
+        raw[key] = partsJson;
+        wrote = true;
+      }
+    }
+    if (!wrote && partsJson.isNotEmpty) {
+      raw['parts'] = partsJson;
+    }
+    if (message.id.isNotEmpty && raw['id'] == null) {
+      raw['id'] = message.id;
+    }
+    if (message.sessionID.isNotEmpty && raw['sessionID'] == null) {
+      raw['sessionID'] = message.sessionID;
+    }
+    return MessageModel(
+      id: message.id,
+      sessionID: message.sessionID,
+      role: message.role,
+      parts: parts,
+      raw: raw,
+    );
   }
 
   /// 回合收尾后把内存中的权威消息快照落盘（SWR 的 Sync-on-Idle 侧）。
@@ -1534,7 +1590,11 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     unawaited(
       SessionCacheStore.instance.save(
         sessionId,
-        state.messages.map((m) => m.raw).toList(),
+        // 落盘前统一把当前 parts 回写 raw 副本：即便某个消息变更点漏调
+        // messageWithSyncedParts，快照也不会缺流式内容。
+        [
+          for (final m in state.messages) messageWithSyncedParts(m, m.parts).raw,
+        ],
       ),
     );
   }
@@ -2127,13 +2187,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       }
     }
     if (changed) {
-      state.messages[idx] = MessageModel(
-        id: msg.id,
-        sessionID: msg.sessionID,
-        role: msg.role,
-        parts: newParts,
-        raw: msg.raw,
-      );
+      state.messages[idx] = messageWithSyncedParts(msg, newParts);
       state.partsVersion++;
       // 运行中的 tool part（可能是挂起 question）被标记 error：布尔为 true
       // 时重扫兜底。
@@ -3351,13 +3405,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       raw: raw,
     );
 
-    state.messages[msgIdx] = MessageModel(
-      id: message.id,
-      sessionID: message.sessionID,
-      role: message.role,
-      parts: existingParts,
-      raw: message.raw,
-    );
+    state.messages[msgIdx] = messageWithSyncedParts(message, existingParts);
     return true;
   }
 
@@ -3423,13 +3471,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         type: existing.type,
         raw: raw,
       );
-      state.messages[msgIdx] = MessageModel(
-        id: message.id,
-        sessionID: message.sessionID,
-        role: message.role,
-        parts: parts,
-        raw: message.raw,
-      );
+      state.messages[msgIdx] = messageWithSyncedParts(message, parts);
     }
   }
 
@@ -3450,12 +3492,9 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     final newParts = state.messages[idx].parts
         .where((p) => p.id != partId)
         .toList();
-    state.messages[idx] = MessageModel(
-      id: state.messages[idx].id,
-      sessionID: state.messages[idx].sessionID,
-      role: state.messages[idx].role,
-      parts: newParts,
-      raw: state.messages[idx].raw,
+    state.messages[idx] = messageWithSyncedParts(
+      state.messages[idx],
+      newParts,
     );
     state.partsVersion++;
     // 删除的可能是挂起的 question part：布尔为 true 时重扫兜底。
@@ -3563,14 +3602,17 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         return;
       }
       state.messages.add(
-        MessageModel(
-          id: msgId,
-          sessionID: part.sessionID.isNotEmpty
-              ? part.sessionID
-              : state.sessionId,
-          role: MessageRole.assistant,
-          parts: [part],
-          raw: const {'role': 'assistant'},
+        messageWithSyncedParts(
+          MessageModel(
+            id: msgId,
+            sessionID: part.sessionID.isNotEmpty
+                ? part.sessionID
+                : state.sessionId,
+            role: MessageRole.assistant,
+            parts: [part],
+            raw: const {'role': 'assistant'},
+          ),
+          [part],
         ),
       );
       state.partsVersion++;
@@ -3605,12 +3647,9 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       existingParts[pIdx] = part;
     }
 
-    state.messages[idx] = MessageModel(
-      id: state.messages[idx].id,
-      sessionID: state.messages[idx].sessionID,
-      role: state.messages[idx].role,
-      parts: existingParts,
-      raw: state.messages[idx].raw,
+    state.messages[idx] = messageWithSyncedParts(
+      state.messages[idx],
+      existingParts,
     );
     state.partsVersion++;
     _syncStreamingPartText(state, part);
@@ -3948,13 +3987,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
             : <String, dynamic>{'answers': answers ?? const []},
         error: rejected ? 'Question rejected' : null,
       );
-      state.messages[mi] = MessageModel(
-        id: msg.id,
-        sessionID: msg.sessionID,
-        role: msg.role,
-        parts: parts,
-        raw: msg.raw,
-      );
+      state.messages[mi] = messageWithSyncedParts(msg, parts);
       state.partsVersion++;
       // 本地已把该 question 置终态：布尔为 true 时重扫（可能还有其他挂起）。
       if (state.hasPendingQuestion.value) state.rescanHasPendingQuestion();
@@ -4075,13 +4108,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         }
       }
       if (changed) {
-        state.messages[mi] = MessageModel(
-          id: msg.id,
-          sessionID: msg.sessionID,
-          role: msg.role,
-          parts: newParts,
-          raw: msg.raw,
-        );
+        state.messages[mi] = messageWithSyncedParts(msg, newParts);
         state.partsVersion++;
         // 挂起 question 被标记 skipped（终态）：布尔为 true 时重扫兜底。
         if (state.hasPendingQuestion.value) state.rescanHasPendingQuestion();

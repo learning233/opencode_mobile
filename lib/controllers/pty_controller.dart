@@ -664,9 +664,21 @@ class PtyController extends GetxController with WidgetsBindingObserver {
     if (idx == -1) return;
 
     final session = sessions[idx];
-    // 计算在过滤列表中的位置，作为下一个激活项的依据（过滤开启时
-    // filteredSessions 与 sessions 的索引/顺序不一致）。
-    final filteredIdx = filteredSessions.indexWhere((s) => s.id == ptyId);
+    // 计算激活项回退目标：按对象引用捕获原过滤列表中被关闭项的前一个
+    // 存活会话（首项则取后一个，与原 (filteredIdx - 1).clamp 语义一致）。
+    // 不能记索引——下面的 DELETE await（最长 5s）期间列表可能被
+    // fetchSessions 的 stale 清理 / 并行 attach 代际清理并发修改。
+    final filteredList = filteredSessions;
+    final filteredIdx = filteredList.indexWhere((s) => s.id == ptyId);
+    PtySession? fallbackTab;
+    if (filteredIdx != -1) {
+      final prevIdx = filteredIdx - 1;
+      fallbackTab = prevIdx >= 0
+          ? filteredList[prevIdx]
+          : (filteredIdx + 1 < filteredList.length
+                ? filteredList[filteredIdx + 1]
+                : null);
+    }
 
     // 先删远端再移除本地：DELETE 失败时远端 PTY 仍在运行，若先删本地，
     // 下次 fetchSessions 会把它当存活项重新 attach，已关闭的终端"复活"。
@@ -686,16 +698,18 @@ class PtyController extends GetxController with WidgetsBindingObserver {
       return;
     }
 
+    // await 期间本会话可能已被 fetchSessions 的 stale 清理 dispose+移除
+    // （DELETE 成功会让下一次列表刷新把它判为已删）：以对象身份复查，
+    // 避免二次 dispose 与按过期索引误删相邻会话。
+    if (!sessions.contains(session)) return;
     session.dispose();
-    sessions.removeAt(idx);
+    sessions.remove(session);
 
     final list = filteredSessions;
-    if (list.isNotEmpty) {
-      final newIdx = (filteredIdx - 1).clamp(0, list.length - 1);
-      activePtyId.value = list[newIdx].id;
-    } else {
-      activePtyId.value = '';
-    }
+    final candidate = (fallbackTab != null && list.contains(fallbackTab))
+        ? fallbackTab
+        : list.firstOrNull;
+    activePtyId.value = candidate?.id ?? '';
   }
 
   void _scheduleAutoReconnect(PtySession session) {

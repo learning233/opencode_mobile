@@ -87,7 +87,11 @@ class VcsController extends GetxController {
       _lastRefreshTime = null;
       AppLogger.w('Failed to refresh VCS: $e');
     } finally {
-      isLoading.value = false;
+      // 仅当前代际收尾 loading：被取代的旧刷新后完成时，不能把新刷新的
+      // 在途 loading 提前关掉（与 pty_controller.fetchSessions 的 finally 同口径）。
+      if (seq == _refreshSeq) {
+        isLoading.value = false;
+      }
     }
   }
 
@@ -116,6 +120,8 @@ class VcsController extends GetxController {
       }
     } on DioException catch (e) {
       AppLogger.w('Fetch VCS info failed: $e');
+      // 代际守卫：被取代的旧请求迟到 404 时不得清空新请求刚写入的分支信息。
+      if (requestSeq != _refreshSeq) return;
       if (e.response?.statusCode == 404 || e.response?.statusCode == 400) {
         // Not a git repo：稳定状态（重试不会改变结果），不上抛、不回滚节流。
         branch.value = '';
@@ -163,6 +169,10 @@ class VcsController extends GetxController {
       }
     } on DioException catch (e) {
       AppLogger.w('Fetch VCS status failed: $e');
+      // 代际守卫：被取代的旧请求迟到失败时不得清空新请求刚写入的结果。
+      // 404/400 的"非 git 仓库"清空也一并守卫——新请求若同样 404 会自行
+      // 写入该状态。
+      if (requestSeq != _refreshSeq) return;
       error.value = e.message;
       statusFiles.clear();
       if (e.response?.statusCode == 404 || e.response?.statusCode == 400) {

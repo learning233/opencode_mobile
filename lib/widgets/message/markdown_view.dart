@@ -119,17 +119,31 @@ const int _largeHighlightThreshold = 8192;
 /// 流式期间的临时观感，流结束整体渲染自动恢复正确。
 (String, String)? _splitStablePrefix(String content) {
   if (content.length < _streamingSplitMinLength) return null;
-  var inFence = false;
+  // 围栏配对按 CommonMark 语义：闭合围栏须与开启围栏同字符、长度不小于
+  // 其且行内只有围栏本身——避免 ````` 开启后内嵌 ``` 行被误判闭合，把
+  // 仍在代码块内的内容按围栏外文本切段渲染。
+  String? fenceChar;
+  var fenceLen = 0;
   var lastBoundary = -1;
   var offset = 0;
   for (final line in content.split('\n')) {
     final lineStart = offset;
     offset += line.length + 1; // +1 为换行符（末行多算的 1 无碍，仅用于比较）
-    if (_fenceLinePattern.hasMatch(line)) {
-      inFence = !inFence;
+    final match = _fenceLinePattern.firstMatch(line);
+    if (match != null) {
+      final run = match.group(1)!;
+      if (fenceLen == 0) {
+        fenceChar = run[0];
+        fenceLen = run.length;
+      } else if (run[0] == fenceChar &&
+          run.length >= fenceLen &&
+          line.trim() == run) {
+        fenceChar = null;
+        fenceLen = 0;
+      }
       continue;
     }
-    if (!inFence && line.trim().isEmpty) {
+    if (fenceLen == 0 && line.trim().isEmpty) {
       lastBoundary = lineStart;
     }
   }

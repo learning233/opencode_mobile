@@ -180,9 +180,21 @@ class _ReasoningSheetBodyState extends State<_ReasoningSheetBody> {
     return Obx(() {
       final part = _lookup();
       // 流式 delta 不再更新列表（细粒度通道），优先读 per-part RxString；
-      // 两者在全量 part 更新与回合 finalize 时由控制器对齐。
-      final channel = state.streamingPartText['${part.id}\u0000text'];
-      final text = channel != null ? channel.value : part.reasoningText;
+      // 两者在全量 part 更新与回合 finalize 时由控制器对齐。生成中通道缺失
+      // 时按当前列表文本惰性创建（与 flush 侧 putIfAbsent 同种子），避免
+      // 「全量更新先写入文本、后续走 delta」窗口内弹窗错过通道；已收尾则
+      // 只读不建——不给已完成 part 造幽灵通道条目（finalize/落盘守卫依赖
+      // 通道为空判定收尾）。
+      final RxString? channel;
+      if (state.isGenerating.value) {
+        channel = state.streamingPartText.putIfAbsent(
+          '${part.id}\u0000text',
+          () => part.reasoningText.obs,
+        );
+      } else {
+        channel = state.streamingPartText['${part.id}\u0000text'];
+      }
+      final text = channel?.value ?? part.reasoningText;
       _scrollToBottom();
       return _content(theme, text: text);
     });

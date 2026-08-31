@@ -113,6 +113,10 @@ class _SessionDotState extends State<_SessionDot>
     if (widget.runState.isGenerating.value) {
       _startBlinking(_BlinkMode.completed);
     }
+    // 初始评估：dot 创建时 hasPendingQuestion/pendingPermission 可能已为
+    // true（SSE 先于 UI 预填充），此后布尔不再翻转就没有事件可触发闪烁，
+    // 后台页签的 requiresAction 光晕会缺失。与上方 isGenerating 初始检查同型。
+    _checkRequiresActionBlink();
   }
 
   void _checkRequiresActionBlink() {

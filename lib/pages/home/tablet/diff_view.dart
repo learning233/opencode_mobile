@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../api/models/snapshot_file_diff.dart';
-import '../../utils/app_theme.dart';
+import '../../../api/models/snapshot_file_diff.dart';
+import '../../../utils/app_theme.dart';
 import 'diff_code_view.dart';
 
 /// Shared single-file diff viewer with full unified-diff patch rendering.

@@ -1,4 +1,4 @@
-import '../pages/tablet/diff_view.dart';
+import '../pages/home/tablet/diff_view.dart';
 
 /// 单行 diff 的渲染描述：文本 + 前缀 + 行号栏文本 + 源索引。
 ///

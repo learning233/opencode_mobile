@@ -4,14 +4,15 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import '../../../api/endpoints.dart';
-import '../../../api/opencode_client.dart';
-import '../../../controllers/project_controller.dart';
-import '../../../controllers/tablet_tool_controller.dart';
-import '../../../utils/app_logger.dart';
-import '../../../utils/translations.dart';
+import '../../../../api/endpoints.dart';
+import '../../../../api/opencode_client.dart';
+import '../../../../controllers/project_controller.dart';
+import '../../../../controllers/tablet_tool_controller.dart';
+import '../../../../utils/app_logger.dart';
+import '../../../../utils/translations.dart';
 
-export '../../../utils/file_kind.dart' show isImageFilePath, kImageExtensions;
+export '../../../../utils/file_kind.dart'
+    show isImageFilePath, kImageExtensions;
 
 /// Top-level function for safe compute execution without capturing class instances.
 Uint8List _decodeBase64Sync(String raw) {

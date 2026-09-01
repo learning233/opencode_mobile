@@ -10,7 +10,7 @@ import '../../../../utils/diff_paths.dart';
 import '../../../../utils/layout_utils.dart';
 import '../../../../utils/translations.dart';
 import '../../../../widgets/detail_bottom_sheet.dart';
-import '../../../tablet/diff_view.dart';
+import '../../tablet/diff_view.dart';
 
 /// Compact file-change summary card. Tapping opens a BottomSheet modal
 /// that fetches `GET /session/$sessionId/diff?messageID=$userMessageId` on demand

@@ -1,14 +1,14 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import '../../controllers/tablet_tool_controller.dart';
-import '../../utils/file_kind.dart';
-import '../../utils/translations.dart';
+import '../../../controllers/tablet_tool_controller.dart';
+import '../../../utils/file_kind.dart';
+import '../../../utils/translations.dart';
 import 'multi_view/audio_player_view.dart';
 import 'multi_view/code_viewer.dart';
 import 'multi_view/image_viewer.dart';
 import 'in_app_browser_view.dart';
-import '../home/terminal_page.dart';
+import '../terminal_page.dart';
 import 'review_page.dart';
 
 /// Right-side tool panel for tablet mode with Code / Terminal / Web / Review tabs.

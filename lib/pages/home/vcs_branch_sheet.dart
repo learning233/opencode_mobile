@@ -10,7 +10,7 @@ import '../../routes.dart';
 import '../../utils/layout_utils.dart';
 import '../../utils/snackbar_utils.dart';
 import '../../utils/translations.dart';
-import '../tablet/review_page.dart';
+import 'tablet/review_page.dart';
 
 /// BottomSheet widget displaying VCS branch details and workspace status files.
 class VcsBranchSheet extends StatefulWidget {

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:opencode_app/pages/tablet/diff_view.dart';
+import 'package:opencode_app/pages/home/tablet/diff_view.dart';
 
 void main() {
   group('parsePatchLines', () {

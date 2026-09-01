@@ -5,9 +5,9 @@ import '../left_drawer.dart';
 import 'left_panel_content.dart';
 import '../../utils/file_kind.dart';
 import '../../utils/translations.dart';
-import '../tablet/multi_view/audio_player_view.dart';
-import '../tablet/multi_view/code_viewer.dart';
-import '../tablet/multi_view/image_viewer.dart';
+import '../home/tablet/multi_view/audio_player_view.dart';
+import '../home/tablet/multi_view/code_viewer.dart';
+import '../home/tablet/multi_view/image_viewer.dart';
 
 /// Unified Multi-Tab File Editor Page for Mobile & Tablet.
 class FilePage extends StatefulWidget {

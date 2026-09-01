@@ -2,16 +2,16 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
-import '../../api/endpoints.dart';
-import '../../api/models/snapshot_file_diff.dart';
-import '../../api/opencode_client.dart';
-import '../../controllers/session_controller.dart';
-import '../../controllers/tablet_tool_controller.dart';
-import '../../init.dart';
-import '../../models/session_runtime_state.dart';
-import '../../utils/app_logger.dart';
-import '../../utils/diff_paths.dart';
-import '../../utils/translations.dart';
+import '../../../api/endpoints.dart';
+import '../../../api/models/snapshot_file_diff.dart';
+import '../../../api/opencode_client.dart';
+import '../../../controllers/session_controller.dart';
+import '../../../controllers/tablet_tool_controller.dart';
+import '../../../init.dart';
+import '../../../models/session_runtime_state.dart';
+import '../../../utils/app_logger.dart';
+import '../../../utils/diff_paths.dart';
+import '../../../utils/translations.dart';
 import 'diff_code_view.dart';
 import 'diff_view.dart';
 

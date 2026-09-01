@@ -7,14 +7,14 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
-import '../../controllers/session_controller.dart';
-import '../../controllers/tablet_tool_controller.dart';
-import '../../models/browser_tab.dart';
-import '../../utils/app_logger.dart';
-import '../../utils/layout_utils.dart';
-import '../../utils/snackbar_utils.dart';
-import '../../utils/translations.dart';
-import '../../utils/url_utils.dart';
+import '../../../controllers/session_controller.dart';
+import '../../../controllers/tablet_tool_controller.dart';
+import '../../../models/browser_tab.dart';
+import '../../../utils/app_logger.dart';
+import '../../../utils/layout_utils.dart';
+import '../../../utils/snackbar_utils.dart';
+import '../../../utils/translations.dart';
+import '../../../utils/url_utils.dart';
 
 const String _kDesktopUserAgent =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';

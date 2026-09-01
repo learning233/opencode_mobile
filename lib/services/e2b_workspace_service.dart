@@ -156,12 +156,12 @@ case "$code" in
     ;;
   401|403)
     echo "existing serve authentication mismatch (HTTP $code), terminating old process"
-    pkill -9 -x opencode 2>/dev/null || true
+    pkill -9 -f "[o]pencode serve" 2>/dev/null || true
     sleep 1
     ;;
   *)
     echo "port 4096 has a server with mismatched auth (HTTP $code), restarting..."
-    pkill -x opencode 2>/dev/null || true
+    pkill -9 -f "[o]pencode serve" 2>/dev/null || true
     sleep 1
     ;;
 esac

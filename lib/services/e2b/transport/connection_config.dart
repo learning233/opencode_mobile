@@ -56,6 +56,7 @@ class ConnectionConfig {
     bool streaming = false,
     String? user,
   }) {
+    final trimmedKey = apiKey.trim();
     return {
       'Connect-Protocol-Version': '1',
       'Content-Type': streaming
@@ -65,7 +66,7 @@ class ConnectionConfig {
       'E2b-Sandbox-Port': port.toString(),
       if (envdAccessToken != null && envdAccessToken!.isNotEmpty)
         'X-Access-Token': envdAccessToken!,
-      if (apiKey.isNotEmpty) 'X-API-Key': apiKey,
+      if (trimmedKey.isNotEmpty) 'X-API-Key': trimmedKey,
       // 官方用 Basic header 传递执行用户(process 请求体里没有 user 字段)
       if (user != null && user.isNotEmpty)
         'Authorization': 'Basic ${base64Encode(utf8.encode('$user:'))}',
@@ -75,6 +76,6 @@ class ConnectionConfig {
 
   /// 构造控制面 REST API 请求的基础 Header
   Map<String, String> getApiHeaders() {
-    return {'Content-Type': 'application/json', 'X-API-Key': apiKey};
+    return {'Content-Type': 'application/json', 'X-API-Key': apiKey.trim()};
   }
 }

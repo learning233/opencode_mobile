@@ -242,8 +242,7 @@ String generateSignature({
 ```json
 {
   "templateID": "opencode",
-  "timeout": 1800,
-  "autoPause": true,
+  "timeout": 3600,
   "envVars": {
     "OPENCODE_SERVER_PASSWORD": "...",
     "PORT": "4096"
@@ -253,6 +252,7 @@ String generateSignature({
   }
 }
 ```
+*(注：Hobby 计划单次限制 $\le 3600\text{s}$，Pro 计划最长支持 86400s；SDK 底层内置 400 timeout 自动降级 3600s 重试机制)*
 
 ### 2. 状态机模型
 
@@ -260,8 +260,8 @@ String generateSignature({
 stateDiagram-v2
     [*] --> Creating: POST /v2/sandboxes
     Creating --> Running: 分配 VM 成功
-    Running --> Paused: POST /sandboxes/{id}/pause 或超时自动休眠
-    Paused --> Running: POST /sandboxes/{id}/resume 唤醒
+    Running --> Paused: POST /sandboxes/{id}/pause
+    Paused --> Running: POST /sandboxes/{id}/connect (自动从快照唤醒)
     Running --> Killed: DELETE /sandboxes/{id} 或达到最大生命周期
     Paused --> Killed: DELETE /sandboxes/{id}
     Killed --> [*]

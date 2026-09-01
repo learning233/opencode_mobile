@@ -52,8 +52,8 @@ flowchart TD
   * 支持分支选择（默认 `main` 或自定义）；
   * Git 提交身份设置（Author Name / Email）。
 * **资源与生命周期控制**：
-  * 沙盒超时时间（默认 30 分钟，最长 24 小时）；
-  * 自动休眠（Auto-Pause）开关与时间设定。
+  * 沙盒超时时间（默认 1 小时，最长 24 小时，底层具备 400 自动降级 3600s 机制）；
+  * 后台 TTL Keep-Alive 自动续期（每 5 分钟刷新一次）。
 * **预装开发工具链**：Node.js、Python、Rust、Go、Flutter 开关标识。
 
 ### 2. 仓库选择器 (`GitRepoPickerSheet`)
@@ -356,3 +356,25 @@ pkill -f "[o]pencode serve" 2>/dev/null || true
    pkill -x opencode 2>/dev/null || true
    ```
    `-x` 仅匹配 `comm` 名字为 `opencode` 的真正二进制程序，绝不会波及名为 `bash` 的脚本进程，彻底杜绝自杀。
+
+---
+
+## 十、补充演进(2026-09-01 第六轮: 左抽屉多后端扁平化、超时400动态降级与工作区弹窗现代重构)
+
+### 1. 左抽屉多后端分组与项目扁平化 (`LeftPanelContent`)
+* **双分组并存**：左侧抽屉同时平铺展示「🖥️ 自建服务器」与「☁️ E2B 云端沙盒」两大分组，当前连接的后端通过绿色圆点 `●` 高亮指示；
+* **沙盒项目纯粹平铺**：移除了中间层繁琐的沙盒 ID 嵌套容器与卡片框线，将当前沙盒内的 OpenCode 项目及其他可用沙盒（带项目名/ID兜底）直接平铺展示，点击任意项目即可一键触发沙盒自动切换与会话连接；
+* **极简排版**：移除了所有多余的分割线与路径副标题，项目仅保留纯粹的名称；
+* **全局隐藏项目沉底**：隐藏项目卡片独立沉底于抽屉最下方，不污染特定后端的列表状态。
+
+### 2. E2B 超时动态降级机制（Timeout Dynamic Fallback）
+* **背景**：E2B 平台对于免费 Hobby 计划强制要求单次超时时间 $\le 3600\text{s}$（1 小时），传入大于 3600s（如 2h/4h/24h）会直接返回 `HTTP 400 {"code": 400, "message": "timeout must be less than or equal to 3600"}`；而付费 Pro 计划支持最长 24 小时（86400s）；
+* **SDK 自动容错**：在 `Sandbox.create`、`Sandbox.connect`、`Sandbox.setTimeout` 三个核心入口处，统一捕获 400 timeout 错误，自动以 `3600s` 降级重试；
+* **长会话 Keep-Alive**：解除定时器内部的 3600s 硬编码截断，支持最高 86400s 续期，让 Pro 账户尽享 24 小时长活跃会话，Hobby 账户自动降级。
+
+### 3. 新建沙盒工作区弹窗 (`CloudWorkspaceSheet`) 现代重构
+* **移除冗余 `Scaffold` 与 `DraggableScrollableSheet`**：改为 Material 3 标准规范的 `showDragHandle: true` 结合 `SafeArea` + `ConstrainedBox` + `Flexible(ListView)`；
+* **去除虚假功能**：移除无法由云端自动触发的 `autoPause` 开关，保活配置纯粹聚焦于真实生效的 TTL；
+* **默认时长优化**：构造函数默认值修正为 `1h`（`CloudWorkspaceConfig.ttlHours = 1`），贴合主流配置；
+* **常驻底部操作按钮**：操作按钮（`创建并拉起工作区` / `保存`）移出 `ListView` 并固定常驻在视口最底部，表单支持 `shrinkWrap: true` 紧凑包裹，彻底消除多余留白。
+

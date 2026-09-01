@@ -38,7 +38,9 @@ Flutter（Android/iOS/Web）客户端，通过 Basic Auth 连接远程 `opencode
 - 健康检查固定 `connectTimeout: 5s`、至多 3 次、401 快速失败；勿去掉超时，否则启动页会长时间阻塞
 - HTTP 请求收到 401/403 会置全局 `OpenCodeClient.unauthorized`（`resetUnauthorized()` 恢复）；SSE 侧仍是独立的 `SseClient.isCredentialFailed`，两者作用域不同
 - 切后端/连接刷新（`ProjectController.refreshAfterConnect`）：切换后端必须清空旧 `projects` 内存；`fetchProjects` 严格以当前后端返回的列表为准，禁止跨端合并 `localOnly` 幽灵项目；`_restoreLastProject` 无法匹配时默认选中当前后端首个项目，禁止把宿主机路径（如 Windows 盘符）强行注入 Linux 沙盒容器
+- E2B 超时与生命周期：Hobby 计划单次限制 1h（3600s），Pro 支持最长 24h（86400s），SDK（create/connect/setTimeout）底层统一内置 400 timeout 自动降级 3600s 重试；沙盒保活（keep-alive）连接后每 5 分钟刷新一次
+- 左抽屉多后端展示：自建服务器与 E2B 云端沙盒双分组并存（绿点指示当前连接），沙盒项目直接平铺展示（点击自动连接/唤醒目标沙盒）；隐藏项目统一沉底展示
 
 ## 文档（中文）
 
-改动子系统前先读对应文档：`voice_input_logic.md`（语音）、`startup_architecture.md`（启动/会话恢复）、`reconnect.md`（自动重连）、`api_endpoints.md`、`会话缓存.md`（会话历史 SWR 缓存）、`终态复审与修复记录.md`（13eef43e 后缓存/流式/性能改动的复审与修复，含 messageWithSyncedParts 语义）、`项目.md`（项目扫描/添加）、`子会话权限与提问处理.md`、`多项目.md`、`mcp/`、`lsp/`、`agent/`、`developer/`。
+改动子系统前先读对应文档：`e2b_cloud_workspace.md`（E2B架构/演进）、`e2b_dart_sdk_specification.md`（E2B SDK规范）、`登录.md`（双后端连接/冷启动）、`voice_input_logic.md`（语音）、`startup_architecture.md`（启动/会话恢复）、`reconnect.md`（自动重连）、`api_endpoints.md`、`会话缓存.md`（会话历史 SWR 缓存）、`终态复审与修复记录.md`（13eef43e 后缓存/流式/性能改动的复审与修复，含 messageWithSyncedParts 语义）、`项目.md`（项目扫描/添加）、`子会话权限与提问处理.md`、`多项目.md`、`mcp/`、`lsp/`、`agent/`、`developer/`。

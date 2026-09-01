@@ -7,6 +7,7 @@ import '../../../models/cloud_workspace_config.dart';
 import '../../../services/git_repo_service.dart';
 import '../../../utils/snackbar_utils.dart';
 import '../../../utils/translations.dart';
+import 'cloud_workspace_launch_dialog.dart';
 import 'e2b_template_picker_sheet.dart';
 import 'git_repo_picker_sheet.dart';
 
@@ -44,7 +45,12 @@ class CloudWorkspaceSheet extends StatefulWidget {
         onSave: (newCfg) async {
           await Global.settings.setCloudWorkspaceConfig(newCfg);
         },
-        onLaunch: onLaunch,
+        onLaunch: onlyConfig
+            ? null
+            : (onLaunch ??
+                (newCfg) {
+                  CloudWorkspaceLaunchDialog.show(context, config: newCfg);
+                }),
       ),
     );
   }

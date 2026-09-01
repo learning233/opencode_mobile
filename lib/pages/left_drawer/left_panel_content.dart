@@ -21,6 +21,7 @@ import '../../utils/snackbar_utils.dart';
 import '../../utils/translations.dart';
 import '../../widgets/left_drawer/file_tree_view.dart';
 import '../../widgets/vad_settings_sheet.dart';
+import '../settings/opencode/cloud_workspace_launch_dialog.dart';
 import '../settings/opencode/cloud_workspace_sheet.dart';
 import '../settings/opencode/e2b_api_key_dialog.dart';
 import 'project_tile.dart';
@@ -633,7 +634,13 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
                     constraints: const BoxConstraints(),
                     tooltip: LocaleKeys.e2bCreateSandbox.tr,
                     onPressed: () async {
-                      await CloudWorkspaceSheet.show(context);
+                      await CloudWorkspaceSheet.show(
+                        context,
+                        onLaunch: (cfg) => CloudWorkspaceLaunchDialog.show(
+                          context,
+                          config: cfg,
+                        ),
+                      );
                       _fetchSandboxes();
                     },
                   ),

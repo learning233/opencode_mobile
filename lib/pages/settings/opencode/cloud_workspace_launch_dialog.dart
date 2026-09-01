@@ -9,7 +9,6 @@ import '../../../init.dart';
 import '../../../models/cloud_workspace_config.dart';
 import '../../../routes.dart';
 import '../../../services/e2b_workspace_service.dart';
-import '../../../utils/snackbar_utils.dart';
 import '../../../utils/translations.dart';
 
 class CloudWorkspaceLaunchDialog extends StatefulWidget {

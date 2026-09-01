@@ -32,7 +32,8 @@ class AppLogger {
 
   /// 初始化测试环境日志 (单元测试专用)
   static void initForTest({Logger? testLogger}) {
-    _logger = testLogger ??
+    _logger =
+        testLogger ??
         Logger(
           filter: ProductionFilter(),
           printer: SimplePrinter(colors: false),

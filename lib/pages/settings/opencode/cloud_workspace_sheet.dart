@@ -48,9 +48,9 @@ class CloudWorkspaceSheet extends StatefulWidget {
         onLaunch: onlyConfig
             ? null
             : (onLaunch ??
-                (newCfg) {
-                  CloudWorkspaceLaunchDialog.show(context, config: newCfg);
-                }),
+                  (newCfg) {
+                    CloudWorkspaceLaunchDialog.show(context, config: newCfg);
+                  }),
       ),
     );
   }

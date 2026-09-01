@@ -40,7 +40,10 @@ class E2bTemplateInfo {
   factory E2bTemplateInfo.fromJson(Map<String, dynamic> json) {
     List<String> parseStringList(dynamic raw) {
       if (raw is List) {
-        return raw.map((e) => e.toString().trim()).where((s) => s.isNotEmpty).toList();
+        return raw
+            .map((e) => e.toString().trim())
+            .where((s) => s.isNotEmpty)
+            .toList();
       }
       return const [];
     }
@@ -71,16 +74,16 @@ class E2bTemplateInfo {
   }
 
   Map<String, dynamic> toJson() => {
-        'templateID': templateId,
-        'buildID': buildId,
-        'cpuCount': cpuCount,
-        'memoryMB': memoryMB,
-        'diskSizeMB': diskSizeMB,
-        'public': isPublic,
-        'aliases': aliases,
-        'names': names,
-        'buildStatus': buildStatus,
-        if (createdAt != null) 'createdAt': createdAt!.toIso8601String(),
-        if (updatedAt != null) 'updatedAt': updatedAt!.toIso8601String(),
-      };
+    'templateID': templateId,
+    'buildID': buildId,
+    'cpuCount': cpuCount,
+    'memoryMB': memoryMB,
+    'diskSizeMB': diskSizeMB,
+    'public': isPublic,
+    'aliases': aliases,
+    'names': names,
+    'buildStatus': buildStatus,
+    if (createdAt != null) 'createdAt': createdAt!.toIso8601String(),
+    if (updatedAt != null) 'updatedAt': updatedAt!.toIso8601String(),
+  };
 }

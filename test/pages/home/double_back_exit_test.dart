@@ -13,14 +13,8 @@ void main() {
       expect(zh, isNotNull);
       expect(en, isNotNull);
 
-      expect(
-        zh![LocaleKeys.pressBackAgainToExit],
-        '再按一次退出应用',
-      );
-      expect(
-        en![LocaleKeys.pressBackAgainToExit],
-        'Press back again to exit',
-      );
+      expect(zh![LocaleKeys.pressBackAgainToExit], '再按一次退出应用');
+      expect(en![LocaleKeys.pressBackAgainToExit], 'Press back again to exit');
     });
 
     test('Double back interval logic (2 seconds limit)', () {

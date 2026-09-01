@@ -2867,7 +2867,8 @@ class Messages extends Translations {
     LocaleKeys.e2bUpdatingGitRepo: 'Updating Git repository...',
     LocaleKeys.e2bHealthCheckTimeout:
         'Sandbox started, but OpenCode did not respond to health check in time',
-    LocaleKeys.e2bLaunchServiceFailed: 'Failed to start OpenCode service: @error',
+    LocaleKeys.e2bLaunchServiceFailed:
+        'Failed to start OpenCode service: @error',
     LocaleKeys.e2bSandboxException: 'E2B sandbox exception: @error',
     LocaleKeys.e2bRequestException: 'E2B request exception: @error',
     LocaleKeys.e2bBranchPrefix: 'Branch: @branch',

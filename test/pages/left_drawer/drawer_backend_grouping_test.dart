@@ -5,35 +5,35 @@ import 'package:opencode_app/utils/translations.dart';
 
 void main() {
   group('Drawer Multi-Backend Grouping & Route Resolution Tests', () {
-    test('isCloudUrl correctly identifies E2B cloud endpoints vs self-hosted', () {
-      // E2B cloud URLs
-      expect(
-        E2bWorkspaceService.isCloudUrl('https://4096-sbx123.e2b.app'),
-        isTrue,
-      );
-      expect(
-        E2bWorkspaceService.isCloudUrl('http://4096-abcxyz.e2b.dev'),
-        isTrue,
-      );
+    test(
+      'isCloudUrl correctly identifies E2B cloud endpoints vs self-hosted',
+      () {
+        // E2B cloud URLs
+        expect(
+          E2bWorkspaceService.isCloudUrl('https://4096-sbx123.e2b.app'),
+          isTrue,
+        );
+        expect(
+          E2bWorkspaceService.isCloudUrl('http://4096-abcxyz.e2b.dev'),
+          isTrue,
+        );
 
-      // Self-hosted URLs
-      expect(
-        E2bWorkspaceService.isCloudUrl('http://192.168.1.100:4096'),
-        isFalse,
-      );
-      expect(
-        E2bWorkspaceService.isCloudUrl('http://localhost:4096'),
-        isFalse,
-      );
-      expect(
-        E2bWorkspaceService.isCloudUrl('https://my-opencode-server.com:4096'),
-        isFalse,
-      );
-      expect(
-        E2bWorkspaceService.isCloudUrl(''),
-        isFalse,
-      );
-    });
+        // Self-hosted URLs
+        expect(
+          E2bWorkspaceService.isCloudUrl('http://192.168.1.100:4096'),
+          isFalse,
+        );
+        expect(
+          E2bWorkspaceService.isCloudUrl('http://localhost:4096'),
+          isFalse,
+        );
+        expect(
+          E2bWorkspaceService.isCloudUrl('https://my-opencode-server.com:4096'),
+          isFalse,
+        );
+        expect(E2bWorkspaceService.isCloudUrl(''), isFalse);
+      },
+    );
 
     test('E2bSandboxInfo model parses running and paused states correctly', () {
       final runningJson = {
@@ -68,31 +68,40 @@ void main() {
       expect(pausedSb.isPaused, isTrue);
     });
 
-    test('LocaleKeys contains all required Drawer grouping keys in zh and en maps', () {
-      final translations = Messages();
-      final zhMap = translations.keys['zh_CN'];
-      final enMap = translations.keys['en_US'];
+    test(
+      'LocaleKeys contains all required Drawer grouping keys in zh and en maps',
+      () {
+        final translations = Messages();
+        final zhMap = translations.keys['zh_CN'];
+        final enMap = translations.keys['en_US'];
 
-      expect(zhMap, isNotNull);
-      expect(enMap, isNotNull);
+        expect(zhMap, isNotNull);
+        expect(enMap, isNotNull);
 
-      // Verify Drawer Section Keys exist in both dictionaries
-      expect(zhMap!.containsKey(LocaleKeys.drawerSelfHostedSection), isTrue);
-      expect(zhMap.containsKey(LocaleKeys.drawerCloudSection), isTrue);
-      expect(zhMap.containsKey(LocaleKeys.drawerClickToConnect), isTrue);
-      expect(zhMap.containsKey(LocaleKeys.drawerSwitchingBackend), isTrue);
-      expect(zhMap.containsKey(LocaleKeys.drawerConnected), isTrue);
+        // Verify Drawer Section Keys exist in both dictionaries
+        expect(zhMap!.containsKey(LocaleKeys.drawerSelfHostedSection), isTrue);
+        expect(zhMap.containsKey(LocaleKeys.drawerCloudSection), isTrue);
+        expect(zhMap.containsKey(LocaleKeys.drawerClickToConnect), isTrue);
+        expect(zhMap.containsKey(LocaleKeys.drawerSwitchingBackend), isTrue);
+        expect(zhMap.containsKey(LocaleKeys.drawerConnected), isTrue);
 
-      expect(enMap!.containsKey(LocaleKeys.drawerSelfHostedSection), isTrue);
-      expect(enMap.containsKey(LocaleKeys.drawerCloudSection), isTrue);
-      expect(enMap.containsKey(LocaleKeys.drawerClickToConnect), isTrue);
-      expect(enMap.containsKey(LocaleKeys.drawerSwitchingBackend), isTrue);
-      expect(enMap.containsKey(LocaleKeys.drawerConnected), isTrue);
+        expect(enMap!.containsKey(LocaleKeys.drawerSelfHostedSection), isTrue);
+        expect(enMap.containsKey(LocaleKeys.drawerCloudSection), isTrue);
+        expect(enMap.containsKey(LocaleKeys.drawerClickToConnect), isTrue);
+        expect(enMap.containsKey(LocaleKeys.drawerSwitchingBackend), isTrue);
+        expect(enMap.containsKey(LocaleKeys.drawerConnected), isTrue);
 
-      expect(zhMap[LocaleKeys.drawerSelfHostedSection], equals('自建服务器'));
-      expect(zhMap[LocaleKeys.drawerCloudSection], equals('E2B 云端沙盒'));
-      expect(enMap[LocaleKeys.drawerSelfHostedSection], equals('Self-Hosted Server'));
-      expect(enMap[LocaleKeys.drawerCloudSection], equals('E2B Cloud Sandboxes'));
-    });
+        expect(zhMap[LocaleKeys.drawerSelfHostedSection], equals('自建服务器'));
+        expect(zhMap[LocaleKeys.drawerCloudSection], equals('E2B 云端沙盒'));
+        expect(
+          enMap[LocaleKeys.drawerSelfHostedSection],
+          equals('Self-Hosted Server'),
+        );
+        expect(
+          enMap[LocaleKeys.drawerCloudSection],
+          equals('E2B Cloud Sandboxes'),
+        );
+      },
+    );
   });
 }

@@ -145,7 +145,10 @@ class ConnectTransport {
       }
       return {};
     } on DioException catch (e) {
-      throw SandboxException('Connect-RPC request failed: ${e.message}', cause: e);
+      throw SandboxException(
+        'Connect-RPC request failed: ${e.message}',
+        cause: e,
+      );
     }
   }
 
@@ -209,7 +212,10 @@ class ConnectTransport {
       if (status != null) {
         _throwForStatus(status, sandboxId, path);
       }
-      throw SandboxException('Connect-RPC streaming request failed: ${e.message}', cause: e);
+      throw SandboxException(
+        'Connect-RPC streaming request failed: ${e.message}',
+        cause: e,
+      );
     }
   }
 
@@ -223,7 +229,9 @@ class ConnectTransport {
       );
     }
     if (statusCode == 404) {
-      throw SandboxNotFoundException('Sandbox $sandboxId not found or terminated (404): $path');
+      throw SandboxNotFoundException(
+        'Sandbox $sandboxId not found or terminated (404): $path',
+      );
     }
     if (statusCode == 409) {
       throw SandboxException(

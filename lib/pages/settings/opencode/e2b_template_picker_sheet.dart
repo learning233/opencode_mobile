@@ -62,7 +62,9 @@ class _E2bTemplatePickerSheetState extends State<E2bTemplatePickerSheet> {
 
       // 确保列表包含官方推荐的 opencode 与 base 默认模板
       final list = List<E2bTemplateInfo>.from(templates);
-      if (!list.any((t) => t.templateId == 'opencode' || t.displayName == 'opencode')) {
+      if (!list.any(
+        (t) => t.templateId == 'opencode' || t.displayName == 'opencode',
+      )) {
         list.insert(
           0,
           const E2bTemplateInfo(
@@ -103,9 +105,9 @@ class _E2bTemplatePickerSheetState extends State<E2bTemplatePickerSheet> {
             'error': e.toString(),
           });
         });
-        Snack.error(LocaleKeys.e2bFetchTemplatesFailed.trParams({
-          'error': e.toString(),
-        }));
+        Snack.error(
+          LocaleKeys.e2bFetchTemplatesFailed.trParams({'error': e.toString()}),
+        );
       }
     }
   }
@@ -231,9 +233,7 @@ class _E2bTemplatePickerSheetState extends State<E2bTemplatePickerSheet> {
                       ),
                     )
                   : _filteredTemplates.isEmpty
-                  ? Center(
-                      child: Text(LocaleKeys.e2bNoTemplatesFound.tr),
-                    )
+                  ? Center(child: Text(LocaleKeys.e2bNoTemplatesFound.tr))
                   : ListView.separated(
                       controller: scrollController,
                       itemCount: _filteredTemplates.length,
@@ -242,7 +242,8 @@ class _E2bTemplatePickerSheetState extends State<E2bTemplatePickerSheet> {
                       itemBuilder: (context, index) {
                         final t = _filteredTemplates[index];
                         final isOfficial =
-                            t.templateId == 'opencode' || t.templateId == 'base';
+                            t.templateId == 'opencode' ||
+                            t.templateId == 'base';
 
                         return ListTile(
                           leading: CircleAvatar(
@@ -250,9 +251,7 @@ class _E2bTemplatePickerSheetState extends State<E2bTemplatePickerSheet> {
                                 ? theme.colorScheme.primaryContainer
                                 : theme.colorScheme.secondaryContainer,
                             child: Icon(
-                              isOfficial
-                                  ? Icons.verified
-                                  : Icons.memory,
+                              isOfficial ? Icons.verified : Icons.memory,
                               size: 20,
                               color: isOfficial
                                   ? theme.colorScheme.primary
@@ -299,9 +298,8 @@ class _E2bTemplatePickerSheetState extends State<E2bTemplatePickerSheet> {
                                     vertical: 2,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: theme.colorScheme.secondary.withValues(
-                                      alpha: 0.1,
-                                    ),
+                                    color: theme.colorScheme.secondary
+                                        .withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: Text(

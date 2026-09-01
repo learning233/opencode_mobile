@@ -50,7 +50,8 @@ class _SelfHostedConnectionSheetState extends State<SelfHostedConnectionSheet> {
       text: Global.settings.selfHostedServerUrl ?? '',
     );
     _userCtrl = TextEditingController(
-      text: (Global.settings.selfHostedServerUsername?.trim().isNotEmpty == true)
+      text:
+          (Global.settings.selfHostedServerUsername?.trim().isNotEmpty == true)
           ? Global.settings.selfHostedServerUsername!
           : 'opencode',
     );
@@ -79,7 +80,9 @@ class _SelfHostedConnectionSheetState extends State<SelfHostedConnectionSheet> {
     }
 
     _urlCtrl.text = url;
-    final user = _userCtrl.text.trim().isEmpty ? 'opencode' : _userCtrl.text.trim();
+    final user = _userCtrl.text.trim().isEmpty
+        ? 'opencode'
+        : _userCtrl.text.trim();
     final pass = _passCtrl.text;
 
     setState(() {
@@ -158,7 +161,11 @@ class _SelfHostedConnectionSheetState extends State<SelfHostedConnectionSheet> {
         children: [
           Row(
             children: [
-              Icon(Icons.dns_outlined, color: theme.colorScheme.primary, size: 24),
+              Icon(
+                Icons.dns_outlined,
+                color: theme.colorScheme.primary,
+                size: 24,
+              ),
               const SizedBox(width: 10),
               Text(
                 '${LocaleKeys.drawerSelfHostedSection.tr} ${LocaleKeys.mobileServerConnection.tr}',
@@ -244,7 +251,9 @@ class _SelfHostedConnectionSheetState extends State<SelfHostedConnectionSheet> {
             children: [
               Expanded(
                 child: TextButton(
-                  onPressed: _isConnecting ? null : () => Navigator.of(context).pop(),
+                  onPressed: _isConnecting
+                      ? null
+                      : () => Navigator.of(context).pop(),
                   child: Text(LocaleKeys.cancel.tr),
                 ),
               ),

@@ -409,7 +409,10 @@ void main() {
           isA<SandboxException>().having(
             (e) => e.message,
             'message',
-            allOf(contains('Template not found'), contains('template not found')),
+            allOf(
+              contains('Template not found'),
+              contains('template not found'),
+            ),
           ),
         ),
       );

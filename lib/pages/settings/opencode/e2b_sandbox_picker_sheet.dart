@@ -11,10 +11,7 @@ import 'cloud_workspace_sheet.dart';
 
 /// E2B 沙盒选择与管理 BottomSheet
 class E2bSandboxPickerSheet extends StatefulWidget {
-  const E2bSandboxPickerSheet({
-    super.key,
-    this.onSelect,
-  });
+  const E2bSandboxPickerSheet({super.key, this.onSelect});
 
   final ValueChanged<E2bSandboxInfo>? onSelect;
 
@@ -253,10 +250,7 @@ class _E2bSandboxPickerSheetState extends State<E2bSandboxPickerSheet> {
     final navigator = Navigator.of(context);
     final launched = await CloudWorkspaceSheet.show(
       context,
-      onLaunch: (cfg) => CloudWorkspaceLaunchDialog.show(
-        context,
-        config: cfg,
-      ),
+      onLaunch: (cfg) => CloudWorkspaceLaunchDialog.show(context, config: cfg),
     );
     if (launched == true && mounted) {
       navigator.pop();
@@ -330,8 +324,10 @@ class _E2bSandboxPickerSheetState extends State<E2bSandboxPickerSheet> {
             // 搜索框
             if (!_isLoading && _errorMessage == null && _sandboxes.isNotEmpty)
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 4,
+                ),
                 child: TextField(
                   controller: _searchCtrl,
                   decoration: InputDecoration(

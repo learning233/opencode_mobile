@@ -454,8 +454,9 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
                             ),
                           ),
                           onPressed: () async {
-                            final saved =
-                                await SelfHostedConnectionSheet.show(context);
+                            final saved = await SelfHostedConnectionSheet.show(
+                              context,
+                            );
                             if (saved == true && mounted) setState(() {});
                           },
                           icon: const Icon(Icons.settings_outlined, size: 14),
@@ -471,8 +472,9 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
                           constraints: const BoxConstraints(),
                           tooltip: LocaleKeys.mobileServerConnection.tr,
                           onPressed: () async {
-                            final saved =
-                                await SelfHostedConnectionSheet.show(context);
+                            final saved = await SelfHostedConnectionSheet.show(
+                              context,
+                            );
                             if (saved == true && mounted) setState(() {});
                           },
                         ),

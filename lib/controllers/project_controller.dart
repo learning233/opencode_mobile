@@ -64,10 +64,7 @@ class ProjectController extends GetxController {
   Future<void> refreshAfterConnect() async {
     projects.clear();
     activeProject.value = null;
-    await Future.wait([
-      fetchProjects(),
-      fetchSandboxes(),
-    ]);
+    await Future.wait([fetchProjects(), fetchSandboxes()]);
     _restoreLastProject();
   }
 

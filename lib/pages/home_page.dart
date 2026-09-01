@@ -5,11 +5,11 @@ import '../controllers/project_controller.dart';
 import '../controllers/session_controller.dart';
 import '../controllers/tablet_tool_controller.dart';
 import '../utils/layout_utils.dart';
+import 'home/widgets/phone_brower.dart';
 import 'left_drawer.dart';
 import 'left_drawer/left_panel_content.dart';
 import 'right_drawer.dart';
 import '../utils/translations.dart';
-import 'tablet/in_app_browser_view.dart';
 import 'tablet/resizable_divider.dart';
 import 'tablet/tablet_tool_panel.dart';
 import 'home/chat_view.dart';
@@ -152,6 +152,121 @@ class _HomePageState extends State<HomePage> {
     String id,
   ) {
     sessionCtrl.selectSession(id);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final projectCtrl = Get.find<ProjectController>();
+    final sessionCtrl = Get.find<SessionController>();
+    final toolCtrl = Get.find<TabletToolController>();
+    final width = MediaQuery.of(context).size.width;
+    final isTablet = isTabletLayout(context);
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        await _handlePop(context);
+      },
+      child: isTablet
+          ? tabletWidget(sessionCtrl, projectCtrl, toolCtrl, width)
+          : phoneWidget(sessionCtrl, projectCtrl, toolCtrl),
+    );
+  }
+
+  Widget phoneWidget(
+    SessionController sessionCtrl,
+    ProjectController projectCtrl,
+    TabletToolController toolCtrl,
+  ) {
+    return Stack(
+      children: [
+        Obx(() {
+          final sessionId = sessionCtrl.activeSessionId.value;
+          final opened = sessionCtrl.openedSessionIds.toList();
+          final title = sessionId.isNotEmpty
+              ? sessionCtrl.getSessionName(sessionId)
+              : 'OpenCode';
+
+          return Scaffold(
+            appBar: _buildAppBar(sessionCtrl, opened, sessionId, title),
+            drawer: const LeftDrawer(),
+            endDrawer: const RightDrawer(),
+            body: _buildChatBody(context, projectCtrl, sessionCtrl),
+          );
+        }),
+        // 常驻浏览器层：首次打开后永不卸载，关闭只下滑隐藏，WebView 保活。
+        if (_browserEverOpened)
+          PhoneBrowserLayer(
+            controller: toolCtrl,
+            onClose: toolCtrl.closeBrowserSheet,
+          ),
+      ],
+    );
+  }
+
+  Widget tabletWidget(
+    SessionController sessionCtrl,
+    ProjectController projectCtrl,
+    TabletToolController toolCtrl,
+    final double width,
+  ) {
+    return Row(
+      children: [
+        // Left side: full chat experience with drawers (nested Navigator)
+        Expanded(
+          child: Navigator(
+            key: _leftNavKey,
+            onGenerateRoute: (_) => MaterialPageRoute(
+              builder: (_) => Obx(() {
+                final curSessionId = sessionCtrl.activeSessionId.value;
+                final curOpened = sessionCtrl.openedSessionIds.toList();
+                final curTitle = curSessionId.isNotEmpty
+                    ? sessionCtrl.getSessionName(curSessionId)
+                    : 'OpenCode';
+                return Scaffold(
+                  appBar: _buildAppBar(
+                    sessionCtrl,
+                    curOpened,
+                    curSessionId,
+                    curTitle,
+                    showToolPanelToggle: true,
+                    isTablet: true,
+                  ),
+                  drawer: const LeftDrawer(initialMode: DrawerMode.projects),
+                  endDrawer: const RightDrawer(),
+                  body: _buildChatBody(context, projectCtrl, sessionCtrl),
+                );
+              }),
+            ),
+          ),
+        ),
+        // Right side: resizable divider + tool panel
+        // Visibility(maintainState) keeps the panel subtree alive when
+        // hidden, so toggling visibility does NOT destroy the webview,
+        // editors, terminal or ReviewPage state (plain `if` would).
+        Obx(() {
+          final toolVisible = toolCtrl.isVisible.value;
+          final toolWidth = toolCtrl.getPixelWidth(width);
+          return Visibility(
+            visible: toolVisible,
+            maintainState: true,
+            maintainAnimation: true,
+            maintainSize: false,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ResizableDivider(
+                  onDrag: (dx) => toolCtrl.adjustWidth(dx, width),
+                  onDragEnd: () => toolCtrl.commitWidth(),
+                ),
+                SizedBox(width: toolWidth, child: const TabletToolPanel()),
+              ],
+            ),
+          );
+        }),
+      ],
+    );
   }
 
   Widget _buildChatBody(
@@ -397,174 +512,5 @@ class _HomePageState extends State<HomePage> {
             )
           : null,
     );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final projectCtrl = Get.find<ProjectController>();
-    final sessionCtrl = Get.find<SessionController>();
-    final width = MediaQuery.of(context).size.width;
-    final isTablet = isTabletLayout(context);
-
-    final Widget content;
-    if (!isTablet) {
-      // 会话标题/页签依赖收窄到此分支的 Obx：SSE 会话变更只重建左侧聊天，不波及 tool 面板。
-      final toolCtrl = Get.find<TabletToolController>();
-      content = Stack(
-        children: [
-          Obx(() {
-            final sessionId = sessionCtrl.activeSessionId.value;
-            final opened = sessionCtrl.openedSessionIds.toList();
-            final title = sessionId.isNotEmpty
-                ? sessionCtrl.getSessionName(sessionId)
-                : 'OpenCode';
-
-            return Scaffold(
-              appBar: _buildAppBar(sessionCtrl, opened, sessionId, title),
-              drawer: const LeftDrawer(),
-              endDrawer: const RightDrawer(),
-              body: _buildChatBody(context, projectCtrl, sessionCtrl),
-            );
-          }),
-          // 常驻浏览器层：首次打开后永不卸载，关闭只下滑隐藏，WebView 保活。
-          if (_browserEverOpened)
-            _PhoneBrowserLayer(
-              controller: toolCtrl,
-              onClose: toolCtrl.closeBrowserSheet,
-            ),
-        ],
-      );
-    } else {
-      // ── Tablet: Left chat (with drawers, same as phone) + Right tool panel ──
-      // 外层不包 Obx：只有 tool 面板可见性/宽度包窄 Obx，拖 ResizableDivider 不再重建整页；
-      // 左侧 Navigator 内部自带 Obx 处理会话标题/页签。
-      final toolCtrl = Get.find<TabletToolController>();
-      content = Row(
-        children: [
-          // Left side: full chat experience with drawers (nested Navigator)
-          Expanded(
-            child: Navigator(
-              key: _leftNavKey,
-              onGenerateRoute: (_) => MaterialPageRoute(
-                builder: (_) => Obx(() {
-                  final curSessionId = sessionCtrl.activeSessionId.value;
-                  final curOpened = sessionCtrl.openedSessionIds.toList();
-                  final curTitle = curSessionId.isNotEmpty
-                      ? sessionCtrl.getSessionName(curSessionId)
-                      : 'OpenCode';
-                  return Scaffold(
-                    appBar: _buildAppBar(
-                      sessionCtrl,
-                      curOpened,
-                      curSessionId,
-                      curTitle,
-                      showToolPanelToggle: true,
-                      isTablet: true,
-                    ),
-                    drawer: const LeftDrawer(initialMode: DrawerMode.projects),
-                    endDrawer: const RightDrawer(),
-                    body: _buildChatBody(context, projectCtrl, sessionCtrl),
-                  );
-                }),
-              ),
-            ),
-          ),
-          // Right side: resizable divider + tool panel
-          // Visibility(maintainState) keeps the panel subtree alive when
-          // hidden, so toggling visibility does NOT destroy the webview,
-          // editors, terminal or ReviewPage state (plain `if` would).
-          Obx(() {
-            final toolVisible = toolCtrl.isVisible.value;
-            final toolWidth = toolCtrl.getPixelWidth(width);
-            return Visibility(
-              visible: toolVisible,
-              maintainState: true,
-              maintainAnimation: true,
-              maintainSize: false,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ResizableDivider(
-                    onDrag: (dx) => toolCtrl.adjustWidth(dx, width),
-                    onDragEnd: () => toolCtrl.commitWidth(),
-                  ),
-                  SizedBox(width: toolWidth, child: const TabletToolPanel()),
-                ],
-              ),
-            );
-          }),
-        ],
-      );
-    }
-
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) return;
-        await _handlePop(context);
-      },
-      child: content,
-    );
-  }
-}
-
-/// Phone-layout persistent browser layer.
-///
-/// Mounted in [HomePage] once the browser sheet has ever been opened and never
-/// unmounted afterwards: closing it just slides the sheet down behind an
-/// [IgnorePointer] gate, so the underlying [InAppBrowserView] / WebView state
-/// (scroll position, JS state, form input) survives and is reused on re-open.
-class _PhoneBrowserLayer extends StatelessWidget {
-  final TabletToolController controller;
-  final VoidCallback onClose;
-
-  const _PhoneBrowserLayer({required this.controller, required this.onClose});
-
-  @override
-  Widget build(BuildContext context) {
-    return Obx(() {
-      final visible = controller.browserSheetVisible.value;
-      return PopScope(
-        canPop: !visible,
-        onPopInvokedWithResult: (didPop, result) {
-          // 系统返回键：sheet 打开时先关闭它，而非退出页面。
-          if (didPop) return;
-          if (controller.browserSheetVisible.value) {
-            controller.closeBrowserSheet();
-          }
-        },
-        child: IgnorePointer(
-          ignoring: !visible,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // 半透明遮罩（点按关闭）
-              AnimatedOpacity(
-                opacity: visible ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 250),
-                child: GestureDetector(
-                  onTap: visible ? onClose : null,
-                  child: const ColoredBox(color: Colors.black54),
-                ),
-              ),
-              // 浏览器 sheet：关闭时整体下滑到屏外，状态保留。
-              // Material 提供 IconButton/Tooltip/TextField 所需的祖先。
-              Align(
-                alignment: Alignment.bottomCenter,
-                child: AnimatedSlide(
-                  offset: visible ? Offset.zero : const Offset(0, 1),
-                  duration: const Duration(milliseconds: 250),
-                  curve: Curves.easeOutCubic,
-                  child: Material(
-                    color: Theme.of(context).colorScheme.surface,
-                    child: SafeArea(child: InAppBrowserView(onClose: onClose)),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    });
   }
 }

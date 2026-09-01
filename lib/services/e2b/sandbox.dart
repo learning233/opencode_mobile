@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:dio/dio.dart';
+import '../../utils/app_logger.dart';
 import 'models/errors.dart';
 import 'models/sandbox_opts.dart';
 import 'services/commands.dart';
@@ -128,7 +129,7 @@ class Sandbox {
     };
 
     try {
-      final res = await client.post(
+      var res = await client.post(
         '${config.apiUrl}/sandboxes',
         options: Options(
           headers: config.getApiHeaders(),
@@ -136,6 +137,26 @@ class Sandbox {
         ),
         data: payload,
       );
+
+      // 若因套餐限制 (如 Hobby 限制单次 <= 1h) 导致超长 timeout 被 400 拒绝，自动以 3600s 降级重试
+      if (res.statusCode == 400 && opts.timeout > 3600) {
+        final serverMsg = _parseServerMessage(res.data).toLowerCase();
+        if (serverMsg.contains('timeout')) {
+          AppLogger.w(
+            'E2B timeout ${opts.timeout}s rejected by plan limit, automatically retrying with 3600s',
+          );
+          final fallbackPayload = Map<String, dynamic>.from(payload);
+          fallbackPayload['timeout'] = 3600;
+          res = await client.post(
+            '${config.apiUrl}/sandboxes',
+            options: Options(
+              headers: config.getApiHeaders(),
+              validateStatus: (status) => true,
+            ),
+            data: fallbackPayload,
+          );
+        }
+      }
 
       if (!_isSuccess(res.statusCode)) {
         _throwControlPlaneError(res.statusCode, res.data, 'create sandbox');
@@ -206,7 +227,7 @@ class Sandbox {
     );
 
     try {
-      final res = await client.post(
+      var res = await client.post(
         '${baseConfig.apiUrl}/sandboxes/${opts.sandboxId}/connect',
         options: Options(
           headers: baseConfig.getApiHeaders(),
@@ -214,6 +235,24 @@ class Sandbox {
         ),
         data: {'timeout': opts.timeout},
       );
+
+      // 若因套餐限制导致超长 timeout 被 400 拒绝，自动以 3600s 降级重试
+      if (res.statusCode == 400 && opts.timeout > 3600) {
+        final serverMsg = _parseServerMessage(res.data).toLowerCase();
+        if (serverMsg.contains('timeout')) {
+          AppLogger.w(
+            'E2B connect timeout ${opts.timeout}s rejected by plan limit, automatically retrying with 3600s',
+          );
+          res = await client.post(
+            '${baseConfig.apiUrl}/sandboxes/${opts.sandboxId}/connect',
+            options: Options(
+              headers: baseConfig.getApiHeaders(),
+              validateStatus: (status) => true,
+            ),
+            data: {'timeout': 3600},
+          );
+        }
+      }
 
       if (!_isSuccess(res.statusCode)) {
         _throwControlPlaneError(res.statusCode, res.data, 'connect sandbox');
@@ -246,7 +285,10 @@ class Sandbox {
         transport: transport,
       );
     } on DioException catch (e) {
-      throw SandboxException('Failed to connect sandbox: ${e.message}', cause: e);
+      throw SandboxException(
+        'Failed to connect sandbox: ${e.message}',
+        cause: e,
+      );
     }
   }
 
@@ -261,7 +303,7 @@ class Sandbox {
     final client = dio ?? Dio();
     final config = ConnectionConfig(apiKey: apiKey, domain: domain);
     try {
-      final res = await client.post(
+      var res = await client.post(
         '${config.apiUrl}/sandboxes/$sandboxId/timeout',
         options: Options(
           headers: config.getApiHeaders(),
@@ -269,11 +311,37 @@ class Sandbox {
         ),
         data: {'timeout': timeoutSeconds},
       );
+
+      // 若因套餐限制导致超长 timeout 被 400 拒绝，自动以 3600s 降级重试
+      if (res.statusCode == 400 && timeoutSeconds > 3600) {
+        final serverMsg = _parseServerMessage(res.data).toLowerCase();
+        if (serverMsg.contains('timeout')) {
+          AppLogger.w(
+            'E2B setTimeout ${timeoutSeconds}s rejected by plan limit, automatically retrying with 3600s',
+          );
+          res = await client.post(
+            '${config.apiUrl}/sandboxes/$sandboxId/timeout',
+            options: Options(
+              headers: config.getApiHeaders(),
+              validateStatus: (status) => true,
+            ),
+            data: {'timeout': 3600},
+          );
+        }
+      }
+
       if (!_isSuccess(res.statusCode)) {
-        _throwControlPlaneError(res.statusCode, res.data, 'set sandbox timeout');
+        _throwControlPlaneError(
+          res.statusCode,
+          res.data,
+          'set sandbox timeout',
+        );
       }
     } on DioException catch (e) {
-      throw SandboxException('Failed to set sandbox timeout: ${e.message}', cause: e);
+      throw SandboxException(
+        'Failed to set sandbox timeout: ${e.message}',
+        cause: e,
+      );
     }
   }
 
@@ -330,7 +398,10 @@ class Sandbox {
         nextToken: (nextToken == null || nextToken.isEmpty) ? null : nextToken,
       );
     } on DioException catch (e) {
-      throw SandboxException('Failed to list sandboxes: ${e.message}', cause: e);
+      throw SandboxException(
+        'Failed to list sandboxes: ${e.message}',
+        cause: e,
+      );
     }
   }
 
@@ -352,7 +423,11 @@ class Sandbox {
       );
 
       if (!_isSuccess(res.statusCode)) {
-        _throwControlPlaneError(res.statusCode, res.data, 'list sandbox templates');
+        _throwControlPlaneError(
+          res.statusCode,
+          res.data,
+          'list sandbox templates',
+        );
       }
 
       final data = res.data;
@@ -369,7 +444,10 @@ class Sandbox {
       }
       return [];
     } on DioException catch (e) {
-      throw SandboxException('Failed to list sandbox templates: ${e.message}', cause: e);
+      throw SandboxException(
+        'Failed to list sandbox templates: ${e.message}',
+        cause: e,
+      );
     }
   }
 
@@ -419,7 +497,10 @@ class Sandbox {
         _throwControlPlaneError(res.statusCode, res.data, 'resume sandbox');
       }
     } on DioException catch (e) {
-      throw SandboxException('Failed to resume sandbox: ${e.message}', cause: e);
+      throw SandboxException(
+        'Failed to resume sandbox: ${e.message}',
+        cause: e,
+      );
     }
   }
 

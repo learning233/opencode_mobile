@@ -131,9 +131,9 @@ class _CloudWorkspaceLaunchDialogState
     E2bWorkspaceService.instance.startKeepAlive(
       sandboxId: sandboxId,
       apiKey: widget.config.e2bApiKey.trim(),
-      timeoutSeconds: widget.config.ttlHours * 3600 < 600
-          ? 600
-          : widget.config.ttlHours * 3600,
+      timeoutSeconds: E2bWorkspaceService.sanitizeTimeoutSeconds(
+        widget.config.ttlHours,
+      ),
     );
 
     try {

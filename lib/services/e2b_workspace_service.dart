@@ -254,6 +254,13 @@ exit 43
     ).join();
   }
 
+  /// 计算符合 E2B 平台有效范围的沙盒单次超时秒数 (600s ~ 86400s，最长 24 小时)。
+  /// 付费 Pro 账户可完整享受最长 24 小时长会话；
+  /// 若当前为免费 Hobby 账户（受限单次 <= 1 小时），SDK 底层会自动以 3600s 降级重试。
+  static int sanitizeTimeoutSeconds(int ttlHours) {
+    return max(600, min(86400, ttlHours * 3600));
+  }
+
   /// 一键创建并拉起 E2B 云端沙盒工作区 (创建沙盒 → 部署服务 → 轮询就绪)
   Future<E2bLaunchResult> launchWorkspace(
     CloudWorkspaceConfig config, {
@@ -278,8 +285,8 @@ exit 43
     final password = config.sandboxPassword.trim().isNotEmpty
         ? config.sandboxPassword.trim()
         : (config.activeSandboxPassword?.isNotEmpty == true
-            ? config.activeSandboxPassword!
-            : generateSecurePassword());
+              ? config.activeSandboxPassword!
+              : generateSecurePassword());
 
     Sandbox? sandbox;
     try {
@@ -301,15 +308,16 @@ exit 43
         envVars['GIT_COMMITTER_EMAIL'] = config.gitEmail.trim();
       }
       if (config.gitRepoUrl.trim().isNotEmpty) {
-        envVars['GIT_CLONE_URL'] = GitRepoService.instance.buildAuthenticatedCloneUrl(
-          repoUrl: config.gitRepoUrl,
-          token: config.gitToken,
-        );
+        envVars['GIT_CLONE_URL'] = GitRepoService.instance
+            .buildAuthenticatedCloneUrl(
+              repoUrl: config.gitRepoUrl,
+              token: config.gitToken,
+            );
         envVars['GIT_REPO_URL'] = config.gitRepoUrl;
         envVars['GIT_BRANCH'] = config.gitBranch;
       }
 
-      final timeoutSeconds = max(600, config.ttlHours * 3600);
+      final timeoutSeconds = sanitizeTimeoutSeconds(config.ttlHours);
       final templateName = config.templateId.trim().isEmpty
           ? 'opencode'
           : config.templateId.trim();
@@ -459,7 +467,7 @@ exit 43
           sandboxId: sandboxId,
           apiKey: apiKey,
           envdAccessToken: config.activeSandboxEnvdToken,
-          timeout: max(600, config.ttlHours * 3600),
+          timeout: sanitizeTimeoutSeconds(config.ttlHours),
         ),
       );
 
@@ -882,7 +890,9 @@ fi
         }
       }
 
-      onProgress?.call('${LocaleKeys.e2bConnectingSandbox.tr} ($attempt/$maxRetries)');
+      onProgress?.call(
+        '${LocaleKeys.e2bConnectingSandbox.tr} ($attempt/$maxRetries)',
+      );
       await Future.delayed(retryDelay);
     }
     final waited = maxRetries * retryDelay.inSeconds;
@@ -910,17 +920,18 @@ fi
     String domain = 'e2b.app',
   }) {
     stopKeepAlive();
+    final safeTimeout = max(600, min(3600, timeoutSeconds));
     _keepAliveSandboxId = sandboxId;
     _keepAliveTimer = Timer.periodic(const Duration(minutes: 5), (_) async {
       try {
         await Sandbox.setTimeout(
           sandboxId,
           apiKey: apiKey,
-          timeoutSeconds: timeoutSeconds,
+          timeoutSeconds: safeTimeout,
           domain: domain,
         );
         AppLogger.d(
-          'E2B keep-alive: sandbox $sandboxId TTL renewed (+${timeoutSeconds}s)',
+          'E2B keep-alive: sandbox $sandboxId TTL renewed (+${safeTimeout}s)',
         );
       } catch (e) {
         AppLogger.w('E2B keep-alive failed for $sandboxId: $e');

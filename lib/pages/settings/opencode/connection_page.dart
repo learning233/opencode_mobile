@@ -262,9 +262,9 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
       E2bWorkspaceService.instance.startKeepAlive(
         sandboxId: item.sandboxId,
         apiKey: config.e2bApiKey,
-        timeoutSeconds: config.ttlHours * 3600 < 600
-            ? 600
-            : config.ttlHours * 3600,
+        timeoutSeconds: E2bWorkspaceService.sanitizeTimeoutSeconds(
+          config.ttlHours,
+        ),
         domain: res.domain,
       );
 

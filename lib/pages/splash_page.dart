@@ -119,9 +119,9 @@ class _SplashPageState extends State<SplashPage> {
             E2bWorkspaceService.instance.startKeepAlive(
               sandboxId: cloudConfig.activeSandboxId!,
               apiKey: cloudConfig.e2bApiKey,
-              timeoutSeconds: cloudConfig.ttlHours * 3600 < 600
-                  ? 600
-                  : cloudConfig.ttlHours * 3600,
+              timeoutSeconds: E2bWorkspaceService.sanitizeTimeoutSeconds(
+                cloudConfig.ttlHours,
+              ),
             );
             await _onConnected(seq);
             return;
@@ -296,13 +296,12 @@ class _SplashPageState extends State<SplashPage> {
         );
       });
 
-      // 启动 TTL keep-alive
       E2bWorkspaceService.instance.startKeepAlive(
         sandboxId: config.activeSandboxId!,
         apiKey: config.e2bApiKey,
-        timeoutSeconds: config.ttlHours * 3600 < 600
-            ? 600
-            : config.ttlHours * 3600,
+        timeoutSeconds: E2bWorkspaceService.sanitizeTimeoutSeconds(
+          config.ttlHours,
+        ),
         domain: res.domain,
       );
 

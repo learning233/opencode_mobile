@@ -170,7 +170,7 @@ class CloudWorkspaceConfig {
       gitToken: json['git_token'] as String? ?? '',
       gitUsername: json['git_username'] as String? ?? '',
       gitEmail: json['git_email'] as String? ?? '',
-      ttlHours: (json['ttl_hours'] as num?)?.toInt() ?? 2,
+      ttlHours: (json['ttl_hours'] as num?)?.toInt() ?? 1,
       autoPause: json['auto_pause'] as bool? ?? true,
       activeSandboxId: json['active_sandbox_id'] as String?,
       activeSandboxUrl: json['active_sandbox_url'] as String?,

@@ -2,15 +2,15 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
-import '../../../../../api/models/snapshot_file_diff.dart';
-import '../../../../../controllers/session_controller.dart';
-import '../../../../../controllers/tablet_tool_controller.dart';
-import '../../../../../utils/app_logger.dart';
-import '../../../../../utils/diff_paths.dart';
-import '../../../../../utils/layout_utils.dart';
-import '../../../../../utils/translations.dart';
-import '../../../../../widgets/detail_bottom_sheet.dart';
-import '../../../../tablet/diff_view.dart';
+import '../../../../api/models/snapshot_file_diff.dart';
+import '../../../../controllers/session_controller.dart';
+import '../../../../controllers/tablet_tool_controller.dart';
+import '../../../../utils/app_logger.dart';
+import '../../../../utils/diff_paths.dart';
+import '../../../../utils/layout_utils.dart';
+import '../../../../utils/translations.dart';
+import '../../../../widgets/detail_bottom_sheet.dart';
+import '../../../tablet/diff_view.dart';
 
 /// Compact file-change summary card. Tapping opens a BottomSheet modal
 /// that fetches `GET /session/$sessionId/diff?messageID=$userMessageId` on demand

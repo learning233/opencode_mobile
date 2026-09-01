@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import '../../../../../api/models/message.dart';
-import '../../../../../controllers/project_controller.dart';
-import '../../../../../controllers/tablet_tool_controller.dart';
-import '../../../../../routes.dart';
-import '../../../../../utils/layout_utils.dart';
-import '../../../../../utils/translations.dart';
+import '../../../../api/models/message.dart';
+import '../../../../controllers/project_controller.dart';
+import '../../../../controllers/tablet_tool_controller.dart';
+import '../../../../routes.dart';
+import '../../../../utils/layout_utils.dart';
+import '../../../../utils/translations.dart';
 
 /// 行号前缀（`123:`）匹配模式。E2：提为顶层 final，避免每次 build 新建。
 final RegExp _lineNumRe = RegExp(r'^\s*(\d+):[ \t]', multiLine: true);

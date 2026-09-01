@@ -9,8 +9,8 @@ import '../../../../utils/card_visibility.dart';
 import '../../../../api/models/snapshot_file_diff.dart';
 import 'message_part.dart';
 import 'compaction_part.dart';
-import 'tool_cards/message_diff_card.dart';
-import 'tool_cards/subtask_group_card.dart';
+import '../tool_cards/message_diff_card.dart';
+import '../tool_cards/subtask_group_card.dart';
 import 'user_text_card.dart';
 
 /// Renders a single message bubble — layout aligned with desktop MessageBubble.

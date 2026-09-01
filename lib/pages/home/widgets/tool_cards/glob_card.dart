@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import '../../../../../utils/translations.dart';
-import '../../../../../api/models/message.dart';
+import '../../../../utils/translations.dart';
+import '../../../../api/models/message.dart';
 
 class GlobCard extends StatelessWidget {
   final Part part;

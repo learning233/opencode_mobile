@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import '../../../../../utils/translations.dart';
-import '../../../../../api/models/message.dart';
-import '../../../../tablet/in_app_browser_view.dart';
+import '../../../../utils/translations.dart';
+import '../../../../api/models/message.dart';
+import '../../../tablet/in_app_browser_view.dart';
 
 class WebCard extends StatelessWidget {
   final Part part;

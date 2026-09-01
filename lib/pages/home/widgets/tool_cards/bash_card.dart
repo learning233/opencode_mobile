@@ -1,11 +1,11 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import '../../../../../utils/translations.dart';
-import '../../../../../api/models/message.dart';
-import '../../../../../utils/app_theme.dart';
-import '../../../../../widgets/detail_bottom_sheet.dart';
-import '../../../../../controllers/session_controller.dart';
+import '../../../../utils/translations.dart';
+import '../../../../api/models/message.dart';
+import '../../../../utils/app_theme.dart';
+import '../../../../widgets/detail_bottom_sheet.dart';
+import '../../../../controllers/session_controller.dart';
 
 /// ANSI 转义清洗用的三个模式。E2：提为顶层 final，避免每次调用新建
 /// RegExp（stripAnsi 在流式期间对全量输出反复执行）。

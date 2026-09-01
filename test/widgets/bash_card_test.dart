@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:opencode_app/api/models/message.dart';
-import 'package:opencode_app/pages/home/widgets/message/tool_cards/bash_card.dart';
+import 'package:opencode_app/pages/home/widgets/tool_cards/bash_card.dart';
 
 Part _bashPart({
   required String status,

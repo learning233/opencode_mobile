@@ -1,18 +1,37 @@
 import 'package:flutter/material.dart';
-import '../../../../../api/models/message.dart';
+import 'package:get/get.dart';
+import '../../../../utils/translations.dart';
+import '../../../../api/models/message.dart';
 
-class FallbackToolCard extends StatelessWidget {
+class SkillCard extends StatelessWidget {
   final Part part;
 
-  const FallbackToolCard({super.key, required this.part});
+  const SkillCard({super.key, required this.part});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final tool = part.toolName;
     final status = part.toolStatus;
     final isError = status == ToolStateStatus.error;
-    final displayName = tool.isNotEmpty ? tool : 'Tool';
+
+    final input = part.toolInput;
+    var name =
+        input['name'] ??
+        input['skill'] ??
+        input['id'] ??
+        input['description'] ??
+        input['skillName'] ??
+        input['action'] ??
+        '';
+
+    if (name.toString().isEmpty && input.isNotEmpty) {
+      name = input.values.map((v) => v.toString()).join(', ');
+    }
+
+    var displayName = LocaleKeys.cardVisSkill.tr;
+    if (name.toString().isNotEmpty) {
+      displayName = 'Skill · ${name.toString().trim()}';
+    }
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../../../api/models/message.dart';
+import '../../../../api/models/message.dart';
 import 'bash_card.dart';
 import 'batch_card.dart';
 import 'edit_card.dart';

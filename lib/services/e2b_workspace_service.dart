@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:dio/dio.dart';
 import 'package:get/get.dart';
-import '../e2b/e2b.dart';
+import 'e2b.dart';
 import '../models/cloud_workspace_config.dart';
 import '../models/e2b_sandbox_info.dart';
 import '../models/e2b_template_info.dart';

@@ -10,7 +10,7 @@ import '../../models/session_runtime_state.dart';
 import '../../utils/diff_paths.dart';
 import '../../utils/layout_utils.dart';
 import '../../utils/translations.dart';
-import 'widgets/message/tool_cards/question_card.dart';
+import 'widgets/tool_cards/question_card.dart';
 
 /// Stack of resident status panels (todo / changed files) with a temporary
 /// overlay layer for pending question / permission cards.

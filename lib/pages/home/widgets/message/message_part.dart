@@ -12,8 +12,8 @@ import 'compaction_part.dart';
 import 'markdown_view.dart';
 import 'reasoning_part.dart';
 import 'tool_call_card.dart';
-import 'tool_cards/subtask_header_card.dart';
-import 'tool_cards/tool_part_dispatcher.dart';
+import '../tool_cards/subtask_header_card.dart';
+import '../tool_cards/tool_part_dispatcher.dart';
 
 /// 文本 part 中遗留 thinking 标记的清理模式（历史格式兼容）。
 final RegExp _thinkingTagPattern = RegExp(

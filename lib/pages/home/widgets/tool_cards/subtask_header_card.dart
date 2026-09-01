@@ -1,6 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import '../../../../../api/models/message.dart';
+import '../../../../api/models/message.dart';
 
 class SubtaskHeaderCard extends StatelessWidget {
   final Part part;

@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
-import 'package:opencode_app/e2b/e2b.dart';
+import 'package:opencode_app/services/e2b.dart';
 import 'package:opencode_app/init.dart';
 import 'package:opencode_app/models/cloud_workspace_config.dart';
 import 'package:opencode_app/models/e2b_sandbox_info.dart';

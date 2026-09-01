@@ -39,6 +39,51 @@ class _HomePageState extends State<HomePage> {
   // Tablet nested navigator key
   final GlobalKey<NavigatorState> _leftNavKey = GlobalKey<NavigatorState>();
 
+  /// 上次点击系统返回键的时间（用于双击返回退出）
+  DateTime? _lastBackTime;
+
+  /// 处理双击返回退出应用
+  Future<void> _handlePop(BuildContext context) async {
+    final toolCtrl = Get.find<TabletToolController>();
+
+    // 1. 如果手机端内置浏览器打开着，先关闭浏览器
+    if (toolCtrl.browserSheetVisible.value) {
+      toolCtrl.closeBrowserSheet();
+      return;
+    }
+
+    // 2. 如果是平板且左侧内嵌路由可以返回，先 pop 内嵌路由
+    final leftNav = _leftNavKey.currentState;
+    if (leftNav != null && await leftNav.maybePop()) {
+      return;
+    }
+
+    // 3. 双击时间差判定 (2秒内)
+    final now = DateTime.now();
+    if (_lastBackTime == null ||
+        now.difference(_lastBackTime!) > const Duration(seconds: 2)) {
+      _lastBackTime = now;
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).removeCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(LocaleKeys.pressBackAgainToExit.tr),
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          ),
+        );
+      }
+      return;
+    }
+
+    // 4. 2秒内再次按下，真正退出应用
+    SystemNavigator.pop();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -361,10 +406,11 @@ class _HomePageState extends State<HomePage> {
     final width = MediaQuery.of(context).size.width;
     final isTablet = isTabletLayout(context);
 
+    final Widget content;
     if (!isTablet) {
       // 会话标题/页签依赖收窄到此分支的 Obx：SSE 会话变更只重建左侧聊天，不波及 tool 面板。
       final toolCtrl = Get.find<TabletToolController>();
-      return Stack(
+      content = Stack(
         children: [
           Obx(() {
             final sessionId = sessionCtrl.activeSessionId.value;
@@ -388,24 +434,12 @@ class _HomePageState extends State<HomePage> {
             ),
         ],
       );
-    }
-
-    // ── Tablet: Left chat (with drawers, same as phone) + Right tool panel ──
-    // 外层不包 Obx：只有 tool 面板可见性/宽度包窄 Obx，拖 ResizableDivider 不再重建整页；
-    // 左侧 Navigator 内部自带 Obx 处理会话标题/页签。
-    final toolCtrl = Get.find<TabletToolController>();
-
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) return;
-        final leftNav = _leftNavKey.currentState;
-        if (leftNav != null && await leftNav.maybePop()) {
-          return;
-        }
-        SystemNavigator.pop();
-      },
-      child: Row(
+    } else {
+      // ── Tablet: Left chat (with drawers, same as phone) + Right tool panel ──
+      // 外层不包 Obx：只有 tool 面板可见性/宽度包窄 Obx，拖 ResizableDivider 不再重建整页；
+      // 左侧 Navigator 内部自带 Obx 处理会话标题/页签。
+      final toolCtrl = Get.find<TabletToolController>();
+      content = Row(
         children: [
           // Left side: full chat experience with drawers (nested Navigator)
           Expanded(
@@ -460,7 +494,16 @@ class _HomePageState extends State<HomePage> {
             );
           }),
         ],
-      ),
+      );
+    }
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        await _handlePop(context);
+      },
+      child: content,
     );
   }
 }

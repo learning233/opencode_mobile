@@ -42,6 +42,7 @@ class LocaleKeys {
   static const snackError = "snackbar_error";
   static const snackInfo = "snackbar_info";
   static const snackWarning = "snackbar_warning";
+  static const pressBackAgainToExit = "press_back_again_to_exit";
 
   // ── Clipboard ──
   static const clipboardCopied = "clipboard_copied";
@@ -1350,6 +1351,7 @@ class Messages extends Translations {
     LocaleKeys.snackError: '出错',
     LocaleKeys.snackInfo: '提示',
     LocaleKeys.snackWarning: '警告',
+    LocaleKeys.pressBackAgainToExit: '再按一次退出应用',
 
     // ── Clipboard ──
     LocaleKeys.clipboardCopied: '已复制到剪贴板',
@@ -2655,6 +2657,7 @@ class Messages extends Translations {
     LocaleKeys.snackError: 'Error',
     LocaleKeys.snackInfo: 'Info',
     LocaleKeys.snackWarning: 'Warning',
+    LocaleKeys.pressBackAgainToExit: 'Press back again to exit',
 
     // ── Clipboard ──
     LocaleKeys.clipboardCopied: 'Copied to clipboard',

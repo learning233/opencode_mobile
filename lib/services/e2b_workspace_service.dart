@@ -714,7 +714,7 @@ pid="$(pgrep -f '[o]pencode serve' | head -n 1)"
 if [ -n "$pid" ] && [ -r "/proc/$pid/environ" ]; then
   tr '\0' '\n' < "/proc/$pid/environ" | grep '^OPENCODE_SERVER_PASSWORD=' | cut -d= -f2-
 fi
-''', opts: const CommandOpts(timeoutMs: 15000));
+''', opts: const CommandOpts(timeoutMs: 30000));
       final pw = result.stdout.trim();
       return pw.isEmpty ? null : pw;
     } catch (e) {

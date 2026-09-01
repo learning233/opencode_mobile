@@ -50,7 +50,7 @@ class ConnectTransport {
           dio ??
           Dio(
             BaseOptions(
-              connectTimeout: const Duration(seconds: 15),
+              connectTimeout: const Duration(seconds: 30),
               sendTimeout: const Duration(seconds: 30),
               receiveTimeout: const Duration(seconds: 60),
             ),

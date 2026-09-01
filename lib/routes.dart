@@ -4,7 +4,7 @@ import 'pages/home/home_page.dart';
 import 'pages/right_drawer/session_list_page.dart';
 import 'pages/file/file_page.dart';
 import 'pages/settings/opencode_settings_page.dart';
-import 'pages/settings/opencode/connection_page.dart';
+import 'pages/settings/connect/connection_page.dart';
 import 'pages/settings/opencode/general_page.dart';
 import 'pages/settings/opencode/providers_page.dart';
 import 'pages/settings/opencode/models_page.dart';

@@ -13,10 +13,10 @@ import '../services/e2b_workspace_service.dart';
 import '../utils/app_logger.dart';
 import '../utils/translations.dart';
 import '../utils/url_utils.dart';
-import 'settings/opencode/cloud_workspace_launch_dialog.dart';
-import 'settings/opencode/cloud_workspace_sheet.dart';
-import 'settings/opencode/e2b_api_key_dialog.dart';
-import 'settings/opencode/e2b_sandbox_picker_sheet.dart';
+import 'settings/connect/cloud_workspace_launch_dialog.dart';
+import 'settings/connect/cloud_workspace_sheet.dart';
+import 'settings/connect/e2b_api_key_dialog.dart';
+import 'settings/connect/e2b_sandbox_picker_sheet.dart';
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});

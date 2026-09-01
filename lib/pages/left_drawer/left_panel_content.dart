@@ -21,10 +21,10 @@ import '../../utils/snackbar_utils.dart';
 import '../../utils/translations.dart';
 import '../../widgets/left_drawer/file_tree_view.dart';
 import '../../widgets/vad_settings_sheet.dart';
-import '../settings/opencode/cloud_workspace_launch_dialog.dart';
-import '../settings/opencode/cloud_workspace_sheet.dart';
-import '../settings/opencode/e2b_api_key_dialog.dart';
-import '../settings/opencode/self_hosted_connection_sheet.dart';
+import '../settings/connect/cloud_workspace_launch_dialog.dart';
+import '../settings/connect/cloud_workspace_sheet.dart';
+import '../settings/connect/e2b_api_key_dialog.dart';
+import '../settings/connect/self_hosted_connection_sheet.dart';
 import 'project_tile.dart';
 
 enum DrawerMode { projects, files }

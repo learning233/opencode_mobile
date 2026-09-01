@@ -7,7 +7,7 @@ import '../../../controllers/session_controller.dart';
 import '../../../controllers/settings_controller.dart';
 import '../../../utils/snackbar_utils.dart';
 import '../../../utils/translations.dart';
-import '../../../widgets/settings/settings.dart';
+import '../widgets/settings.dart';
 
 class OpencodeAgentPage extends StatefulWidget {
   const OpencodeAgentPage({super.key});

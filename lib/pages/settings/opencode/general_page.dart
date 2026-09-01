@@ -4,7 +4,7 @@ import 'package:get/get.dart';
 import '../../../controllers/settings_controller.dart';
 import '../../../utils/snackbar_utils.dart';
 import '../../../utils/translations.dart';
-import '../../../widgets/settings/settings.dart';
+import '../widgets/settings.dart';
 
 class OpencodeGeneralPage extends StatefulWidget {
   const OpencodeGeneralPage({super.key});

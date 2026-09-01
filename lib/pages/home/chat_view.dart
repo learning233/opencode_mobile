@@ -5,7 +5,7 @@ import '../../controllers/session_controller.dart';
 import '../../init.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/translations.dart';
-import '../../widgets/message/message_bubble.dart';
+import 'widgets/message/message_bubble.dart';
 
 /// Mobile chat timeline — ported from desktop `MessageTimeline`.
 ///

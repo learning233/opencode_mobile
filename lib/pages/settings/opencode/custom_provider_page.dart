@@ -10,7 +10,7 @@ import '../../../utils/app_logger.dart';
 import '../../../utils/translations.dart';
 import '../../../utils/app_theme.dart';
 import '../../../utils/snackbar_utils.dart';
-import '../../../widgets/settings/settings.dart';
+import '../widgets/settings.dart';
 
 class CustomProviderPage extends StatefulWidget {
   final SettingsController ctrl;

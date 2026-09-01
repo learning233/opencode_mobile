@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:opencode_app/api/models/message.dart';
-import 'package:opencode_app/widgets/message/tool_cards/question_card.dart';
+import 'package:opencode_app/pages/home/widgets/message/tool_cards/question_card.dart';
 
 Part _questionPart({
   String id = 'p1',

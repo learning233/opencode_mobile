@@ -8,7 +8,7 @@ import '../../../utils/app_theme.dart';
 import '../../../utils/snackbar_utils.dart';
 import '../../../utils/translations.dart';
 import '../../../utils/url_utils.dart';
-import '../../../widgets/settings/settings.dart';
+import '../widgets/settings.dart';
 
 class OpencodeMcpPage extends StatefulWidget {
   const OpencodeMcpPage({super.key});

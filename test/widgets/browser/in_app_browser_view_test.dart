@@ -5,7 +5,7 @@ import 'package:get/get.dart';
 import 'package:opencode_app/controllers/tablet_tool_controller.dart';
 import 'package:opencode_app/init.dart';
 import 'package:opencode_app/utils/app_settings_store.dart';
-import 'package:opencode_app/widgets/browser/in_app_browser_view.dart';
+import 'package:opencode_app/pages/tablet/in_app_browser_view.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {

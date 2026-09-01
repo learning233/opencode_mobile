@@ -6,7 +6,7 @@ import '../../../controllers/settings_controller.dart';
 import '../../../models/model_info.dart';
 import '../../../utils/snackbar_utils.dart';
 import '../../../utils/translations.dart';
-import '../../../widgets/settings/settings.dart';
+import '../widgets/settings.dart';
 
 class OpencodeModelsPage extends StatefulWidget {
   const OpencodeModelsPage({super.key});

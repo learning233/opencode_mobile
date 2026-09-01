@@ -5,7 +5,7 @@ import 'package:opencode_app/api/models/message.dart';
 import 'package:opencode_app/controllers/tablet_tool_controller.dart';
 import 'package:opencode_app/init.dart';
 import 'package:opencode_app/utils/app_settings_store.dart';
-import 'package:opencode_app/widgets/message/tool_cards/read_card.dart';
+import 'package:opencode_app/pages/home/widgets/message/tool_cards/read_card.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 Part _readPart({

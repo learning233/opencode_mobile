@@ -6,7 +6,7 @@ import 'package:get/get.dart';
 import '../../../controllers/settings_controller.dart';
 import '../../../utils/snackbar_utils.dart';
 import '../../../utils/translations.dart';
-import '../../../widgets/settings/settings.dart';
+import '../widgets/settings.dart';
 
 class OpencodeExperimentalPage extends StatefulWidget {
   const OpencodeExperimentalPage({super.key});

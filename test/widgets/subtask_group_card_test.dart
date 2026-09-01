@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:opencode_app/api/models/message.dart';
-import 'package:opencode_app/widgets/message/tool_cards/subtask_group_card.dart';
+import 'package:opencode_app/pages/home/widgets/message/tool_cards/subtask_group_card.dart';
 
 Part _part({required String id, required PartType type, String tool = ''}) {
   return Part(

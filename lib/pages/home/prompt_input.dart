@@ -20,12 +20,12 @@ import '../../utils/app_theme.dart';
 import '../../utils/snackbar_utils.dart';
 import '../../utils/translations.dart';
 import '../../utils/url_utils.dart';
-import '../../widgets/input_stack.dart';
+import 'input_stack.dart';
 import '../../controllers/voice_input_controller.dart';
 import '../../widgets/voice_floating_overlay.dart';
-import '../../widgets/browser/in_app_browser_view.dart';
+import '../tablet/in_app_browser_view.dart';
 import '../../controllers/vcs_controller.dart';
-import '../../widgets/vcs/vcs_branch_sheet.dart';
+import 'vcs_branch_sheet.dart';
 
 class PromptInput extends StatefulWidget {
   final String sessionId;

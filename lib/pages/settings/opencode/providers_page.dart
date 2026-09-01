@@ -5,8 +5,8 @@ import 'package:get/get.dart';
 import '../../../api/models/settings.dart';
 import '../../../controllers/settings_controller.dart';
 import '../../../utils/translations.dart';
-import '../../../widgets/integration_sheet.dart';
-import '../../../widgets/settings/settings.dart';
+import '../widgets/integration_sheet.dart';
+import '../widgets/settings.dart';
 import 'custom_provider_page.dart';
 
 class OpencodeProvidersPage extends StatefulWidget {

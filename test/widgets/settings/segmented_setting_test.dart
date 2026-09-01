@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:opencode_app/widgets/settings/segmented_setting.dart';
+import 'package:opencode_app/pages/settings/widgets/segmented_setting.dart';
 
 void main() {
   testWidgets('SegmentedSetting calls onChanged', (tester) async {

@@ -33,6 +33,7 @@ class CloudWorkspaceSheet extends StatefulWidget {
     return showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
+      showDragHandle: true,
       useSafeArea: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -53,7 +54,6 @@ class CloudWorkspaceSheet extends StatefulWidget {
 }
 
 class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
-
   late TextEditingController _templateCtrl;
   late TextEditingController _passwordCtrl;
   late TextEditingController _repoCtrl;
@@ -92,7 +92,6 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
 
   @override
   void dispose() {
-
     _templateCtrl.dispose();
     _passwordCtrl.dispose();
     _repoCtrl.dispose();
@@ -213,371 +212,428 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
     final theme = Theme.of(context);
     final hintStyle = TextStyle(
       color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.45),
+      fontSize: 13,
     );
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.88;
 
-    return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(
-        backgroundColor: theme.colorScheme.surface,
-        elevation: 0,
-        title: Text(
-          widget.onlyConfig
-              ? LocaleKeys.e2bConfigWorkspace.tr
-              : LocaleKeys.e2bNewSandbox.tr,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+    InputDecoration inputDeco({
+      required String label,
+      required String hint,
+      Widget? suffixIcon,
+    }) {
+      return InputDecoration(
+        isDense: true,
+        filled: true,
+        fillColor: theme.colorScheme.surface,
+        floatingLabelBehavior: FloatingLabelBehavior.always,
+        labelText: label,
+        labelStyle: TextStyle(
+          fontSize: 12.5,
+          fontWeight: FontWeight.w600,
+          color: theme.colorScheme.onSurfaceVariant,
         ),
-        centerTitle: true,
-        automaticallyImplyLeading: false,
-        actions: [
-          TextButton(onPressed: _saveOnly, child: Text(LocaleKeys.save.tr)),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        children: [
-          // ── 1. 沙盒模板与密码 ──
-          _buildSectionHeader(
-            Icons.cloud_outlined,
-            LocaleKeys.e2bTemplate.tr,
-            theme,
+        hintText: hint,
+        hintStyle: hintStyle,
+        suffixIcon: suffixIcon,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 12,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
           ),
-          Card(
-            elevation: 0,
-            margin: EdgeInsets.zero,
-            color: theme.colorScheme.surfaceContainerHighest.withValues(
-              alpha: 0.4,
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-              side: BorderSide(
-                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-              ),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  TextField(
-                    controller: _templateCtrl,
-                    keyboardType: TextInputType.text,
-                    enableSuggestions: true,
-                    autocorrect: false,
-                    decoration: InputDecoration(
-                      isDense: true,
-                      floatingLabelBehavior: FloatingLabelBehavior.always,
-                      labelText: LocaleKeys.e2bTemplate.tr,
-                      hintText: LocaleKeys.e2bTemplateHint.tr,
-                      hintStyle: hintStyle,
-                      border: const OutlineInputBorder(),
-                      suffixIcon: IconButton(
-                        icon: _isFetchingTemplates
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.list_alt, size: 20),
-                        tooltip: LocaleKeys.e2bFetchTemplates.tr,
-                        onPressed: _isFetchingTemplates
-                            ? null
-                            : _fetchAndSelectTemplate,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _passwordCtrl,
-                    keyboardType: TextInputType.text,
-                    enableSuggestions: true,
-                    autocorrect: false,
-                    decoration: InputDecoration(
-                      isDense: true,
-                      floatingLabelBehavior: FloatingLabelBehavior.always,
-                      labelText: LocaleKeys.e2bSandboxPassword.tr,
-                      hintText: LocaleKeys.e2bSandboxPasswordHint.tr,
-                      hintStyle: hintStyle,
-                      border: const OutlineInputBorder(),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
           ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: theme.colorScheme.primary, width: 1.5),
+        ),
+      );
+    }
 
-          const SizedBox(height: 20),
-
-          // ── 2. GitHub 项目与授权 ──
-          _buildSectionHeader(
-            Icons.account_tree_outlined,
-            LocaleKeys.e2bGitProjectAndAuth.tr,
-            theme,
-          ),
-          Card(
-            elevation: 0,
-            margin: EdgeInsets.zero,
-            color: theme.colorScheme.surfaceContainerHighest.withValues(
-              alpha: 0.4,
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-              side: BorderSide(
-                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-              ),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxHeight),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 滚动内容区
+            Flexible(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                shrinkWrap: true,
                 children: [
-                  TextField(
-                    controller: _tokenCtrl,
-                    keyboardType: TextInputType.text,
-                    enableSuggestions: true,
-                    autocorrect: false,
-                    decoration: InputDecoration(
-                      isDense: true,
-                      floatingLabelBehavior: FloatingLabelBehavior.always,
-                      labelText: LocaleKeys.e2bGitPatLabel.tr,
-                      hintText: LocaleKeys.e2bGitPatHint.tr,
-                      hintStyle: hintStyle,
-                      border: const OutlineInputBorder(),
-                    ),
+                  // ── 1. 沙盒模板与密码 ──
+                  _buildSectionHeader(
+                    Icons.cloud_outlined,
+                    LocaleKeys.e2bTemplate.tr,
+                    theme,
                   ),
-                  const SizedBox(height: 12),
-                  if (_repoFullNameCtrl.text.isNotEmpty) ...[
-                    // 选中仓库的紧凑展示卡片
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surface,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: theme.colorScheme.outlineVariant.withValues(
-                            alpha: 0.6,
-                          ),
+                  Card(
+                    elevation: 0,
+                    margin: EdgeInsets.zero,
+                    color: theme.colorScheme.surfaceContainerLow,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(
+                        color: theme.colorScheme.outlineVariant.withValues(
+                          alpha: 0.3,
                         ),
                       ),
-                      child: Row(
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Icon(
-                            Icons.check_circle,
-                            size: 18,
-                            color: theme.colorScheme.primary,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _repoFullNameCtrl.text,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  LocaleKeys.e2bBranchPrefix.trParams({
-                                    'branch': _branch,
-                                  }),
-                                  style: TextStyle(
-                                    fontSize: 11.5,
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
+                          TextField(
+                            controller: _templateCtrl,
+                            keyboardType: TextInputType.text,
+                            enableSuggestions: true,
+                            autocorrect: false,
+                            decoration: inputDeco(
+                              label: LocaleKeys.e2bTemplate.tr,
+                              hint: LocaleKeys.e2bTemplateHint.tr,
+                              suffixIcon: IconButton(
+                                icon: _isFetchingTemplates
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(
+                                        Icons.list_alt_rounded,
+                                        size: 20,
+                                      ),
+                                tooltip: LocaleKeys.e2bFetchTemplates.tr,
+                                onPressed: _isFetchingTemplates
+                                    ? null
+                                    : _fetchAndSelectTemplate,
+                              ),
                             ),
                           ),
-                          IconButton(
-                            visualDensity: VisualDensity.compact,
-                            icon: const Icon(Icons.swap_horiz, size: 18),
-                            tooltip: LocaleKeys.e2bFetchAndSelectRepo.tr,
-                            onPressed: _isFetchingRepos
-                                ? null
-                                : _fetchAndSelectRepo,
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _passwordCtrl,
+                            keyboardType: TextInputType.text,
+                            enableSuggestions: true,
+                            autocorrect: false,
+                            decoration: inputDeco(
+                              label: LocaleKeys.e2bSandboxPassword.tr,
+                              hint: LocaleKeys.e2bSandboxPasswordHint.tr,
+                            ),
                           ),
-                          IconButton(
-                            visualDensity: VisualDensity.compact,
-                            icon: const Icon(Icons.close, size: 16),
-                            onPressed: () {
-                              setState(() {
-                                _repoCtrl.clear();
-                                _repoFullNameCtrl.clear();
-                                _branch = 'main';
-                              });
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // ── 2. GitHub 项目与授权 ──
+                  _buildSectionHeader(
+                    Icons.account_tree_outlined,
+                    LocaleKeys.e2bGitProjectAndAuth.tr,
+                    theme,
+                  ),
+                  Card(
+                    elevation: 0,
+                    margin: EdgeInsets.zero,
+                    color: theme.colorScheme.surfaceContainerLow,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(
+                        color: theme.colorScheme.outlineVariant.withValues(
+                          alpha: 0.3,
+                        ),
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          TextField(
+                            controller: _tokenCtrl,
+                            keyboardType: TextInputType.text,
+                            enableSuggestions: true,
+                            autocorrect: false,
+                            decoration: inputDeco(
+                              label: LocaleKeys.e2bGitPatLabel.tr,
+                              hint: LocaleKeys.e2bGitPatHint.tr,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          if (_repoFullNameCtrl.text.isNotEmpty) ...[
+                            // 选中仓库的高级紧凑展示卡片
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 10,
+                              ),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.primaryContainer
+                                    .withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: theme.colorScheme.primary.withValues(
+                                    alpha: 0.25,
+                                  ),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.check_circle_rounded,
+                                    size: 20,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          _repoFullNameCtrl.text,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13.5,
+                                            color: theme.colorScheme.onSurface,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: theme.colorScheme.surface,
+                                            borderRadius: BorderRadius.circular(
+                                              6,
+                                            ),
+                                            border: Border.all(
+                                              color: theme
+                                                  .colorScheme
+                                                  .outlineVariant
+                                                  .withValues(alpha: 0.4),
+                                            ),
+                                          ),
+                                          child: Text(
+                                            LocaleKeys.e2bBranchPrefix.trParams(
+                                              {'branch': _branch},
+                                            ),
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w500,
+                                              color: theme
+                                                  .colorScheme
+                                                  .onSurfaceVariant,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  IconButton(
+                                    visualDensity: VisualDensity.compact,
+                                    icon: const Icon(
+                                      Icons.swap_horiz_rounded,
+                                      size: 20,
+                                    ),
+                                    tooltip:
+                                        LocaleKeys.e2bFetchAndSelectRepo.tr,
+                                    onPressed: _isFetchingRepos
+                                        ? null
+                                        : _fetchAndSelectRepo,
+                                  ),
+                                  IconButton(
+                                    visualDensity: VisualDensity.compact,
+                                    icon: const Icon(
+                                      Icons.close_rounded,
+                                      size: 18,
+                                    ),
+                                    onPressed: () {
+                                      setState(() {
+                                        _repoCtrl.clear();
+                                        _repoFullNameCtrl.clear();
+                                        _branch = 'main';
+                                      });
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ] else ...[
+                            // 未选择仓库时：提供选择按钮与手动输入
+                            FilledButton.tonalIcon(
+                              style: FilledButton.styleFrom(
+                                minimumSize: const Size.fromHeight(44),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              onPressed: _isFetchingRepos
+                                  ? null
+                                  : _fetchAndSelectRepo,
+                              icon: _isFetchingRepos
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.search_rounded, size: 18),
+                              label: Text(
+                                _isFetchingRepos
+                                    ? LocaleKeys.e2bFetchingRepos.tr
+                                    : LocaleKeys.e2bFetchAndSelectRepo.tr,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            TextField(
+                              controller: _repoCtrl,
+                              decoration: inputDeco(
+                                label: LocaleKeys.e2bGitRepo.tr,
+                                hint: LocaleKeys.e2bGitRepoUrlOptionalHint.tr,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // ── 3. 保活与自动化 ──
+                  _buildSectionHeader(
+                    Icons.timer_outlined,
+                    LocaleKeys.e2bKeepAliveConfig.tr,
+                    theme,
+                  ),
+                  Card(
+                    elevation: 0,
+                    margin: EdgeInsets.zero,
+                    color: theme.colorScheme.surfaceContainerLow,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(
+                        color: theme.colorScheme.outlineVariant.withValues(
+                          alpha: 0.3,
+                        ),
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            LocaleKeys.e2bTtlDesc.tr,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          SegmentedButton<int>(
+                            showSelectedIcon: false,
+                            style: SegmentedButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            segments: const [
+                              ButtonSegment(value: 1, label: Text('1h')),
+                              ButtonSegment(value: 2, label: Text('2h')),
+                              ButtonSegment(value: 4, label: Text('4h')),
+                              ButtonSegment(value: 8, label: Text('8h')),
+                              ButtonSegment(value: 24, label: Text('24h')),
+                            ],
+                            selected: {_ttlHours},
+                            onSelectionChanged: (vals) {
+                              if (vals.isNotEmpty) {
+                                setState(() => _ttlHours = vals.first);
+                              }
                             },
                           ),
                         ],
                       ),
                     ),
-                  ] else ...[
-                    // 未选择仓库时：提供选择按钮与手动输入
-                    FilledButton.tonalIcon(
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(44),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                      onPressed: _isFetchingRepos ? null : _fetchAndSelectRepo,
-                      icon: _isFetchingRepos
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.search, size: 18),
-                      label: Text(
-                        _isFetchingRepos
-                            ? LocaleKeys.e2bFetchingRepos.tr
-                            : LocaleKeys.e2bFetchAndSelectRepo.tr,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: _repoCtrl,
-                      decoration: InputDecoration(
-                        isDense: true,
-                        floatingLabelBehavior: FloatingLabelBehavior.always,
-                        labelText: LocaleKeys.e2bGitRepo.tr,
-                        hintText: LocaleKeys.e2bGitRepoUrlOptionalHint.tr,
-                        hintStyle: hintStyle,
-                        border: const OutlineInputBorder(),
-                      ),
-                    ),
-                  ],
+                  ),
+                  const SizedBox(height: 8),
                 ],
               ),
             ),
-          ),
-
-          const SizedBox(height: 20),
-
-          // ── 3. 保活与自动化 ──
-          _buildSectionHeader(
-            Icons.timer_outlined,
-            LocaleKeys.e2bKeepAliveConfig.tr,
-            theme,
-          ),
-          Card(
-            elevation: 0,
-            margin: EdgeInsets.zero,
-            color: theme.colorScheme.surfaceContainerHighest.withValues(
-              alpha: 0.4,
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-              side: BorderSide(
-                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+            // ── 常驻底部操作按钮 ──
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(50),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  elevation: 0.5,
+                ),
+                onPressed: widget.onlyConfig ? _saveOnly : _saveAndLaunch,
+                icon: Icon(
+                  widget.onlyConfig
+                      ? Icons.save_rounded
+                      : Icons.add_circle_outline_rounded,
+                  size: 20,
+                ),
+                label: Text(
+                  widget.onlyConfig
+                      ? LocaleKeys.save.tr
+                      : LocaleKeys.e2bCreateAndLaunch.tr,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
             ),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    LocaleKeys.e2bTtlDesc.tr,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  SegmentedButton<int>(
-                    showSelectedIcon: false,
-                    segments: const [
-                      ButtonSegment(value: 1, label: Text('1h')),
-                      ButtonSegment(value: 2, label: Text('2h')),
-                      ButtonSegment(value: 4, label: Text('4h')),
-                      ButtonSegment(value: 8, label: Text('8h')),
-                      ButtonSegment(value: 24, label: Text('24h')),
-                    ],
-                    selected: {_ttlHours},
-                    onSelectionChanged: (vals) {
-                      if (vals.isNotEmpty) {
-                        setState(() => _ttlHours = vals.first);
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  const Divider(height: 1),
-                  const SizedBox(height: 6),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                    value: _autoPause,
-                    onChanged: (val) => setState(() => _autoPause = val),
-                    title: Text(
-                      LocaleKeys.e2bAutoPause.tr,
-                      style: const TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    subtitle: Text(
-                      LocaleKeys.e2bAutoPauseDesc.tr,
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 24),
-
-          // ── 底部操作按钮 ──
-          FilledButton.icon(
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(48),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            onPressed: widget.onlyConfig ? _saveOnly : _saveAndLaunch,
-            icon: Icon(
-              widget.onlyConfig ? Icons.save : Icons.add_circle_outline,
-              size: 20,
-            ),
-            label: Text(
-              widget.onlyConfig
-                  ? LocaleKeys.save.tr
-                  : LocaleKeys.e2bCreateAndLaunch.tr,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-            ),
-          ),
-          const SizedBox(height: 16),
-        ],
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildSectionHeader(IconData icon, String title, ThemeData theme) {
     return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 8),
+      padding: const EdgeInsets.only(left: 4, bottom: 8, top: 4),
       child: Row(
         children: [
           Icon(icon, size: 16, color: theme.colorScheme.primary),
-          const SizedBox(width: 6),
+          const SizedBox(width: 8),
           Text(
             title,
             style: theme.textTheme.labelMedium?.copyWith(
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w700,
+              fontSize: 12.5,
               color: theme.colorScheme.onSurfaceVariant,
-              letterSpacing: 0.3,
+              letterSpacing: 0.2,
             ),
           ),
         ],

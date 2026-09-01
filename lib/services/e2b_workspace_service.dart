@@ -920,7 +920,7 @@ fi
     String domain = 'e2b.app',
   }) {
     stopKeepAlive();
-    final safeTimeout = max(600, min(3600, timeoutSeconds));
+    final safeTimeout = max(600, min(86400, timeoutSeconds));
     _keepAliveSandboxId = sandboxId;
     _keepAliveTimer = Timer.periodic(const Duration(minutes: 5), (_) async {
       try {

@@ -21,12 +21,22 @@ class AppLogger {
     return _instance!;
   }
 
-  /// 获取 Logger 实例
+  /// 获取 Logger 实例 (未显式 init 时默认 fallback 控制台 Logger，保证测试与早期调用安全)
   static Logger get logger {
-    if (_logger == null) {
-      throw StateError('AppLogger 未初始化，请先调用 AppLogger.init()');
-    }
+    _logger ??= Logger(
+      filter: ProductionFilter(),
+      printer: SimplePrinter(colors: false, printTime: true),
+    );
     return _logger!;
+  }
+
+  /// 初始化测试环境日志 (单元测试专用)
+  static void initForTest({Logger? testLogger}) {
+    _logger = testLogger ??
+        Logger(
+          filter: ProductionFilter(),
+          printer: SimplePrinter(colors: false),
+        );
   }
 
   /// 获取移动端日志保存目录

@@ -6,16 +6,23 @@ import 'package:get/get.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../../api/models/project.dart';
 import '../../api/models/search_result.dart';
+import '../../api/sidecar_manager.dart';
 import '../../controllers/file_search_controller.dart';
 import '../../controllers/project_controller.dart';
+import '../../controllers/session_controller.dart';
+import '../../controllers/settings_controller.dart';
 import '../../controllers/tablet_tool_controller.dart';
 import '../../init.dart';
+import '../../models/e2b_sandbox_info.dart';
 import '../../routes.dart';
+import '../../services/e2b_workspace_service.dart';
+import '../../utils/layout_utils.dart';
+import '../../utils/snackbar_utils.dart';
 import '../../utils/translations.dart';
 import '../../widgets/left_drawer/file_tree_view.dart';
 import '../../widgets/vad_settings_sheet.dart';
-import '../../utils/layout_utils.dart';
-import '../../utils/snackbar_utils.dart';
+import '../settings/opencode/cloud_workspace_sheet.dart';
+import '../settings/opencode/e2b_api_key_dialog.dart';
 import 'project_tile.dart';
 
 enum DrawerMode { projects, files }
@@ -42,11 +49,18 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
   bool _hiddenProjectsExpanded = false;
   String _appVersion = 'v0.9.8';
 
+  List<E2bSandboxInfo> _sandboxes = [];
+  bool _loadingSandboxes = false;
+  String? _sandboxesError;
+  bool _isSwitchingBackend = false;
+  String? _switchingMessage;
+
   @override
   void initState() {
     super.initState();
     drawerMode = (widget.initialMode ?? DrawerMode.projects).obs;
     _loadVersion();
+    _fetchSandboxes();
 
     if (Get.isRegistered<ProjectController>()) {
       _projectWorker = ever(Get.find<ProjectController>().activeProject, (_) {
@@ -157,135 +171,630 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
     );
   }
 
+  Future<void> _fetchSandboxes() async {
+    final apiKey = Global.settings.cloudWorkspaceConfig.e2bApiKey.trim();
+    if (apiKey.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _sandboxes = [];
+          _loadingSandboxes = false;
+        });
+      }
+      return;
+    }
+    if (mounted) setState(() => _loadingSandboxes = true);
+    try {
+      final list = await E2bWorkspaceService.instance.fetchSandboxes(apiKey);
+      if (mounted) {
+        setState(() {
+          _sandboxes = list;
+          _sandboxesError = null;
+          _loadingSandboxes = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _sandboxesError = '$e';
+          _loadingSandboxes = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _switchToSelfHosted() async {
+    final url = Global.settings.selfHostedServerUrl?.trim() ?? '';
+    if (url.isEmpty) {
+      Snack.warning(LocaleKeys.connectionValidUrlRequired.tr);
+      return;
+    }
+    setState(() {
+      _isSwitchingBackend = true;
+      _switchingMessage = LocaleKeys.drawerSwitchingBackend.tr;
+    });
+    try {
+      E2bWorkspaceService.instance.stopKeepAlive();
+      final user = (Global.settings.selfHostedServerUsername?.trim().isEmpty ?? true)
+          ? 'opencode'
+          : Global.settings.selfHostedServerUsername!.trim();
+      final pass = Global.settings.selfHostedServerPassword ?? '';
+      final res = await SidecarManager.instance.updateConnection(
+        url,
+        user,
+        pass,
+      );
+      if (!res.success) {
+        Snack.error(res.error ?? LocaleKeys.mobileConnectionFailed.tr);
+        return;
+      }
+      final projectCtrl = Get.find<ProjectController>();
+      await projectCtrl.refreshAfterConnect();
+      if (Get.isRegistered<SessionController>()) {
+        Get.find<SessionController>().initializeAfterConnect();
+      }
+      if (Get.isRegistered<SettingsController>()) {
+        Get.find<SettingsController>().checkHealth();
+      }
+      Snack.success(LocaleKeys.connectionReconnected.tr);
+    } catch (e) {
+      Snack.error('$e');
+    } finally {
+      if (mounted) setState(() => _isSwitchingBackend = false);
+    }
+  }
+
+  Future<void> _switchToSandbox(E2bSandboxInfo sb) async {
+    if (Global.serverUrl.contains(sb.sandboxId)) return;
+
+    final config = Global.settings.cloudWorkspaceConfig;
+    setState(() {
+      _isSwitchingBackend = true;
+      _switchingMessage =
+          '${LocaleKeys.e2bConnectingSandbox.tr} (${sb.sandboxId})...';
+    });
+    try {
+      final res = await E2bWorkspaceService.instance.connectSandbox(
+        config: config,
+        sandboxId: sb.sandboxId,
+        endpointUrl: sb.endpointUrl,
+        onProgress: (msg) {
+          if (mounted) setState(() => _switchingMessage = msg);
+        },
+      );
+      if (!res.success) {
+        Snack.error(res.error ?? LocaleKeys.e2bConnectFailed.tr);
+        return;
+      }
+
+      final password = res.password ?? '';
+      final sidecarRes = await SidecarManager.instance.updateConnection(
+        sb.endpointUrl,
+        'opencode',
+        password,
+      );
+      if (!sidecarRes.success) {
+        Snack.error(sidecarRes.error ?? LocaleKeys.mobileConnectionFailed.tr);
+        return;
+      }
+
+      await Global.settings.updateCloudWorkspaceConfig((curr) {
+        return curr.copyWith(
+          activeSandboxId: sb.sandboxId,
+          activeSandboxUrl: sb.endpointUrl,
+          activeSandboxPassword: password,
+          activeSandboxEnvdToken: res.envdAccessToken,
+          activeSandboxStatus: 'running',
+          lastConnectedAt: DateTime.now(),
+        );
+      });
+
+      E2bWorkspaceService.instance.startKeepAlive(
+        sandboxId: sb.sandboxId,
+        apiKey: config.e2bApiKey,
+        timeoutSeconds: config.ttlHours * 3600,
+        domain: res.domain,
+      );
+
+      final projectCtrl = Get.find<ProjectController>();
+      await projectCtrl.refreshAfterConnect();
+      if (Get.isRegistered<SessionController>()) {
+        Get.find<SessionController>().initializeAfterConnect();
+      }
+      if (Get.isRegistered<SettingsController>()) {
+        Get.find<SettingsController>().checkHealth();
+      }
+      Snack.success(
+        LocaleKeys.e2bConnectedToSandbox.trParams({'id': sb.sandboxId}),
+      );
+      await _fetchSandboxes();
+    } catch (e) {
+      Snack.error('$e');
+    } finally {
+      if (mounted) setState(() => _isSwitchingBackend = false);
+    }
+  }
+
   Widget _buildProjectsMode(
     BuildContext context,
     ThemeData theme,
     ProjectController projectCtrl,
   ) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            children: [
-              Text(
-                LocaleKeys.mobileProjects.tr,
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const Spacer(),
-              InkWell(
-                onTap: () => _showAddProjectDialog(context, projectCtrl),
-                child: Padding(
-                  padding: const EdgeInsets.all(4),
-                  child: Icon(
-                    CupertinoIcons.add,
-                    size: 18,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const Divider(height: 1),
-        Expanded(
-          child: Obx(() {
-            final hasHidden = projectCtrl.hiddenProjectKeys.isNotEmpty;
-            final visibleProjects = projectCtrl.projects
-                .where((p) => !projectCtrl.isProjectHidden(p))
-                .toList(growable: false);
+    return Obx(() {
+      final isCloud = E2bWorkspaceService.isCloudUrl(Global.serverUrl);
+      final hasHidden = projectCtrl.hiddenProjectKeys.isNotEmpty;
+      final visibleProjects = projectCtrl.projects
+          .where((p) => !projectCtrl.isProjectHidden(p))
+          .toList(growable: false);
 
-            if (visibleProjects.isEmpty && !hasHidden) {
-              final error = projectCtrl.projectsError.value;
-              if (error != null) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          CupertinoIcons.exclamationmark_circle,
-                          size: 28,
-                          color: theme.colorScheme.error,
+      return Column(
+        children: [
+          if (_isSwitchingBackend)
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+              color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+              child: Row(
+                children: [
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _switchingMessage ?? LocaleKeys.drawerSwitchingBackend.tr,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: theme.colorScheme.primary,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: () async {
+                await Future.wait([
+                  projectCtrl.fetchProjects(),
+                  _fetchSandboxes(),
+                ]);
+              },
+              child: ListView(
+                controller: _projectsScrollController,
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                children: [
+                  _buildSelfHostedSection(
+                    context,
+                    theme,
+                    projectCtrl,
+                    !isCloud && Global.serverUrl.isNotEmpty,
+                    visibleProjects,
+                  ),
+                  const SizedBox(height: 8),
+                  _buildCloudSandboxesSection(
+                    context,
+                    theme,
+                    projectCtrl,
+                    isCloud,
+                    visibleProjects,
+                  ),
+                  if (hasHidden) ...[
+                    const SizedBox(height: 8),
+                    _buildHiddenProjectsSection(projectCtrl, theme),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    });
+  }
+
+  Widget _buildSelfHostedSection(
+    BuildContext context,
+    ThemeData theme,
+    ProjectController projectCtrl,
+    bool isConnected,
+    List<ProjectModel> visibleProjects,
+  ) {
+    const successColor = Color(0xFF34C759);
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      elevation: 0,
+      color: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide.none,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            InkWell(
+              onTap: isConnected ? null : _switchToSelfHosted,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.dns_outlined,
+                      size: 18,
+                      color: isConnected
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        LocaleKeys.drawerSelfHostedSection.tr,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: isConnected
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.onSurface,
                         ),
-                        const SizedBox(height: 12),
-                        Text(
-                          LocaleKeys.mobileProjectsLoadFailed.tr,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: theme.colorScheme.onSurfaceVariant,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (isConnected) ...[
+                      Container(
+                        width: 8,
+                        height: 8,
+                        margin: const EdgeInsets.symmetric(horizontal: 6),
+                        decoration: const BoxDecoration(
+                          color: successColor,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      IconButton(
+                        icon: const Icon(CupertinoIcons.add, size: 16),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        tooltip: LocaleKeys.mobileAddProject.tr,
+                        onPressed: () =>
+                            _showAddProjectDialog(context, projectCtrl),
+                      ),
+                    ] else ...[
+                      TextButton.icon(
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
                           ),
                         ),
-                        const SizedBox(height: 16),
-                        FilledButton.tonal(
-                          onPressed: projectCtrl.fetchProjects,
-                          child: Text(LocaleKeys.retry.tr),
+                        onPressed: _switchToSelfHosted,
+                        icon: const Icon(Icons.swap_horiz, size: 14),
+                        label: Text(
+                          LocaleKeys.drawerClickToConnect.tr,
+                          style: const TextStyle(fontSize: 11),
                         ),
-                      ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            if (isConnected) ...[
+              if (visibleProjects.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Center(
+                    child: Text(
+                      LocaleKeys.mobileNoProjects.tr,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
-                );
-              }
-              return Center(
-                child: Text(
-                  LocaleKeys.mobileNoProjects.tr,
-                  style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+                )
+              else
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: visibleProjects.length,
+                  padding: EdgeInsets.zero,
+                  itemBuilder: (context, index) {
+                    final project = visibleProjects[index];
+                    final isActive =
+                        projectCtrl.activeProject.value?.id == project.id;
+                    return Slidable(
+                      key: ValueKey('project_slide_${project.worktree}'),
+                      endActionPane: ActionPane(
+                        motion: const BehindMotion(),
+                        children: [
+                          SlidableAction(
+                            onPressed: (_) => projectCtrl.hideProject(project),
+                            backgroundColor: theme.colorScheme.errorContainer,
+                            foregroundColor: theme.colorScheme.onErrorContainer,
+                            icon: Icons.visibility_off_outlined,
+                            label: LocaleKeys.mobileHideProject.tr,
+                          ),
+                        ],
+                      ),
+                      child: ProjectTile(
+                        project: project,
+                        isActive: isActive,
+                        onTap: () {
+                          projectCtrl.selectProject(project);
+                          if (widget.isDrawer) {
+                            Navigator.pop(context);
+                          }
+                        },
+                        onBrowseFiles: () {
+                          projectCtrl.selectProject(project);
+                          if (widget.isDrawer) {
+                            Navigator.pop(context);
+                          }
+                          Get.toNamed(AppRoutes.fileList);
+                        },
+                      ),
+                    );
+                  },
                 ),
-              );
-            }
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 
-            return RefreshIndicator(
-              onRefresh: () => projectCtrl.fetchProjects(),
-              child: ListView.builder(
-                controller: _projectsScrollController,
-                itemCount: visibleProjects.length + (hasHidden ? 1 : 0),
-                padding: const EdgeInsets.symmetric(vertical: 3),
-                itemBuilder: (context, index) {
-                  if (index == visibleProjects.length) {
-                    return _buildHiddenProjectsSection(projectCtrl, theme);
-                  }
-                  final project = visibleProjects[index];
-                  final isActive =
-                      projectCtrl.activeProject.value?.id == project.id;
-                  return Slidable(
-                    key: ValueKey('project_slide_${project.worktree}'),
-                    endActionPane: ActionPane(
-                      motion: const BehindMotion(),
-                      children: [
-                        SlidableAction(
-                          onPressed: (_) => projectCtrl.hideProject(project),
-                          backgroundColor: theme.colorScheme.errorContainer,
-                          foregroundColor: theme.colorScheme.onErrorContainer,
-                          icon: Icons.visibility_off_outlined,
-                          label: LocaleKeys.mobileHideProject.tr,
-                        ),
-                      ],
+  Widget _buildCloudSandboxesSection(
+    BuildContext context,
+    ThemeData theme,
+    ProjectController projectCtrl,
+    bool isCloudConnected,
+    List<ProjectModel> visibleProjects,
+  ) {
+    final cloudConfig = Global.settings.cloudWorkspaceConfig;
+    final hasKey = cloudConfig.e2bApiKey.trim().isNotEmpty;
+    const successColor = Color(0xFF34C759);
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      elevation: 0,
+      color: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide.none,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.cloud_outlined,
+                  size: 18,
+                  color: isCloudConnected
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    LocaleKeys.drawerCloudSection.tr,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: isCloudConnected
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurface,
                     ),
-                    child: ProjectTile(
-                      project: project,
-                      isActive: isActive,
-                      onTap: () {
-                        projectCtrl.selectProject(project);
-                        if (widget.isDrawer) Navigator.pop(context);
-                      },
-                      onBrowseFiles: () {
-                        projectCtrl.selectProject(project);
-                        if (widget.isDrawer) Navigator.pop(context);
-                        Get.toNamed(AppRoutes.fileList);
-                      },
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (isCloudConnected) ...[
+                  Container(
+                    width: 8,
+                    height: 8,
+                    margin: const EdgeInsets.symmetric(horizontal: 6),
+                    decoration: const BoxDecoration(
+                      color: successColor,
+                      shape: BoxShape.circle,
                     ),
-                  );
-                },
+                  ),
+                  const SizedBox(width: 2),
+                ],
+                if (!hasKey) ...[
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                    ),
+                    icon: const Icon(Icons.key, size: 13),
+                    label: Text(
+                      LocaleKeys.e2bConfigApiKey.tr,
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                    onPressed: () async {
+                      final saved = await E2bApiKeyDialog.show(context);
+                      if (saved == true) _fetchSandboxes();
+                    },
+                  ),
+                ] else ...[
+                  IconButton(
+                    icon: const Icon(CupertinoIcons.add, size: 16),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    tooltip: LocaleKeys.e2bCreateSandbox.tr,
+                    onPressed: () async {
+                      await CloudWorkspaceSheet.show(context);
+                      _fetchSandboxes();
+                    },
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 6),
+            if (!hasKey)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Center(
+                  child: Text(
+                    LocaleKeys.e2bNoApiKeyDesc.tr,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              )
+            else if (_loadingSandboxes && _sandboxes.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Center(child: CupertinoActivityIndicator()),
+              )
+            else if (_sandboxesError != null && _sandboxes.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Center(
+                  child: TextButton.icon(
+                    onPressed: _fetchSandboxes,
+                    icon: const Icon(Icons.refresh, size: 14),
+                    label: Text(
+                      LocaleKeys.retry.tr,
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                  ),
+                ),
+              )
+            else if (_sandboxes.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Center(
+                  child: Text(
+                    LocaleKeys.e2bNoSandboxes.tr,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              )
+            else
+              _buildCloudProjectsList(
+                context,
+                theme,
+                projectCtrl,
+                isCloudConnected,
+                visibleProjects,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCloudProjectsList(
+    BuildContext context,
+    ThemeData theme,
+    ProjectController projectCtrl,
+    bool isCloudConnected,
+    List<ProjectModel> visibleProjects,
+  ) {
+    final items = <Widget>[];
+
+    for (final sb in _sandboxes) {
+      final isCurrentActiveSandbox =
+          isCloudConnected && Global.serverUrl.contains(sb.sandboxId);
+
+      if (isCurrentActiveSandbox) {
+        if (visibleProjects.isNotEmpty) {
+          for (final project in visibleProjects) {
+            final isActive = projectCtrl.activeProject.value?.id == project.id;
+            items.add(
+              Slidable(
+                key: ValueKey('project_slide_${project.worktree}'),
+                endActionPane: ActionPane(
+                  motion: const BehindMotion(),
+                  children: [
+                    SlidableAction(
+                      onPressed: (_) => projectCtrl.hideProject(project),
+                      backgroundColor: theme.colorScheme.errorContainer,
+                      foregroundColor: theme.colorScheme.onErrorContainer,
+                      icon: Icons.visibility_off_outlined,
+                      label: LocaleKeys.mobileHideProject.tr,
+                    ),
+                  ],
+                ),
+                child: ProjectTile(
+                  project: project,
+                  isActive: isActive,
+                  onTap: () {
+                    projectCtrl.selectProject(project);
+                    if (widget.isDrawer) {
+                      Navigator.pop(context);
+                    }
+                  },
+                  onBrowseFiles: () {
+                    projectCtrl.selectProject(project);
+                    if (widget.isDrawer) {
+                      Navigator.pop(context);
+                    }
+                    Get.toNamed(AppRoutes.fileList);
+                  },
+                ),
               ),
             );
-          }),
-        ),
-      ],
+          }
+        } else {
+          final projName = sb.repoName.isNotEmpty ? sb.repoName : sb.sandboxId;
+          items.add(
+            ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+              title: Text(
+                projName,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  fontFamily: sb.repoName.isEmpty ? 'monospace' : null,
+                ),
+              ),
+              dense: true,
+              selected: true,
+            ),
+          );
+        }
+      } else {
+        final projName = sb.repoName.isNotEmpty ? sb.repoName : sb.sandboxId;
+
+        items.add(
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+            title: Text(
+              projName,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.normal,
+                fontFamily: sb.repoName.isEmpty ? 'monospace' : null,
+              ),
+            ),
+            dense: true,
+            onTap: () => _switchToSandbox(sb),
+          ),
+        );
+      }
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: items,
     );
   }
 
@@ -316,37 +825,52 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
     ThemeData theme,
   ) {
     final keys = projectCtrl.hiddenProjectKeys.toList();
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        ListTile(
-          dense: true,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-          onTap: _toggleHiddenProjects,
-          title: Text(
-            '${LocaleKeys.mobileHiddenProjects.tr} (${keys.length})',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          trailing: AnimatedRotation(
-            turns: _hiddenProjectsExpanded ? 0.25 : 0,
-            duration: const Duration(milliseconds: 150),
-            child: Icon(
-              Icons.chevron_right,
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      elevation: 0,
+      color: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide.none,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            dense: true,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+            onTap: _toggleHiddenProjects,
+            leading: Icon(
+              Icons.visibility_off_outlined,
               size: 18,
               color: theme.colorScheme.onSurfaceVariant,
             ),
+            title: Text(
+              '${LocaleKeys.mobileHiddenProjects.tr} (${keys.length})',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            trailing: AnimatedRotation(
+              turns: _hiddenProjectsExpanded ? 0.25 : 0,
+              duration: const Duration(milliseconds: 150),
+              child: Icon(
+                Icons.chevron_right,
+                size: 18,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
           ),
-        ),
-        if (_hiddenProjectsExpanded) ...[
-          for (final key in keys)
-            _buildHiddenProjectRow(projectCtrl, theme, key),
-          const SizedBox(height: 4),
+          if (_hiddenProjectsExpanded) ...[
+            const Divider(height: 1),
+            for (final key in keys)
+              _buildHiddenProjectRow(projectCtrl, theme, key),
+            const SizedBox(height: 4),
+          ],
         ],
-      ],
+      ),
     );
   }
 
@@ -362,7 +886,6 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
     );
     final fallbackName = key.split('/').where((s) => s.isNotEmpty).lastOrNull;
     final name = project?.displayName ?? (fallbackName ?? key);
-    final worktree = project?.worktree ?? key;
     return ListTile(
       dense: true,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16),
@@ -371,15 +894,6 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: const TextStyle(fontSize: 14),
-      ),
-      subtitle: Text(
-        worktree,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontSize: 11,
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
       ),
       trailing: IconButton(
         icon: const Icon(Icons.visibility_outlined, size: 20),

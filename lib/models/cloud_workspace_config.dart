@@ -13,7 +13,7 @@ class CloudWorkspaceConfig {
     this.gitToken = '',
     this.gitUsername = '',
     this.gitEmail = '',
-    this.ttlHours = 2,
+    this.ttlHours = 1,
     this.autoPause = true,
     this.activeSandboxId,
     this.activeSandboxUrl,

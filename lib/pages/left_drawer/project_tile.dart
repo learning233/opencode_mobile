@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../api/models/project.dart';
-import '../../init.dart';
-import '../../services/e2b_workspace_service.dart';
 import '../../utils/layout_utils.dart';
 import '../../utils/translations.dart';
 
@@ -22,32 +20,15 @@ class ProjectTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final isTablet = isTabletLayout(context);
-    final isCloud = E2bWorkspaceService.isCloudUrl(Global.serverUrl);
 
     return ListTile(
-      leading: Icon(
-        isCloud ? Icons.cloud_outlined : Icons.folder,
-        size: 20,
-        color: isActive
-            ? theme.colorScheme.primary
-            : theme.colorScheme.onSurfaceVariant,
-      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12),
       title: Text(
         project.displayName,
         style: TextStyle(
           fontSize: 14,
           fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
-        ),
-      ),
-      subtitle: Text(
-        project.worktree,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontSize: 11,
-          color: theme.colorScheme.onSurfaceVariant,
         ),
       ),
       trailing: !isTablet

@@ -248,6 +248,13 @@ class LocaleKeys {
   static const e2bRepoPrefix = "e2b_repo_prefix";
   static const e2bOperationCancelled = "e2b_operation_cancelled";
 
+  // ── Drawer Multi-Backend Grouping ──
+  static const drawerSelfHostedSection = "drawer_self_hosted_section";
+  static const drawerCloudSection = "drawer_cloud_section";
+  static const drawerClickToConnect = "drawer_click_to_connect";
+  static const drawerSwitchingBackend = "drawer_switching_backend";
+  static const drawerConnected = "drawer_connected";
+
   // ── Settings – General ──
   static const secAppearance = "gen_sec_appearance";
   static const colorTheme = "gen_color_theme";
@@ -1549,6 +1556,13 @@ class Messages extends Translations {
     LocaleKeys.e2bCopySandboxId: '复制沙盒 ID',
     LocaleKeys.e2bProbingSandbox: '正在探测 E2B 云端沙盒状态...',
     LocaleKeys.e2bSandboxLabel: '沙盒: @id',
+
+    // ── Drawer Multi-Backend Grouping ──
+    LocaleKeys.drawerSelfHostedSection: '自建服务器',
+    LocaleKeys.drawerCloudSection: 'E2B 云端沙盒',
+    LocaleKeys.drawerClickToConnect: '点击连接',
+    LocaleKeys.drawerSwitchingBackend: '正在切换连接...',
+    LocaleKeys.drawerConnected: '已连接',
 
     // ── Settings – General ──
     LocaleKeys.secAppearance: '外观与布局',
@@ -2874,6 +2888,13 @@ class Messages extends Translations {
     LocaleKeys.e2bCopySandboxId: 'Copy Sandbox ID',
     LocaleKeys.e2bProbingSandbox: 'Probing E2B cloud sandbox status...',
     LocaleKeys.e2bSandboxLabel: 'Sandbox: @id',
+
+    // ── Drawer Multi-Backend Grouping ──
+    LocaleKeys.drawerSelfHostedSection: 'Self-Hosted Server',
+    LocaleKeys.drawerCloudSection: 'E2B Cloud Sandboxes',
+    LocaleKeys.drawerClickToConnect: 'Click to Connect',
+    LocaleKeys.drawerSwitchingBackend: 'Switching connection...',
+    LocaleKeys.drawerConnected: 'Connected',
 
     // ── Settings – General ──
     LocaleKeys.secAppearance: 'Appearance & Layout',

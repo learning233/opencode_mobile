@@ -189,7 +189,8 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
     });
     try {
       E2bWorkspaceService.instance.stopKeepAlive();
-      final user = (Global.settings.selfHostedServerUsername?.trim().isEmpty ?? true)
+      final user =
+          (Global.settings.selfHostedServerUsername?.trim().isEmpty ?? true)
           ? 'opencode'
           : Global.settings.selfHostedServerUsername!.trim();
       final pass = Global.settings.selfHostedServerPassword ?? '';
@@ -339,6 +340,7 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
                 ]);
               },
               child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
                 controller: _projectsScrollController,
                 padding: const EdgeInsets.symmetric(vertical: 6),
                 children: [
@@ -641,12 +643,14 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
                   ),
                 ),
               )
-            else if (projectCtrl.isLoadingSandboxes.value && projectCtrl.sandboxes.isEmpty)
+            else if (projectCtrl.isLoadingSandboxes.value &&
+                projectCtrl.sandboxes.isEmpty)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 16),
                 child: Center(child: CupertinoActivityIndicator()),
               )
-            else if (projectCtrl.sandboxesError.value != null && projectCtrl.sandboxes.isEmpty)
+            else if (projectCtrl.sandboxesError.value != null &&
+                projectCtrl.sandboxes.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Center(
@@ -778,10 +782,7 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
       }
     }
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: items,
-    );
+    return Column(mainAxisSize: MainAxisSize.min, children: items);
   }
 
   void _toggleHiddenProjects() {

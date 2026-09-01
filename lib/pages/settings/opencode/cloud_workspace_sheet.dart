@@ -66,7 +66,6 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
 
   late int _ttlHours;
   late bool _autoPause;
-  bool _obscurePassword = true;
   bool _isFetchingRepos = false;
   bool _isFetchingTemplates = false;
 
@@ -210,6 +209,9 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final hintStyle = TextStyle(
+      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.45),
+    );
 
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
@@ -259,12 +261,12 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
                     keyboardType: TextInputType.text,
                     enableSuggestions: true,
                     autocorrect: false,
-                    obscureText: true,
                     decoration: InputDecoration(
                       isDense: true,
                       floatingLabelBehavior: FloatingLabelBehavior.always,
                       labelText: LocaleKeys.e2bApiKey.tr,
                       hintText: LocaleKeys.e2bApiKeyHint.tr,
+                      hintStyle: hintStyle,
                       border: const OutlineInputBorder(),
                     ),
                   ),
@@ -279,6 +281,7 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
                       floatingLabelBehavior: FloatingLabelBehavior.always,
                       labelText: LocaleKeys.e2bTemplate.tr,
                       hintText: LocaleKeys.e2bTemplateHint.tr,
+                      hintStyle: hintStyle,
                       border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
                         icon: _isFetchingTemplates
@@ -300,26 +303,16 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
                   const SizedBox(height: 12),
                   TextField(
                     controller: _passwordCtrl,
-                    keyboardType: TextInputType.visiblePassword,
-                    enableSuggestions: false,
+                    keyboardType: TextInputType.text,
+                    enableSuggestions: true,
                     autocorrect: false,
-                    obscureText: _obscurePassword,
                     decoration: InputDecoration(
                       isDense: true,
                       floatingLabelBehavior: FloatingLabelBehavior.always,
                       labelText: LocaleKeys.e2bSandboxPassword.tr,
                       hintText: LocaleKeys.e2bSandboxPasswordHint.tr,
+                      hintStyle: hintStyle,
                       border: const OutlineInputBorder(),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscurePassword
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined,
-                          size: 18,
-                        ),
-                        onPressed: () =>
-                            setState(() => _obscurePassword = !_obscurePassword),
-                      ),
                     ),
                   ),
                 ],
@@ -357,11 +350,12 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
                     keyboardType: TextInputType.text,
                     enableSuggestions: true,
                     autocorrect: false,
-                    obscureText: true,
                     decoration: InputDecoration(
                       isDense: true,
+                      floatingLabelBehavior: FloatingLabelBehavior.always,
                       labelText: LocaleKeys.e2bGitPatLabel.tr,
                       hintText: LocaleKeys.e2bGitPatHint.tr,
+                      hintStyle: hintStyle,
                       border: const OutlineInputBorder(),
                     ),
                   ),
@@ -466,8 +460,10 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
                       controller: _repoCtrl,
                       decoration: InputDecoration(
                         isDense: true,
+                        floatingLabelBehavior: FloatingLabelBehavior.always,
                         labelText: LocaleKeys.e2bGitRepo.tr,
                         hintText: LocaleKeys.e2bGitRepoUrlOptionalHint.tr,
+                        hintStyle: hintStyle,
                         border: const OutlineInputBorder(),
                       ),
                     ),

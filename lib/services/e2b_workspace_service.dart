@@ -135,7 +135,7 @@ echo "USER: $(whoami), HOME: $HOME"
 # 落盘密码供重连恢复(仅当前用户可读)
 umask 077 && printf '%s' "$BOOTSTRAP_PASSWORD" > "$HOME/.opencode_pw"
 
-# 探测本机 4096:200=健康;000=无监听;其他(如401)=有服务但密码不匹配
+# 探测本机 4096: 200=健康; 000/其他=未就绪或未监听
 probe() {
   local code
   code="$(curl -s -o /dev/null -m 2 -w '%{http_code}' \
@@ -145,26 +145,12 @@ probe() {
   echo "$code"
 }
 
-code="$(probe)"
-case "$code" in
-  200)
-    echo "opencode serve already healthy on 4096"
-    exit 0
-    ;;
-  000)
-    echo "no server listening on 4096 yet"
-    ;;
-  401|403)
-    echo "existing serve authentication mismatch (HTTP $code), terminating old process"
-    pkill -9 -f '[o]pencode serve' || true
-    sleep 1
-    ;;
-  *)
-    echo "port 4096 has a server with mismatched auth (HTTP $code), restarting..."
-    pkill -f "[o]pencode serve" 2>/dev/null || true
-    sleep 1
-    ;;
-esac
+# 若已就绪直接退出; 否则清理可能残留的旧进程(用 [o] 正则避免自匹配)
+if [ "$(probe)" = "200" ]; then
+  echo "opencode serve already healthy on 4096"
+  exit 0
+fi
+pkill -f "[o]pencode serve" 2>/dev/null || true
 
 # opencode 缺失时自动安装:官方安装脚本优先,npm 兜底(base 模板自带 Node/curl)
 if ! command -v opencode > /dev/null 2>&1; then

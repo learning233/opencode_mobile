@@ -148,7 +148,6 @@ class _CloudWorkspaceLaunchDialogState
 
     if (mounted) {
       Navigator.of(context).pop();
-      Snack.success(LocaleKeys.e2bWorkspaceReady.tr);
       Get.offNamed(AppRoutes.home);
     }
   }

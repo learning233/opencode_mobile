@@ -192,8 +192,6 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
           Snack.error(
             '${LocaleKeys.connectionRefreshFailed.tr}: $refreshError',
           );
-        } else {
-          Snack.success(LocaleKeys.connectionReconnected.tr);
         }
         _navigatedAway = true;
         Get.offNamed(AppRoutes.home);
@@ -280,9 +278,6 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
       Get.find<SettingsController>().checkHealth();
 
       if (mounted) {
-        Snack.success(
-          LocaleKeys.e2bConnectedToSandbox.trParams({'id': item.sandboxId}),
-        );
         _navigatedAway = true;
         Get.offNamed(AppRoutes.home);
       }

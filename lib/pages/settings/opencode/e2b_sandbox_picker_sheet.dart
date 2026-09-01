@@ -243,10 +243,6 @@ class _E2bSandboxPickerSheetState extends State<E2bSandboxPickerSheet> {
       );
     });
 
-    Snack.success(
-      LocaleKeys.e2bSwitchedSandbox.trParams({'id': sb.sandboxId}),
-    );
-
     if (mounted) {
       Navigator.of(context).pop(sb);
       widget.onSelect?.call(sb);

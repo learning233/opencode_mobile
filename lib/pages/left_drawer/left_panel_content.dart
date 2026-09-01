@@ -24,6 +24,7 @@ import '../../widgets/vad_settings_sheet.dart';
 import '../settings/opencode/cloud_workspace_launch_dialog.dart';
 import '../settings/opencode/cloud_workspace_sheet.dart';
 import '../settings/opencode/e2b_api_key_dialog.dart';
+import '../settings/opencode/self_hosted_connection_sheet.dart';
 import 'project_tile.dart';
 
 enum DrawerMode { projects, files }
@@ -180,7 +181,10 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
   Future<void> _switchToSelfHosted() async {
     final url = Global.settings.selfHostedServerUrl?.trim() ?? '';
     if (url.isEmpty) {
-      Snack.warning(LocaleKeys.connectionValidUrlRequired.tr);
+      final saved = await SelfHostedConnectionSheet.show(context);
+      if (saved == true && mounted) {
+        setState(() {});
+      }
       return;
     }
     setState(() {
@@ -211,7 +215,6 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
       if (Get.isRegistered<SettingsController>()) {
         Get.find<SettingsController>().checkHealth();
       }
-      Snack.success(LocaleKeys.connectionReconnected.tr);
     } catch (e) {
       Snack.error('$e');
     } finally {
@@ -281,9 +284,6 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
       if (Get.isRegistered<SettingsController>()) {
         Get.find<SettingsController>().checkHealth();
       }
-      Snack.success(
-        LocaleKeys.e2bConnectedToSandbox.trParams({'id': sb.sandboxId}),
-      );
       await _fetchSandboxes();
     } catch (e) {
       Snack.error('$e');
@@ -380,6 +380,8 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
     List<ProjectModel> visibleProjects,
   ) {
     const successColor = Color(0xFF34C759);
+    final hasSelfHosted =
+        Global.settings.selfHostedServerUrl?.trim().isNotEmpty == true;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -442,21 +444,55 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
                             _showAddProjectDialog(context, projectCtrl),
                       ),
                     ] else ...[
-                      TextButton.icon(
-                        style: TextButton.styleFrom(
-                          visualDensity: VisualDensity.compact,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 2,
+                      if (!hasSelfHosted)
+                        TextButton.icon(
+                          style: TextButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                          ),
+                          onPressed: () async {
+                            final saved =
+                                await SelfHostedConnectionSheet.show(context);
+                            if (saved == true && mounted) setState(() {});
+                          },
+                          icon: const Icon(Icons.settings_outlined, size: 14),
+                          label: Text(
+                            LocaleKeys.mobileServerConnection.tr,
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                        )
+                      else ...[
+                        IconButton(
+                          icon: const Icon(Icons.settings_outlined, size: 16),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          tooltip: LocaleKeys.mobileServerConnection.tr,
+                          onPressed: () async {
+                            final saved =
+                                await SelfHostedConnectionSheet.show(context);
+                            if (saved == true && mounted) setState(() {});
+                          },
+                        ),
+                        const SizedBox(width: 4),
+                        TextButton.icon(
+                          style: TextButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                          ),
+                          onPressed: _switchToSelfHosted,
+                          icon: const Icon(Icons.swap_horiz, size: 14),
+                          label: Text(
+                            LocaleKeys.drawerClickToConnect.tr,
+                            style: const TextStyle(fontSize: 11),
                           ),
                         ),
-                        onPressed: _switchToSelfHosted,
-                        icon: const Icon(Icons.swap_horiz, size: 14),
-                        label: Text(
-                          LocaleKeys.drawerClickToConnect.tr,
-                          style: const TextStyle(fontSize: 11),
-                        ),
-                      ),
+                      ],
                     ],
                   ],
                 ),

@@ -53,7 +53,7 @@ class CloudWorkspaceSheet extends StatefulWidget {
 }
 
 class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
-  late TextEditingController _apiKeyCtrl;
+
   late TextEditingController _templateCtrl;
   late TextEditingController _passwordCtrl;
   late TextEditingController _repoCtrl;
@@ -73,7 +73,7 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
   void initState() {
     super.initState();
     final cfg = widget.initialConfig;
-    _apiKeyCtrl = TextEditingController(text: cfg.e2bApiKey);
+
     _templateCtrl = TextEditingController(text: cfg.templateId);
     _passwordCtrl = TextEditingController(
       text: widget.onlyConfig ? cfg.sandboxPassword : '',
@@ -92,7 +92,7 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
 
   @override
   void dispose() {
-    _apiKeyCtrl.dispose();
+
     _templateCtrl.dispose();
     _passwordCtrl.dispose();
     _repoCtrl.dispose();
@@ -103,7 +103,6 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
 
   CloudWorkspaceConfig _buildConfig() {
     return widget.initialConfig.copyWith(
-      e2bApiKey: _apiKeyCtrl.text.trim(),
       templateId: _templateCtrl.text.trim().isEmpty
           ? 'opencode'
           : _templateCtrl.text.trim(),
@@ -130,11 +129,11 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
   }
 
   Future<void> _saveAndLaunch() async {
-    final cfg = _buildConfig();
-    if (cfg.e2bApiKey.isEmpty) {
-      Snack.error(LocaleKeys.e2bApiKeyHint.tr);
+    if (Global.settings.cloudWorkspaceConfig.e2bApiKey.trim().isEmpty) {
+      Snack.error(LocaleKeys.e2bApiKeyEmptyError.tr);
       return;
     }
+    final cfg = _buildConfig();
     await widget.onSave(cfg);
     if (mounted) {
       Navigator.of(context).pop(true);
@@ -143,7 +142,7 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
   }
 
   Future<void> _fetchAndSelectTemplate() async {
-    final apiKey = _apiKeyCtrl.text.trim();
+    final apiKey = Global.settings.cloudWorkspaceConfig.e2bApiKey.trim();
     if (apiKey.isEmpty) {
       Snack.error(LocaleKeys.e2bApiKeyRequired.tr);
       return;
@@ -192,6 +191,9 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
       // 2. 弹出 GitHub 仓库选择列表
       final selected = await GitRepoPickerSheet.show(context, token: token);
 
+      // picker 关闭后移除焦点,防止 token 输入框自动获焦弹出键盘
+      FocusManager.instance.primaryFocus?.unfocus();
+
       if (selected != null && mounted) {
         setState(() {
           _repoCtrl.text = selected.cloneUrl;
@@ -233,10 +235,10 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         children: [
-          // ── 1. E2B 凭据与模板 ──
+          // ── 1. 沙盒模板与密码 ──
           _buildSectionHeader(
             Icons.cloud_outlined,
-            LocaleKeys.e2bCredentials.tr,
+            LocaleKeys.e2bTemplate.tr,
             theme,
           ),
           Card(
@@ -256,21 +258,6 @@ class _CloudWorkspaceSheetState extends State<CloudWorkspaceSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  TextField(
-                    controller: _apiKeyCtrl,
-                    keyboardType: TextInputType.text,
-                    enableSuggestions: true,
-                    autocorrect: false,
-                    decoration: InputDecoration(
-                      isDense: true,
-                      floatingLabelBehavior: FloatingLabelBehavior.always,
-                      labelText: LocaleKeys.e2bApiKey.tr,
-                      hintText: LocaleKeys.e2bApiKeyHint.tr,
-                      hintStyle: hintStyle,
-                      border: const OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
                   TextField(
                     controller: _templateCtrl,
                     keyboardType: TextInputType.text,

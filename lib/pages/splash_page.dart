@@ -15,6 +15,7 @@ import '../utils/translations.dart';
 import '../utils/url_utils.dart';
 import 'settings/opencode/cloud_workspace_launch_dialog.dart';
 import 'settings/opencode/cloud_workspace_sheet.dart';
+import 'settings/opencode/e2b_api_key_dialog.dart';
 import 'settings/opencode/e2b_sandbox_picker_sheet.dart';
 
 class SplashPage extends StatefulWidget {
@@ -593,21 +594,11 @@ class _SplashPageState extends State<SplashPage> {
               const SizedBox(height: 20),
               FilledButton.icon(
                 onPressed: () async {
-                  await CloudWorkspaceSheet.show(context, onlyConfig: true);
+                  await E2bApiKeyDialog.show(context);
                   if (mounted) setState(() {});
                 },
-                icon: const Icon(Icons.settings_outlined, size: 18),
+                icon: const Icon(Icons.vpn_key_outlined, size: 18),
                 label: Text(LocaleKeys.e2bConfigApiKey.tr),
-              ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: () {
-                  setState(() {
-                    _selectedMode = 0;
-                    _errorText = null;
-                  });
-                },
-                child: Text(LocaleKeys.switchToSelfHosted.tr),
               ),
             ],
           ),

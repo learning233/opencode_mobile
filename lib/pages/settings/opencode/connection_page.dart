@@ -17,6 +17,7 @@ import '../../../utils/translations.dart';
 import '../../../utils/url_utils.dart';
 import 'cloud_workspace_launch_dialog.dart';
 import 'cloud_workspace_sheet.dart';
+import 'e2b_api_key_dialog.dart';
 
 class OpencodeConnectionPage extends StatefulWidget {
   const OpencodeConnectionPage({super.key});
@@ -293,7 +294,7 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
     }
   }
 
-  /// 挂起休眠沙盒
+  /// 休眠沙盒
   Future<void> _pauseSandbox(E2bSandboxInfo item) async {
     final config = Global.settings.cloudWorkspaceConfig;
     if (config.e2bApiKey.isEmpty) return;
@@ -315,9 +316,6 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
             Get.find<SessionController>().disconnectSse();
           }
         }
-        Snack.success(
-          LocaleKeys.e2bSandboxPausedSuccess.trParams({'id': item.sandboxId}),
-        );
         await _fetchSandboxList();
       } else {
         Snack.error(
@@ -345,9 +343,6 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
             (curr) => curr.copyWith(activeSandboxStatus: 'running'),
           );
         }
-        Snack.success(
-          LocaleKeys.e2bSandboxResumedSuccess.trParams({'id': item.sandboxId}),
-        );
         await _fetchSandboxList();
       } else {
         Snack.error(
@@ -406,11 +401,6 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
             Get.find<SessionController>().disconnectSse();
           }
         }
-        Snack.success(
-          LocaleKeys.e2bSandboxDestroyedSuccess.trParams({
-            'id': item.sandboxId,
-          }),
-        );
         await _fetchSandboxList();
       } else {
         Snack.error(
@@ -605,12 +595,21 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
           title: LocaleKeys.e2bAuthFailedTitle.tr,
           subtitle: LocaleKeys.e2bAuthFailedDesc.tr,
         );
+      } else if (status == null) {
+        // 网络超时 / 无法访问（不能当成 200，也不能误报为 OpenCode 未启动）
+        state = (
+          icon: Icons.cloud_off_outlined,
+          iconColor: theme.colorScheme.error,
+          title: LocaleKeys.mobileUnreachable.tr,
+          subtitle: '$activeId (${LocaleKeys.connectionDisconnected.tr})',
+        );
       } else {
+        // 明确收到非 200 的 HTTP 响应（如 502 说明端口未监听）
         state = (
           icon: Icons.warning_amber_rounded,
           iconColor: theme.colorScheme.error,
           title: LocaleKeys.e2bServiceNotReadyTitle.trParams({
-            'status': status?.toString() ?? 'no_resp',
+            'status': status.toString(),
           }),
           subtitle: LocaleKeys.e2bServiceNotReadyDesc.tr,
         );
@@ -653,13 +652,41 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
         ),
       ),
       trailing: hasKey
-          ? IconButton(
-              icon: const Icon(Icons.refresh),
-              onPressed: _cloudChecking ? null : _refreshCloudStatus,
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.vpn_key_outlined, size: 20),
+                  tooltip: LocaleKeys.e2bConfigApiKey.tr,
+                  onPressed: () async {
+                    await E2bApiKeyDialog.show(context);
+                    if (mounted) {
+                      setState(() {});
+                      _refreshCloudStatus();
+                    }
+                  },
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  onPressed: _cloudChecking ? null : _refreshCloudStatus,
+                ),
+              ],
             )
           : IconButton(
-              icon: const Icon(Icons.settings_outlined),
-              onPressed: () => _openCloudWorkspaceSheet(onlyConfig: true),
+              icon: const Icon(Icons.vpn_key_outlined),
+              tooltip: LocaleKeys.e2bConfigApiKey.tr,
+              onPressed: () async {
+                await E2bApiKeyDialog.show(context);
+                if (mounted) {
+                  setState(() {});
+                  _refreshCloudStatus();
+                  if (Global.settings.cloudWorkspaceConfig.e2bApiKey
+                      .trim()
+                      .isNotEmpty) {
+                    _fetchSandboxList();
+                  }
+                }
+              },
             ),
     );
   }
@@ -768,8 +795,19 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
               ),
               const SizedBox(height: 16),
               FilledButton.icon(
-                onPressed: () => _openCloudWorkspaceSheet(onlyConfig: false),
-                icon: const Icon(Icons.key),
+                onPressed: () async {
+                  await E2bApiKeyDialog.show(context);
+                  if (mounted) {
+                    setState(() {});
+                    _refreshCloudStatus();
+                    if (Global.settings.cloudWorkspaceConfig.e2bApiKey
+                        .trim()
+                        .isNotEmpty) {
+                      _fetchSandboxList();
+                    }
+                  }
+                },
+                icon: const Icon(Icons.vpn_key_outlined),
                 label: Text(LocaleKeys.e2bConfigApiKey.tr),
               ),
             ],

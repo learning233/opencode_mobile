@@ -128,9 +128,6 @@ class _E2bSandboxPickerSheetState extends State<E2bSandboxPickerSheet> {
             (curr) => curr.copyWith(activeSandboxStatus: 'paused'),
           );
         }
-        Snack.success(
-          LocaleKeys.e2bSandboxPausedSuccess.trParams({'id': sb.sandboxId}),
-        );
         await _loadSandboxes();
       } else {
         Snack.error(
@@ -160,9 +157,6 @@ class _E2bSandboxPickerSheetState extends State<E2bSandboxPickerSheet> {
             (curr) => curr.copyWith(activeSandboxStatus: 'running'),
           );
         }
-        Snack.success(
-          LocaleKeys.e2bSandboxResumedSuccess.trParams({'id': sb.sandboxId}),
-        );
         await _loadSandboxes();
       } else {
         Snack.error(
@@ -220,9 +214,6 @@ class _E2bSandboxPickerSheetState extends State<E2bSandboxPickerSheet> {
             (curr) => curr.copyWith(clearActiveSandbox: true),
           );
         }
-        Snack.success(
-          LocaleKeys.e2bSandboxDestroyedSuccess.trParams({'id': sb.sandboxId}),
-        );
         await _loadSandboxes();
       } else {
         Snack.error(

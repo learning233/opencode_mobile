@@ -116,9 +116,9 @@ class E2bWorkspaceService {
 
   Dio _healthDio = Dio(
     BaseOptions(
-      connectTimeout: const Duration(seconds: 4),
-      sendTimeout: const Duration(seconds: 4),
-      receiveTimeout: const Duration(seconds: 4),
+      connectTimeout: const Duration(seconds: 10),
+      sendTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 10),
     ),
   );
 
@@ -145,12 +145,26 @@ probe() {
   echo "$code"
 }
 
-# 若已就绪直接退出; 否则清理可能残留的旧进程(用 [o] 正则避免自匹配)
-if [ "$(probe)" = "200" ]; then
-  echo "opencode serve already healthy on 4096"
-  exit 0
-fi
-pkill -f "[o]pencode serve" 2>/dev/null || true
+code="$(probe)"
+case "$code" in
+  200)
+    echo "opencode serve already healthy on 4096"
+    exit 0
+    ;;
+  000)
+    echo "no server listening on 4096 yet"
+    ;;
+  401|403)
+    echo "existing serve authentication mismatch (HTTP $code), terminating old process"
+    pkill -9 -x opencode 2>/dev/null || true
+    sleep 1
+    ;;
+  *)
+    echo "port 4096 has a server with mismatched auth (HTTP $code), restarting..."
+    pkill -x opencode 2>/dev/null || true
+    sleep 1
+    ;;
+esac
 
 # opencode 缺失时自动安装:官方安装脚本优先,npm 兜底(base 模板自带 Node/curl)
 if ! command -v opencode > /dev/null 2>&1; then

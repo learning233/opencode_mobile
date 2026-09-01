@@ -160,7 +160,8 @@ sequenceDiagram
 | **核心服务** | `lib/services/e2b_workspace_service.dart` | E2B REST/RPC 交互单例（创建、销毁、唤醒、休眠、列表、进程守护、健康轮询） |
 | **Git 服务** | `lib/services/git_repo_service.dart` | GitHub 仓库读取、搜索、带鉴权 Clone URL 构建 |
 | **连接界面** | `lib/pages/settings/opencode/connection_page.dart` | 直连 / 云端工作区双模式切换、沙盒列表展示与操作 |
-| **配置底板** | `lib/pages/settings/opencode/cloud_workspace_sheet.dart` | 云工作区配置抽屉（API Key、Git Token、模板、超时） |
+| **Key 对话框** | `lib/pages/settings/opencode/e2b_api_key_dialog.dart` | 轻量级 E2B API Key 账户凭据输入对话框（解耦独立） |
+| **配置底板** | `lib/pages/settings/opencode/cloud_workspace_sheet.dart` | 云工作区沙盒参数配置抽屉（模板、沙盒密码、Git 仓库、超时保活） |
 | **启动弹窗** | `lib/pages/settings/opencode/cloud_workspace_launch_dialog.dart` | 一键启动进度弹窗动画与状态流转 |
 | **仓库选择** | `lib/pages/settings/opencode/git_repo_picker_sheet.dart` | Git 仓库浏览与分支选择抽屉 |
 | **多语言** | `lib/utils/translations.dart` | 云工作区中英文国际化文本字典 |
@@ -272,4 +273,86 @@ serve 从未被拉起。`recoverPassword` 存在同款自匹配。
    * `ProjectController.refreshAfterConnect` 清理旧内存；`fetchProjects` 移除跨端 `localOnly` 幽灵项目合并，严格展示当前后端的真实项目；
    * `CloudWorkspaceSheet` 保存 Key 流程改为异步落盘，退出后立即触发连接页 `setState` 与 `_fetchSandboxList`。
 
+---
 
+## 八、E2B 模板与 OpenCode 服务的权责架构
+
+在使用 E2B 云端沙盒时，许多开发者容易混淆「E2B 模板」与「OpenCode 服务」的边界与职责。本节明确说明两者的协作机制。
+
+### 1. 概念边界与协作分工
+
+| 维度 | E2B 模板 (Template) | OpenCode 服务 (opencode serve) |
+| :--- | :--- | :--- |
+| **本质属性** | 底层 Linux 虚拟机的**静态只读快照 / 镜像** | 运行在虚拟机内的**动态应用守护进程** |
+| **部署主体** | E2B 平台托管（官方提供或用户通过 CLI 自定义构建） | **由客户端 App 引导脚本（Bootstrap Script）自动拉起** |
+| **负责内容** | 操作系统发行版（Ubuntu）、系统库、预装运行时（Node.js/Python/Rust/Docker） | 监听 `4096` 端口、Basic Auth 鉴权、提供 OpenAPI、处理 PTY 终端会话 |
+| **动态变量** | **无**（完全静态，所有沙盒实例共享同一个母体快照） | **高度动态**：每次沙盒生成不同的随机密码、绑定不同的 GitHub 代码仓库 |
+
+### 2. 为什么服务不能直接在模板做镜像时开机自启？
+
+1. **密码动态性**：沙盒访问密码出于安全考虑是随机生成的（或用户在 App 端临时指定），模板快照制作时不可能预知未来的连接密码；
+2. **代码上下文动态性**：每个沙盒要打开的 GitHub 仓库与分支不同，`opencode serve` 必须在目标项目克隆完成后的**项目根目录**下执行，OpenCode 才能识别该项目的上下文与文件树。
+
+### 3. 两种模板类型下的启动流转
+
+```mermaid
+flowchart TD
+    Start[App 触发 launchWorkspace] --> CreateVM[E2B 创建 MicroVM 沙盒实例]
+    CreateVM --> RunBootstrap[执行 bootstrapScript 引导脚本]
+    
+    subgraph Sandbox_VM [沙盒内部]
+        RunBootstrap --> CheckInstalled{模板中是否预装 opencode?}
+        CheckInstalled -->|是: 自定义模板| ShowVer[秒级跳过安装，输出版本]
+        CheckInstalled -->|否: 官方 base 模板| AutoInstall[自动现场安装: curl opencode.ai/install]
+        AutoInstall --> ShowVer
+        ShowVer --> GitClone[克隆目标 GitHub 仓库并切至分支]
+        GitClone --> StartServe[注入当前密码，setsid nohup 启动 opencode serve]
+        StartServe --> WaitPort[循环探测本机 4096 端口就绪]
+    end
+
+    WaitPort --> HealthOK[App 探测 4096 健康通过]
+    HealthOK --> EnterHome[完成握手，进入 App 首页]
+```
+
+* **选用官方模板（如 `base`）**：引导脚本检测到系统中没有 `opencode` 命令，会自动执行 `curl -fsSL https://opencode.ai/install | bash` 进行自动化现场安装（相当于 App 帮你完成部署），然后再启动服务。首次启动需约 30~60 秒。
+* **选用自定义模板（如 `opencode`）**：若开发者按照 [自定义模板指南](e2b_template_guide.md) 提前将 `opencode` 固化进镜像，脚本检查到二进制存在即秒级跳过安装，直接拉取代码并起服务，启动时间缩减至约 5 秒。
+
+---
+
+## 九、补充修复(2026-09-01 第五轮:交互架构解耦与自杀Bug修复)
+
+### 1. 交互重构：API Key 与沙盒配置彻底解耦 (`E2bApiKeyDialog`)
+
+#### 问题背景
+此前 `CloudWorkspaceSheet` 将「E2B API Key」和「新建沙盒表单（模板、密码、Git 仓库、TTL）」塞在同一个抽屉中。导致：
+* 首次使用时，无 Key 状态弹出配置抽屉，用户保存 Key 后回到页面，竟然还要再点击一次「新建沙盒」打开同一个抽屉填参数，流程割裂多余；
+* E2B API Key 是**全局/账户级**凭证，所有沙盒共享同一个 Key 池；而模板、Git、TTL 是**沙盒级**参数，两者生命周期完全不同。
+
+#### 方案改动
+1. **独立轻量弹窗**：新增 `E2bApiKeyDialog`，仅包含单个 Key 输入框，用于输入和清空 Key，保存直接写库不阻塞；
+2. **沙盒表单瘦身**：`CloudWorkspaceSheet` 彻底移除 API Key 输入框，内部直接从 `Global.settings` 静默透传 Key，专注于沙盒参数；
+3. **无 Key 场景统一引导**：Splash 页与连接页在未配置 Key 时，统一唤起 `E2bApiKeyDialog`，填好后刷新状态直接切到沙盒列表/新建页；
+4. **有 Key 状态便捷修改**：连接页健康状态栏右侧新增钥匙图标，点击随时可换 Key。
+
+---
+
+### 2. 启动脚本自身被 pkill 误杀故障修复
+
+#### 故障现象
+新建沙盒时，日志打印出 `=== OpenCode Bootstrap ===` 和 `USER: user, HOME: /home/user` 后彻底停滞，等待 30 秒后报服务超时失败。
+
+#### 故障根因
+此前优化代码时，将探测分支简化为了无条件的：
+```bash
+pkill -f "[o]pencode serve" 2>/dev/null || true
+```
+因为通过 E2B RPC 执行命令是走 `/bin/bash -l -c "<完整脚本字符串>"`，**当前运行的 bash 进程自身的 cmdline 中就包含了整个脚本的字符串**（后文恰好有 `opencode serve --hostname ...`）。
+`pkill -f` 匹配的是进程的**完整命令行**，导致其匹配到了正在执行脚本的 bash 父进程自身，脚本刚打印完两行 log 就被自身发出的信号直接杀死，后续安装、克隆与启动服务均无法执行。
+
+#### 修复方案
+1. **新建沙盒（000）绝不 kill**：恢复 `probe` 三态分支，新建沙盒端口无监听（`000`）时明确判定为正常冷启动，不执行任何 kill 语句，直接跳过；
+2. **精确匹配二进制进程名**：对于确需杀死旧服务的异常分支（401/403 密码不匹配），改用：
+   ```bash
+   pkill -x opencode 2>/dev/null || true
+   ```
+   `-x` 仅匹配 `comm` 名字为 `opencode` 的真正二进制程序，绝不会波及名为 `bash` 的脚本进程，彻底杜绝自杀。

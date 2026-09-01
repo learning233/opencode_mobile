@@ -50,9 +50,6 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
   bool _hiddenProjectsExpanded = false;
   String _appVersion = 'v0.9.8';
 
-  List<E2bSandboxInfo> _sandboxes = [];
-  bool _loadingSandboxes = false;
-  String? _sandboxesError;
   bool _isSwitchingBackend = false;
   String? _switchingMessage;
 
@@ -61,7 +58,9 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
     super.initState();
     drawerMode = (widget.initialMode ?? DrawerMode.projects).obs;
     _loadVersion();
-    _fetchSandboxes();
+    if (Get.isRegistered<ProjectController>()) {
+      Get.find<ProjectController>().fetchSandboxes();
+    }
 
     if (Get.isRegistered<ProjectController>()) {
       _projectWorker = ever(Get.find<ProjectController>().activeProject, (_) {
@@ -173,33 +172,8 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
   }
 
   Future<void> _fetchSandboxes() async {
-    final apiKey = Global.settings.cloudWorkspaceConfig.e2bApiKey.trim();
-    if (apiKey.isEmpty) {
-      if (mounted) {
-        setState(() {
-          _sandboxes = [];
-          _loadingSandboxes = false;
-        });
-      }
-      return;
-    }
-    if (mounted) setState(() => _loadingSandboxes = true);
-    try {
-      final list = await E2bWorkspaceService.instance.fetchSandboxes(apiKey);
-      if (mounted) {
-        setState(() {
-          _sandboxes = list;
-          _sandboxesError = null;
-          _loadingSandboxes = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _sandboxesError = '$e';
-          _loadingSandboxes = false;
-        });
-      }
+    if (Get.isRegistered<ProjectController>()) {
+      await Get.find<ProjectController>().fetchSandboxes();
     }
   }
 
@@ -624,7 +598,10 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
                     ),
                     onPressed: () async {
                       final saved = await E2bApiKeyDialog.show(context);
-                      if (saved == true) _fetchSandboxes();
+                      if (saved == true) {
+                        if (mounted) setState(() {});
+                        _fetchSandboxes();
+                      }
                     },
                   ),
                 ] else ...[
@@ -662,12 +639,12 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
                   ),
                 ),
               )
-            else if (_loadingSandboxes && _sandboxes.isEmpty)
+            else if (projectCtrl.isLoadingSandboxes.value && projectCtrl.sandboxes.isEmpty)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 16),
                 child: Center(child: CupertinoActivityIndicator()),
               )
-            else if (_sandboxesError != null && _sandboxes.isEmpty)
+            else if (projectCtrl.sandboxesError.value != null && projectCtrl.sandboxes.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Center(
@@ -681,7 +658,7 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
                   ),
                 ),
               )
-            else if (_sandboxes.isEmpty)
+            else if (projectCtrl.sandboxes.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Center(
@@ -717,7 +694,7 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
   ) {
     final items = <Widget>[];
 
-    for (final sb in _sandboxes) {
+    for (final sb in projectCtrl.sandboxes) {
       final isCurrentActiveSandbox =
           isCloudConnected && Global.serverUrl.contains(sb.sandboxId);
 

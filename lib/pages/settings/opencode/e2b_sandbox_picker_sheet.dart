@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import '../../../controllers/project_controller.dart';
 import '../../../init.dart';
 import '../../../models/e2b_sandbox_info.dart';
 import '../../../services/e2b_workspace_service.dart';
@@ -75,6 +76,9 @@ class _E2bSandboxPickerSheetState extends State<E2bSandboxPickerSheet> {
 
     try {
       final list = await E2bWorkspaceService.instance.fetchSandboxes(apiKey);
+      if (Get.isRegistered<ProjectController>()) {
+        Get.find<ProjectController>().sandboxes.assignAll(list);
+      }
       if (mounted) {
         setState(() {
           _sandboxes = list;

@@ -106,6 +106,9 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
 
     try {
       final list = await E2bWorkspaceService.instance.fetchSandboxes(apiKey);
+      if (Get.isRegistered<ProjectController>()) {
+        Get.find<ProjectController>().sandboxes.assignAll(list);
+      }
       if (mounted) {
         setState(() {
           _sandboxes = list;

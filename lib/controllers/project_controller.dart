@@ -6,6 +6,8 @@ import '../api/models/file_entry.dart';
 import '../api/models/project.dart';
 import '../api/opencode_client.dart';
 import '../init.dart';
+import '../models/e2b_sandbox_info.dart';
+import '../services/e2b_workspace_service.dart';
 import '../utils/app_logger.dart';
 
 import 'session_controller.dart';
@@ -21,6 +23,11 @@ class ProjectController extends GetxController {
   /// 供项目列表在空结果时给出重试入口。
   final projectsError = RxnString();
 
+  /// 全局响应式 E2B 沙盒列表
+  final sandboxes = <E2bSandboxInfo>[].obs;
+  final isLoadingSandboxes = false.obs;
+  final sandboxesError = RxnString();
+
   /// 已隐藏项目的归一化 worktree 路径。纯本地显示偏好：仅用于 drawer
   /// 列表过滤，不影响激活项目与会话（后端没有删除项目的接口）。
   final hiddenProjectKeys = <String>[].obs;
@@ -31,6 +38,7 @@ class ProjectController extends GetxController {
     hiddenProjectKeys
       ..clear()
       ..addAll(Global.settings.hiddenProjects.map(normalizeDirectory).toSet());
+    fetchSandboxes();
   }
 
   bool isProjectHidden(ProjectModel project) =>
@@ -56,8 +64,31 @@ class ProjectController extends GetxController {
   Future<void> refreshAfterConnect() async {
     projects.clear();
     activeProject.value = null;
-    await fetchProjects();
+    await Future.wait([
+      fetchProjects(),
+      fetchSandboxes(),
+    ]);
     _restoreLastProject();
+  }
+
+  Future<void> fetchSandboxes() async {
+    final apiKey = Global.settings.cloudWorkspaceConfig.e2bApiKey.trim();
+    if (apiKey.isEmpty) {
+      sandboxes.clear();
+      isLoadingSandboxes.value = false;
+      sandboxesError.value = null;
+      return;
+    }
+    isLoadingSandboxes.value = true;
+    try {
+      final list = await E2bWorkspaceService.instance.fetchSandboxes(apiKey);
+      sandboxes.assignAll(list);
+      sandboxesError.value = null;
+    } catch (e) {
+      sandboxesError.value = '$e';
+    } finally {
+      isLoadingSandboxes.value = false;
+    }
   }
 
   void _restoreLastProject() {

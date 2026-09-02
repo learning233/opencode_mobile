@@ -24,8 +24,6 @@ migrate_working_dir/
 .idea/
 
 rust/target/
-assets/sensevoice/model1_small.onnx
-assets/vad_stream.onnx
 
 # The .vscode folder contains launch configuration and tasks you configure in
 # VS Code which you may wish to be included in version control, so this line

@@ -1,21 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import '../controllers/project_controller.dart';
+import 'package:opencode_app/pages/left_drawer/left_drawer_mode.dart';
 import '../controllers/session_controller.dart';
 import '../controllers/tablet_tool_controller.dart';
 import '../utils/layout_utils.dart';
-import 'home/widgets/phone_brower.dart';
-import 'left_drawer.dart';
-import 'left_drawer/left_panel_content.dart';
-import 'right_drawer.dart';
 import '../utils/translations.dart';
+import 'home/home_app_bar.dart';
+import 'home/home_chat_body.dart';
 import 'home/tablet/resizable_divider.dart';
 import 'home/tablet/tablet_tool_panel.dart';
-import 'home/chat_view.dart';
-import 'home/prompt_input.dart';
-import 'home/session_indicator.dart';
+import 'home/widgets/phone_brower.dart';
+import 'left_drawer.dart';
+import 'right_drawer.dart';
 
+/// page 根目录主页结构文件：主要放页面框架、响应式布局组织和退出逻辑，
+/// 具体的 UI 元素放入对应文件夹中（如 lib/pages/home/）。
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -24,12 +24,7 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  late PageController _pageController;
-  Worker? _activeSessionWorker;
-  Worker? _openedSessionsWorker;
   Worker? _browserSheetWorker;
-  int? _swipeStartPage;
-  bool _isSmartNavigating = false;
 
   /// Whether the phone-layout browser layer has ever been opened. Once true,
   /// the layer stays mounted forever (WebView survives close); before that it
@@ -87,43 +82,6 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    final sessionCtrl = Get.find<SessionController>();
-    final initialActiveId = sessionCtrl.activeSessionId.value;
-    final initialOpened = sessionCtrl.openedSessionIds.toList();
-    final initialIdx = initialOpened.indexOf(initialActiveId);
-
-    _pageController = PageController(
-      initialPage: initialIdx != -1 ? initialIdx : 0,
-    );
-
-    void syncPageToActiveSession({bool immediate = false}) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !_pageController.hasClients) return;
-        final activeId = sessionCtrl.activeSessionId.value;
-        final opened = sessionCtrl.openedSessionIds.toList();
-        final idx = opened.indexOf(activeId);
-        if (idx != -1 && _pageController.page?.round() != idx) {
-          if (immediate) {
-            _pageController.jumpToPage(idx);
-          } else {
-            _pageController.animateToPage(
-              idx,
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeInOut,
-            );
-          }
-        }
-      });
-    }
-
-    _activeSessionWorker = ever(
-      sessionCtrl.activeSessionId,
-      (_) => syncPageToActiveSession(),
-    );
-    _openedSessionsWorker = ever(
-      sessionCtrl.openedSessionIds,
-      (_) => syncPageToActiveSession(),
-    );
 
     // 手机布局：首次打开浏览器 sheet 后常驻保活层（WebView 不随关闭销毁）。
     _browserSheetWorker = ever(
@@ -139,24 +97,12 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
-    _activeSessionWorker?.dispose();
-    _openedSessionsWorker?.dispose();
     _browserSheetWorker?.dispose();
-    _pageController.dispose();
     super.dispose();
-  }
-
-  void _jumpToOpened(
-    SessionController sessionCtrl,
-    List<String> opened,
-    String id,
-  ) {
-    sessionCtrl.selectSession(id);
   }
 
   @override
   Widget build(BuildContext context) {
-    final projectCtrl = Get.find<ProjectController>();
     final sessionCtrl = Get.find<SessionController>();
     final toolCtrl = Get.find<TabletToolController>();
     final width = MediaQuery.of(context).size.width;
@@ -169,14 +115,13 @@ class _HomePageState extends State<HomePage> {
         await _handlePop(context);
       },
       child: isTablet
-          ? tabletWidget(sessionCtrl, projectCtrl, toolCtrl, width)
-          : phoneWidget(sessionCtrl, projectCtrl, toolCtrl),
+          ? tabletWidget(sessionCtrl, toolCtrl, width)
+          : phoneWidget(sessionCtrl, toolCtrl),
     );
   }
 
   Widget phoneWidget(
     SessionController sessionCtrl,
-    ProjectController projectCtrl,
     TabletToolController toolCtrl,
   ) {
     return Stack(
@@ -189,10 +134,15 @@ class _HomePageState extends State<HomePage> {
               : 'OpenCode';
 
           return Scaffold(
-            appBar: _buildAppBar(sessionCtrl, opened, sessionId, title),
+            appBar: HomeAppBar(
+              sessionCtrl: sessionCtrl,
+              opened: opened,
+              sessionId: sessionId,
+              title: title,
+            ),
             drawer: const LeftDrawer(),
             endDrawer: const RightDrawer(),
-            body: _buildChatBody(context, projectCtrl, sessionCtrl),
+            body: const HomeChatBody(),
           );
         }),
         // 常驻浏览器层：首次打开后永不卸载，关闭只下滑隐藏，WebView 保活。
@@ -207,7 +157,6 @@ class _HomePageState extends State<HomePage> {
 
   Widget tabletWidget(
     SessionController sessionCtrl,
-    ProjectController projectCtrl,
     TabletToolController toolCtrl,
     final double width,
   ) {
@@ -225,26 +174,23 @@ class _HomePageState extends State<HomePage> {
                     ? sessionCtrl.getSessionName(curSessionId)
                     : 'OpenCode';
                 return Scaffold(
-                  appBar: _buildAppBar(
-                    sessionCtrl,
-                    curOpened,
-                    curSessionId,
-                    curTitle,
+                  appBar: HomeAppBar(
+                    sessionCtrl: sessionCtrl,
+                    opened: curOpened,
+                    sessionId: curSessionId,
+                    title: curTitle,
                     showToolPanelToggle: true,
                     isTablet: true,
                   ),
                   drawer: const LeftDrawer(initialMode: DrawerMode.projects),
                   endDrawer: const RightDrawer(),
-                  body: _buildChatBody(context, projectCtrl, sessionCtrl),
+                  body: const HomeChatBody(),
                 );
               }),
             ),
           ),
         ),
         // Right side: resizable divider + tool panel
-        // Visibility(maintainState) keeps the panel subtree alive when
-        // hidden, so toggling visibility does NOT destroy the webview,
-        // editors, terminal or ReviewPage state (plain `if` would).
         Obx(() {
           final toolVisible = toolCtrl.isVisible.value;
           final toolWidth = toolCtrl.getPixelWidth(width);
@@ -266,251 +212,6 @@ class _HomePageState extends State<HomePage> {
           );
         }),
       ],
-    );
-  }
-
-  Widget _buildChatBody(
-    BuildContext context,
-    ProjectController projectCtrl,
-    SessionController sessionCtrl,
-  ) {
-    final project = projectCtrl.activeProject.value;
-    final opened = sessionCtrl.openedSessionIds.toList();
-
-    if (project == null) {
-      return Center(child: Text(LocaleKeys.mobileSelectProject.tr));
-    }
-
-    if (opened.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              LocaleKeys.mobileNoActiveSessions.tr,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 12),
-            FilledButton.tonal(
-              onPressed: () => sessionCtrl.createNewSession(),
-              child: Text(LocaleKeys.cmdNewSession.tr),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // Ensure PageController is synced to active session when returning/building
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_pageController.hasClients) return;
-      final activeId = sessionCtrl.activeSessionId.value;
-      final idx = opened.indexOf(activeId);
-      if (idx != -1 && _pageController.page?.round() != idx) {
-        _pageController.jumpToPage(idx);
-      }
-    });
-
-    return NotificationListener<ScrollNotification>(
-      onNotification: (notification) {
-        if (notification is ScrollStartNotification) {
-          if (_pageController.hasClients) {
-            _swipeStartPage = _pageController.page?.round();
-          }
-        } else if (notification is ScrollEndNotification) {
-          final startPage = _swipeStartPage;
-          _swipeStartPage = null;
-          if (startPage != null &&
-              _pageController.hasClients &&
-              !_isSmartNavigating) {
-            final currentPage = _pageController.page?.round() ?? startPage;
-            if (currentPage != startPage) {
-              // Re-fetch latest opened list to avoid stale closure
-              final latestOpened = sessionCtrl.openedSessionIds.toList();
-              final isForward = currentPage > startPage;
-              final targetIdx = sessionCtrl.getNextAttentionPageIndex(
-                currentIndex: startPage,
-                openedIds: latestOpened,
-                isForward: isForward,
-              );
-              // 若算法匹配到的待办卡片非相邻卡片（如由 Page 1 智能滑跃至 Page 4）
-              if (targetIdx != currentPage &&
-                  targetIdx >= 0 &&
-                  targetIdx < latestOpened.length &&
-                  (targetIdx - startPage).abs() > 1) {
-                _isSmartNavigating = true;
-                _pageController
-                    .animateToPage(
-                      targetIdx,
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeOutCubic,
-                    )
-                    .whenComplete(() {
-                      _isSmartNavigating = false;
-                    });
-                sessionCtrl.selectSession(latestOpened[targetIdx]);
-              }
-            }
-          }
-        }
-        return false;
-      },
-      child: PageView.builder(
-        controller: _pageController,
-        itemCount: opened.length,
-        allowImplicitScrolling: true,
-        onPageChanged: (page) {
-          if (!_isSmartNavigating && page >= 0) {
-            // Re-read the latest opened list so a list change during the swipe
-            // gesture cannot select a stale session.
-            final latestOpened = sessionCtrl.openedSessionIds.toList();
-            if (page < latestOpened.length) {
-              sessionCtrl.selectSession(latestOpened[page]);
-            }
-          }
-        },
-        itemBuilder: (context, index) {
-          final sid = opened[index];
-          return Column(
-            key: ValueKey('page_$sid'),
-            children: [
-              Expanded(child: ChatView(sessionId: sid)),
-              PromptInput(sessionId: sid),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  PreferredSizeWidget _buildAppBar(
-    SessionController sessionCtrl,
-    List<String> opened,
-    String sessionId,
-    String title, {
-    bool showMenu = true,
-    bool showEndDrawer = true,
-    bool showToolPanelToggle = false,
-    bool isTablet = false,
-  }) {
-    final theme = Theme.of(context);
-
-    return AppBar(
-      toolbarHeight: isTablet ? 40.0 : kToolbarHeight,
-      centerTitle: true,
-      title: opened.isNotEmpty
-          ? SessionIndicator(
-              openedIds: opened,
-              activeId: sessionId,
-              onTap: (id) => _jumpToOpened(sessionCtrl, opened, id),
-            )
-          : Text(title, style: const TextStyle(fontSize: 16)),
-      automaticallyImplyLeading: showMenu,
-      actions: [
-        if (showToolPanelToggle)
-          Obx(() {
-            final toolCtrl = Get.find<TabletToolController>();
-            return IconButton(
-              icon: Icon(
-                toolCtrl.isVisible.value
-                    ? Icons.view_sidebar
-                    : Icons.view_sidebar_outlined,
-                color: toolCtrl.isVisible.value
-                    ? theme.colorScheme.primary
-                    : null,
-              ),
-              tooltip: LocaleKeys.tabletToggleToolPanel.tr,
-              onPressed: () => toolCtrl.togglePanel(),
-            );
-          }),
-        if (showEndDrawer)
-          Builder(
-            builder: (ctx) => IconButton(
-              icon: const Icon(Icons.tune_outlined),
-              onPressed: () => Scaffold.of(ctx).openEndDrawer(),
-            ),
-          ),
-      ],
-      bottom: opened.isNotEmpty
-          ? PreferredSize(
-              preferredSize: const Size.fromHeight(28),
-              child: Obx(() {
-                final tokens = sessionCtrl.activeSessionMessageTokens(
-                  sessionId,
-                );
-                final maxLimit = sessionCtrl.modelContextLimitFor(sessionId);
-                final hasLimit = maxLimit > 0 && tokens > 0;
-                final ratio = hasLimit
-                    ? (tokens / maxLimit).clamp(0.0, 1.0)
-                    : 0.0;
-
-                final barColor = ratio >= 0.9
-                    ? Colors.red
-                    : ratio >= 0.75
-                    ? Colors.orange
-                    : theme.colorScheme.primary;
-
-                return Container(
-                  width: double.infinity,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest.withValues(
-                      alpha: 0.2,
-                    ),
-                    border: Border(
-                      top: BorderSide(
-                        color: theme.colorScheme.outline.withValues(alpha: 0.1),
-                        width: 0.5,
-                      ),
-                      bottom: BorderSide(
-                        color: theme.colorScheme.outline.withValues(alpha: 0.1),
-                        width: 0.5,
-                      ),
-                    ),
-                  ),
-                  child: Stack(
-                    children: [
-                      // Centered Session Title
-                      Positioned.fill(
-                        child: Center(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Text(
-                              title,
-                              style: TextStyle(
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w600,
-                                color: theme.colorScheme.onSurface,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ),
-                      ),
-                      // Context Token Usage Progress Bar (Bottom Divider Line)
-                      if (hasLimit)
-                        Positioned(
-                          left: 0,
-                          right: 0,
-                          bottom: 0,
-                          height: 1.5,
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: FractionallySizedBox(
-                              widthFactor: ratio,
-                              child: Container(
-                                color: barColor.withValues(alpha: 0.85),
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                );
-              }),
-            )
-          : null,
     );
   }
 }

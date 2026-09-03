@@ -64,9 +64,11 @@ class ProcessInfo {
       pid: json['pid'] as int? ?? 0,
       tag: json['tag'] as String?,
       cmd: config['cmd'] as String? ?? '',
-      args: (config['args'] as List?)?.map((e) => e.toString()).toList() ??
+      args:
+          (config['args'] as List?)?.map((e) => e.toString()).toList() ??
           const [],
-      envs: (config['envs'] as Map?)?.map(
+      envs:
+          (config['envs'] as Map?)?.map(
             (k, v) => MapEntry(k.toString(), v.toString()),
           ) ??
           const {},

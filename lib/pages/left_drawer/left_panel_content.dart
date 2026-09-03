@@ -3,7 +3,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:get/get.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import '../../api/models/project.dart';
 import '../../api/models/search_result.dart';
 import '../../api/sidecar_manager.dart';
@@ -20,36 +19,34 @@ import '../../utils/layout_utils.dart';
 import '../../utils/snackbar_utils.dart';
 import '../../utils/translations.dart';
 import 'file_tree_view.dart';
-import 'vad_settings_sheet.dart';
 import '../settings/connect/cloud_workspace_launch_dialog.dart';
 import '../settings/connect/cloud_workspace_sheet.dart';
 import '../settings/connect/e2b_api_key_dialog.dart';
 import '../settings/connect/self_hosted_connection_sheet.dart';
 import 'project_tile.dart';
 
-enum DrawerMode { projects, files }
+import 'left_drawer_mode.dart';
 
-/// Shared left-sidebar content used by both the phone drawer and the tablet panel.
-class LeftPanelContent extends StatefulWidget {
-  const LeftPanelContent({super.key, required this.isDrawer, this.initialMode});
+/// 左抽屉内容主体部件（项目空间列表与文件树浏览两种模式）。
+class LeftDrawerBody extends StatefulWidget {
+  const LeftDrawerBody({
+    super.key,
+    required this.drawerMode,
+    this.isDrawer = true,
+  });
 
-  /// true when shown inside a sliding Drawer (phone), false for a permanent rail.
+  final Rx<DrawerMode> drawerMode;
   final bool isDrawer;
 
-  /// Optional initial mode override (e.g. projects for HomePage, files for FilePage).
-  final DrawerMode? initialMode;
-
   @override
-  State<LeftPanelContent> createState() => _LeftPanelContentState();
+  State<LeftDrawerBody> createState() => _LeftDrawerBodyState();
 }
 
-class _LeftPanelContentState extends State<LeftPanelContent> {
-  late final Rx<DrawerMode> drawerMode;
+class _LeftDrawerBodyState extends State<LeftDrawerBody> {
   final ScrollController _projectsScrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
   Worker? _projectWorker;
   bool _hiddenProjectsExpanded = false;
-  String _appVersion = 'v0.9.8';
 
   bool _isSwitchingBackend = false;
   String? _switchingMessage;
@@ -57,12 +54,6 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
   @override
   void initState() {
     super.initState();
-    drawerMode = (widget.initialMode ?? DrawerMode.projects).obs;
-    _loadVersion();
-    if (Get.isRegistered<ProjectController>()) {
-      Get.find<ProjectController>().fetchSandboxes();
-    }
-
     if (Get.isRegistered<ProjectController>()) {
       _projectWorker = ever(Get.find<ProjectController>().activeProject, (_) {
         _searchController.clear();
@@ -81,95 +72,20 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
     super.dispose();
   }
 
-  Future<void> _loadVersion() async {
-    try {
-      final info = await PackageInfo.fromPlatform();
-      if (mounted) {
-        setState(() {
-          _appVersion = 'v${info.version}';
-        });
-      }
-    } catch (_) {}
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final projectCtrl = Get.find<ProjectController>();
 
-    return SafeArea(
-      child: Column(
-        children: [
-          // Header / Content Body
-          Expanded(
-            child: Obx(() {
-              final mode = drawerMode.value;
-              final activeProj = projectCtrl.activeProject.value;
+    return Obx(() {
+      final mode = widget.drawerMode.value;
+      final activeProj = projectCtrl.activeProject.value;
 
-              if (mode == DrawerMode.files && activeProj != null) {
-                return _buildFilesMode(context, theme, projectCtrl, activeProj);
-              }
-              return _buildProjectsMode(context, theme, projectCtrl);
-            }),
-          ),
-          // Mode Switcher Tile (above settings bar)
-          _buildModeSwitcherTile(context, theme, projectCtrl),
-          const Divider(height: 1),
-          // Bottom Settings Bar
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-            child: Obx(() {
-              final isLight = Global.themeIsLightRx.value;
-              final isZh = Global.languageRx.value?.languageCode == 'zh';
-
-              return Row(
-                children: [
-                  _buildBottomButton(
-                    context: context,
-                    icon: isLight
-                        ? Icons.light_mode_outlined
-                        : Icons.dark_mode_outlined,
-                    label: LocaleKeys.colorTheme.tr,
-                    onTap: () => Global.toggleTheme(),
-                  ),
-                  _buildBottomButton(
-                    context: context,
-                    icon: Icons.language,
-                    label: LocaleKeys.language.tr,
-                    onTap: () {
-                      final newLocale = isZh
-                          ? const Locale('en', 'US')
-                          : const Locale('zh', 'CN');
-                      Global.setLanguage(newLocale);
-                    },
-                  ),
-                  _buildBottomButton(
-                    context: context,
-                    icon: Icons.graphic_eq,
-                    label: LocaleKeys.vadSettingsTitle.tr,
-                    onTap: () {
-                      if (widget.isDrawer) Navigator.pop(context);
-                      VadSettingsSheet.show(context);
-                    },
-                  ),
-                  _buildBottomButton(
-                    context: context,
-                    icon: Icons.settings_outlined,
-                    label: LocaleKeys.mobileSettings.tr,
-                    onTap: () {
-                      if (widget.isDrawer) Navigator.pop(context);
-                      Get.toNamed(AppRoutes.opencodeSettings);
-                    },
-                  ),
-                ],
-              );
-            }),
-          ),
-          // Version Tile (below settings bar)
-          _buildVersionTile(context, theme),
-        ],
-      ),
-    );
+      if (mode == DrawerMode.files && activeProj != null) {
+        return _buildFilesMode(context, theme, projectCtrl, activeProj);
+      }
+      return _buildProjectsMode(context, theme, projectCtrl);
+    });
   }
 
   Future<void> _fetchSandboxes() async {
@@ -489,8 +405,9 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
                               vertical: 2,
                             ),
                           ),
-                          onPressed:
-                              _isSwitchingBackend ? null : _switchToSelfHosted,
+                          onPressed: _isSwitchingBackend
+                              ? null
+                              : _switchToSelfHosted,
                           icon: const Icon(Icons.swap_horiz, size: 14),
                           label: Text(
                             LocaleKeys.drawerClickToConnect.tr,
@@ -1706,134 +1623,6 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
         Get.toNamed(AppRoutes.fileList);
       }
     }
-  }
-
-  Widget _buildModeSwitcherTile(
-    BuildContext context,
-    ThemeData theme,
-    ProjectController projectCtrl,
-  ) {
-    final isTablet = isTabletLayout(context);
-
-    return Obx(() {
-      final isFiles = drawerMode.value == DrawerMode.files;
-      // On phone (non-tablet), do not show mode switcher tile at all
-      if (!isTablet) {
-        return const SizedBox.shrink();
-      }
-
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Divider(height: 1),
-          ListTile(
-            dense: true,
-            visualDensity: VisualDensity.compact,
-            minLeadingWidth: 24,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-            onTap: () {
-              drawerMode.value = isFiles
-                  ? DrawerMode.projects
-                  : DrawerMode.files;
-            },
-            leading: Icon(
-              isFiles
-                  ? Icons.folder_special_outlined
-                  : Icons.folder_copy_outlined,
-              size: 18,
-              color: theme.colorScheme.primary,
-            ),
-            title: Text(
-              isFiles
-                  ? LocaleKeys.drawerBackToProjects.tr
-                  : LocaleKeys.drawerBrowseFiles.tr,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: theme.colorScheme.onSurface,
-              ),
-            ),
-            trailing: Icon(
-              Icons.chevron_right,
-              size: 18,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      );
-    });
-  }
-
-  Widget _buildVersionTile(BuildContext context, ThemeData theme) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Divider(height: 1),
-        InkWell(
-          onTap: () {
-            if (widget.isDrawer) Navigator.pop(context);
-            Get.toNamed(AppRoutes.about);
-          },
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            alignment: Alignment.center,
-            child: Text(
-              _appVersion,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: theme.colorScheme.primary,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildBottomButton({
-    required BuildContext context,
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    final theme = Theme.of(context);
-    return Expanded(
-      child: Tooltip(
-        message: label,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
-                const SizedBox(height: 4),
-                SizedBox(
-                  height: 26,
-                  child: Center(
-                    child: Text(
-                      label,
-                      style: TextStyle(
-                        fontSize: 10,
-                        height: 1.1,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                      maxLines: 2,
-                      textAlign: TextAlign.center,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
 

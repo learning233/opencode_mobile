@@ -1,12 +1,10 @@
 import 'package:dio/dio.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../api/sidecar_manager.dart';
 import '../controllers/project_controller.dart';
 import '../controllers/session_controller.dart';
 import '../init.dart';
-import '../models/cloud_workspace_config.dart';
 import '../models/e2b_sandbox_info.dart';
 import '../routes.dart';
 import '../services/e2b_workspace_service.dart';
@@ -17,6 +15,9 @@ import 'settings/connect/cloud_workspace_launch_dialog.dart';
 import 'settings/connect/cloud_workspace_sheet.dart';
 import 'settings/connect/e2b_api_key_dialog.dart';
 import 'settings/connect/e2b_sandbox_picker_sheet.dart';
+import 'splash/splash_auto_connecting_view.dart';
+import 'splash/splash_cloud_view.dart';
+import 'splash/splash_self_hosted_view.dart';
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
@@ -68,9 +69,6 @@ class _SplashPageState extends State<SplashPage> {
       _selectedMode = 0;
     }
   }
-
-  /// 连接状态展示时对 URL 做脱敏：IPv4 每段隐藏首位，localhost/域名保持不变。
-  String _maskedUrl(String url) => maskUrl(url);
 
   Future<void> _tryAutoConnect() async {
     _cancelToken?.cancel();
@@ -359,36 +357,17 @@ class _SplashPageState extends State<SplashPage> {
   @override
   Widget build(BuildContext context) {
     if (_autoConnecting) {
-      return Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const CircularProgressIndicator(),
-              const SizedBox(height: 16),
-              Text(
-                _selectedMode == 1
-                    ? LocaleKeys.e2bProbingSandbox.tr
-                    : LocaleKeys.mobileAutoConnecting.trParams({
-                        'url': _maskedUrl(Global.selfHostedServerUrl),
-                      }),
-              ),
-              const SizedBox(height: 24),
-              TextButton(
-                onPressed: () {
-                  _connectSeq++;
-                  _cancelToken?.cancel();
-                  SidecarManager.instance.stop();
-                  if (Get.isRegistered<SessionController>()) {
-                    Get.find<SessionController>().disconnectSse();
-                  }
-                  setState(() => _autoConnecting = false);
-                },
-                child: Text(LocaleKeys.mobileCancelConnection.tr),
-              ),
-            ],
-          ),
-        ),
+      return SplashAutoConnectingView(
+        selectedMode: _selectedMode,
+        onCancel: () {
+          _connectSeq++;
+          _cancelToken?.cancel();
+          SidecarManager.instance.stop();
+          if (Get.isRegistered<SessionController>()) {
+            Get.find<SessionController>().disconnectSse();
+          }
+          setState(() => _autoConnecting = false);
+        },
       );
     }
 
@@ -450,410 +429,27 @@ class _SplashPageState extends State<SplashPage> {
                 const SizedBox(height: 24),
 
                 if (_selectedMode == 0)
-                  _buildSelfHostedForm(context)
+                  SplashSelfHostedView(
+                    formKey: _formKey,
+                    urlController: _urlController,
+                    usernameController: _usernameController,
+                    passwordController: _passwordController,
+                    isBusy: _isConnecting,
+                    errorText: _errorText,
+                    onConnect: _onConnectSelfHosted,
+                  )
                 else
-                  _buildCloudPanel(context, cloudConfig),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// 自建服务器表单
-  Widget _buildSelfHostedForm(BuildContext context) {
-    final theme = Theme.of(context);
-    final isBusy = _isConnecting;
-
-    return Form(
-      key: _formKey,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          TextFormField(
-            controller: _urlController,
-            decoration: InputDecoration(
-              labelText: LocaleKeys.mobileServerUrl.tr,
-              hintText: 'http://192.168.1.100:4096',
-              border: const OutlineInputBorder(),
-              prefixIcon: const Icon(CupertinoIcons.link),
-            ),
-            validator: (v) => v == null || v.trim().isEmpty
-                ? LocaleKeys.mobileServerUrlRequired.tr
-                : null,
-          ),
-          const SizedBox(height: 16),
-          TextFormField(
-            controller: _usernameController,
-            decoration: InputDecoration(
-              labelText: LocaleKeys.username.tr,
-              hintText: 'opencode',
-              border: const OutlineInputBorder(),
-              prefixIcon: const Icon(CupertinoIcons.person),
-            ),
-          ),
-          const SizedBox(height: 16),
-          TextFormField(
-            controller: _passwordController,
-            obscureText: true,
-            decoration: InputDecoration(
-              labelText: LocaleKeys.mobilePassword.tr,
-              hintText: 'your-password-here',
-              border: const OutlineInputBorder(),
-              prefixIcon: const Icon(CupertinoIcons.lock),
-            ),
-          ),
-          if (_errorText != null) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.errorContainer,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                _errorText!,
-                style: TextStyle(
-                  color: theme.colorScheme.onErrorContainer,
-                  fontSize: 13,
-                ),
-              ),
-            ),
-          ],
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            onPressed: isBusy ? null : _onConnectSelfHosted,
-            icon: isBusy
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(CupertinoIcons.radiowaves_right),
-            label: Text(
-              isBusy
-                  ? LocaleKeys.mobileConnecting.tr
-                  : LocaleKeys.mobileConnectServer.tr,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// E2B 云端沙盒面板 (未配Key / 有活跃沙箱 / 无活跃沙箱 三态)
-  Widget _buildCloudPanel(BuildContext context, CloudWorkspaceConfig config) {
-    final theme = Theme.of(context);
-    final hasKey = config.e2bApiKey.trim().isNotEmpty;
-    final isBusy = _isConnecting;
-
-    // 状态 1: 未配 Key
-    if (!hasKey) {
-      return Card(
-        elevation: 0,
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-          ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.vpn_key_outlined,
-                    color: theme.colorScheme.primary,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      LocaleKeys.e2bNoApiKey.tr,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Text(
-                LocaleKeys.e2bNoApiKeyDesc.tr,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 20),
-              FilledButton.icon(
-                onPressed: () async {
-                  await E2bApiKeyDialog.show(context);
-                  if (mounted) setState(() {});
-                },
-                icon: const Icon(Icons.vpn_key_outlined, size: 18),
-                label: Text(LocaleKeys.e2bConfigApiKey.tr),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    // 状态 2: 有活跃沙盒 (可一键唤醒连接 / 新建 / 管理)
-    if (config.hasActiveSandbox) {
-      final sandboxId = config.activeSandboxId!;
-
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Card(
-            elevation: 0,
-            color: theme.colorScheme.surfaceContainerHighest.withValues(
-              alpha: 0.5,
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-              side: BorderSide(
-                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-              ),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.cloud_outlined,
-                              color: theme.colorScheme.primary,
-                              size: 18,
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                sandboxId,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (config.activeSandboxUrl != null) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            _maskedUrl(config.activeSandboxUrl!),
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.all(4),
-                        constraints: const BoxConstraints(
-                          minWidth: 32,
-                          minHeight: 32,
-                        ),
-                        iconSize: 20,
-                        icon: const Icon(Icons.add_circle_outline),
-                        tooltip: LocaleKeys.e2bNewSandbox.tr,
-                        onPressed: isBusy
-                            ? null
-                            : () async {
-                                await CloudWorkspaceSheet.show(
-                                  context,
-                                  onLaunch: (cfg) =>
-                                      CloudWorkspaceLaunchDialog.show(
-                                        context,
-                                        config: cfg,
-                                      ),
-                                );
-                                if (mounted) setState(() {});
-                              },
-                      ),
-                      IconButton(
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.all(4),
-                        constraints: const BoxConstraints(
-                          minWidth: 32,
-                          minHeight: 32,
-                        ),
-                        iconSize: 20,
-                        icon: const Icon(Icons.list_alt),
-                        tooltip: LocaleKeys.e2bSandboxList.tr,
-                        onPressed: isBusy
-                            ? null
-                            : () async {
-                                final selected =
-                                    await E2bSandboxPickerSheet.show(context);
-                                if (selected != null && mounted) {
-                                  await _onSelectAndSwitchSandbox(selected);
-                                }
-                              },
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (_cloudHint != null) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.secondaryContainer.withValues(
-                  alpha: 0.7,
-                ),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.info_outline,
-                    size: 18,
-                    color: theme.colorScheme.onSecondaryContainer,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _cloudHint!,
-                      style: TextStyle(
-                        color: theme.colorScheme.onSecondaryContainer,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          if (_errorText != null) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.errorContainer,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.error_outline,
-                    size: 18,
-                    color: theme.colorScheme.onErrorContainer,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _errorText!,
-                      style: TextStyle(
-                        color: theme.colorScheme.onErrorContainer,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          if (isBusy) ...[
-            const SizedBox(height: 16),
-            LinearProgressIndicator(
-              backgroundColor: theme.colorScheme.primary.withValues(
-                alpha: 0.15,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _cloudStepMessage,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 12,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-          const SizedBox(height: 20),
-          FilledButton.icon(
-            onPressed: isBusy ? null : _onConnectCloud,
-            icon: isBusy
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.bolt, size: 18),
-            label: Text(
-              _cloudHint != null
-                  ? LocaleKeys.e2bWakeAndConnect.tr
-                  : LocaleKeys.e2bConnectLastSandbox.tr,
-            ),
-          ),
-        ],
-      );
-    }
-
-    // 状态 3: 无活跃沙箱 (但已配 Key)
-    return Card(
-      elevation: 0,
-      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.cloud_outlined, color: theme.colorScheme.primary),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    LocaleKeys.e2bTitle.tr,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            FilledButton.icon(
-              onPressed: isBusy
-                  ? null
-                  : () async {
+                  SplashCloudView(
+                    config: cloudConfig,
+                    isBusy: _isConnecting,
+                    cloudHint: _cloudHint,
+                    errorText: _errorText,
+                    cloudStepMessage: _cloudStepMessage,
+                    onConfigApiKey: () async {
+                      await E2bApiKeyDialog.show(context);
+                      if (mounted) setState(() {});
+                    },
+                    onNewSandbox: () async {
                       await CloudWorkspaceSheet.show(
                         context,
                         onLaunch: (cfg) => CloudWorkspaceLaunchDialog.show(
@@ -863,14 +459,7 @@ class _SplashPageState extends State<SplashPage> {
                       );
                       if (mounted) setState(() {});
                     },
-              icon: const Icon(Icons.add_circle_outline, size: 18),
-              label: Text(LocaleKeys.e2bNewSandbox.tr),
-            ),
-            const SizedBox(height: 8),
-            TextButton.icon(
-              onPressed: isBusy
-                  ? null
-                  : () async {
+                    onSelectSandbox: () async {
                       final selected = await E2bSandboxPickerSheet.show(
                         context,
                       );
@@ -878,10 +467,11 @@ class _SplashPageState extends State<SplashPage> {
                         await _onSelectAndSwitchSandbox(selected);
                       }
                     },
-              icon: const Icon(Icons.list_alt, size: 16),
-              label: Text(LocaleKeys.e2bSelectSandbox.tr),
+                    onConnectCloud: _onConnectCloud,
+                  ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

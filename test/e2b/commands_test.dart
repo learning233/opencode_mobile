@@ -46,26 +46,29 @@ void main() {
         expect(customOpts.stdin, isTrue);
       });
 
-      test('ProcessInfo.fromJson parses envd Process.List response correctly', () {
-        final json = {
-          'pid': 1234,
-          'tag': 'opencode-serve',
-          'config': {
-            'cmd': '/bin/bash',
-            'args': ['-c', 'opencode serve'],
-            'envs': {'PORT': '4096'},
-            'cwd': '/home/user/workspace',
-          },
-        };
+      test(
+        'ProcessInfo.fromJson parses envd Process.List response correctly',
+        () {
+          final json = {
+            'pid': 1234,
+            'tag': 'opencode-serve',
+            'config': {
+              'cmd': '/bin/bash',
+              'args': ['-c', 'opencode serve'],
+              'envs': {'PORT': '4096'},
+              'cwd': '/home/user/workspace',
+            },
+          };
 
-        final info = ProcessInfo.fromJson(json);
-        expect(info.pid, equals(1234));
-        expect(info.tag, equals('opencode-serve'));
-        expect(info.cmd, equals('/bin/bash'));
-        expect(info.args, equals(['-c', 'opencode serve']));
-        expect(info.envs, equals({'PORT': '4096'}));
-        expect(info.cwd, equals('/home/user/workspace'));
-      });
+          final info = ProcessInfo.fromJson(json);
+          expect(info.pid, equals(1234));
+          expect(info.tag, equals('opencode-serve'));
+          expect(info.cmd, equals('/bin/bash'));
+          expect(info.args, equals(['-c', 'opencode serve']));
+          expect(info.envs, equals({'PORT': '4096'}));
+          expect(info.cwd, equals('/home/user/workspace'));
+        },
+      );
 
       test('CommandHandle lifecycle wiring', () async {
         bool killCalled = false;

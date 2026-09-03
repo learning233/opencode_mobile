@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:opencode_app/pages/left_drawer/left_drawer_mode.dart';
 import '../../controllers/tablet_tool_controller.dart';
 import '../left_drawer.dart';
-import 'left_panel_content.dart';
 import '../../utils/file_kind.dart';
 import '../../utils/translations.dart';
 import '../home/tablet/multi_view/audio_player_view.dart';

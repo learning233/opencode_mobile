@@ -19,6 +19,8 @@ import 'splash/splash_auto_connecting_view.dart';
 import 'splash/splash_cloud_view.dart';
 import 'splash/splash_self_hosted_view.dart';
 
+/// page 根目录启动页结构文件：负责自动连接引导、自建服务器与 E2B 云端沙盒模式分发，
+/// 具体的表单和视图放入 lib/pages/splash/ 文件夹中。
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
 

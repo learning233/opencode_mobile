@@ -316,6 +316,10 @@ class _LeftDrawerBodyState extends State<LeftDrawerBody> {
           children: [
             InkWell(
               onTap: isConnected ? null : _switchToSelfHosted,
+              onLongPress: () async {
+                final saved = await SelfHostedConnectionSheet.show(context);
+                if (saved == true && mounted) setState(() {});
+              },
               borderRadius: BorderRadius.circular(8),
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
@@ -342,13 +346,15 @@ class _LeftDrawerBodyState extends State<LeftDrawerBody> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    if (isConnected) ...[
+                    if (hasSelfHosted) ...[
                       Container(
                         width: 8,
                         height: 8,
                         margin: const EdgeInsets.symmetric(horizontal: 6),
-                        decoration: const BoxDecoration(
-                          color: successColor,
+                        decoration: BoxDecoration(
+                          color: isConnected
+                              ? successColor
+                              : Colors.transparent,
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -358,63 +364,35 @@ class _LeftDrawerBodyState extends State<LeftDrawerBody> {
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
                         tooltip: LocaleKeys.mobileAddProject.tr,
-                        onPressed: () =>
-                            _showAddProjectDialog(context, projectCtrl),
+                        onPressed: () {
+                          if (isConnected) {
+                            _showAddProjectDialog(context, projectCtrl);
+                          } else {
+                            _switchToSelfHosted();
+                          }
+                        },
                       ),
                     ] else ...[
-                      if (!hasSelfHosted)
-                        TextButton.icon(
-                          style: TextButton.styleFrom(
-                            visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
-                            ),
-                          ),
-                          onPressed: () async {
-                            final saved = await SelfHostedConnectionSheet.show(
-                              context,
-                            );
-                            if (saved == true && mounted) setState(() {});
-                          },
-                          icon: const Icon(Icons.settings_outlined, size: 14),
-                          label: Text(
-                            LocaleKeys.mobileServerConnection.tr,
-                            style: const TextStyle(fontSize: 11),
-                          ),
-                        )
-                      else ...[
-                        IconButton(
-                          icon: const Icon(Icons.settings_outlined, size: 16),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                          tooltip: LocaleKeys.mobileServerConnection.tr,
-                          onPressed: () async {
-                            final saved = await SelfHostedConnectionSheet.show(
-                              context,
-                            );
-                            if (saved == true && mounted) setState(() {});
-                          },
-                        ),
-                        const SizedBox(width: 4),
-                        TextButton.icon(
-                          style: TextButton.styleFrom(
-                            visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
-                            ),
-                          ),
-                          onPressed: _isSwitchingBackend
-                              ? null
-                              : _switchToSelfHosted,
-                          icon: const Icon(Icons.swap_horiz, size: 14),
-                          label: Text(
-                            LocaleKeys.drawerClickToConnect.tr,
-                            style: const TextStyle(fontSize: 11),
+                      TextButton.icon(
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
                           ),
                         ),
-                      ],
+                        onPressed: () async {
+                          final saved = await SelfHostedConnectionSheet.show(
+                            context,
+                          );
+                          if (saved == true && mounted) setState(() {});
+                        },
+                        icon: const Icon(Icons.settings_outlined, size: 14),
+                        label: Text(
+                          LocaleKeys.mobileServerConnection.tr,
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                      ),
                     ],
                   ],
                 ),
@@ -509,82 +487,96 @@ class _LeftDrawerBodyState extends State<LeftDrawerBody> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.cloud_outlined,
-                  size: 18,
-                  color: isCloudConnected
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    LocaleKeys.drawerCloudSection.tr,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
+            InkWell(
+              onTap: null,
+              onLongPress: () async {
+                final saved = await E2bApiKeyDialog.show(context);
+                if (saved == true) {
+                  if (mounted) setState(() {});
+                  _fetchSandboxes();
+                }
+              },
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.cloud_outlined,
+                      size: 18,
                       color: isCloudConnected
                           ? theme.colorScheme.primary
-                          : theme.colorScheme.onSurface,
+                          : theme.colorScheme.onSurfaceVariant,
                     ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (isCloudConnected) ...[
-                  Container(
-                    width: 8,
-                    height: 8,
-                    margin: const EdgeInsets.symmetric(horizontal: 6),
-                    decoration: const BoxDecoration(
-                      color: successColor,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 2),
-                ],
-                if (!hasKey) ...[
-                  TextButton.icon(
-                    style: TextButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        LocaleKeys.drawerCloudSection.tr,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: isCloudConnected
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.onSurface,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    icon: const Icon(Icons.key, size: 13),
-                    label: Text(
-                      LocaleKeys.e2bConfigApiKey.tr,
-                      style: const TextStyle(fontSize: 11),
-                    ),
-                    onPressed: () async {
-                      final saved = await E2bApiKeyDialog.show(context);
-                      if (saved == true) {
-                        if (mounted) setState(() {});
-                        _fetchSandboxes();
-                      }
-                    },
-                  ),
-                ] else ...[
-                  IconButton(
-                    icon: const Icon(CupertinoIcons.add, size: 16),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    tooltip: LocaleKeys.e2bCreateSandbox.tr,
-                    onPressed: () async {
-                      await CloudWorkspaceSheet.show(
-                        context,
-                        onLaunch: (cfg) => CloudWorkspaceLaunchDialog.show(
-                          context,
-                          config: cfg,
+                    if (hasKey) ...[
+                      Container(
+                        width: 8,
+                        height: 8,
+                        margin: const EdgeInsets.symmetric(horizontal: 6),
+                        decoration: BoxDecoration(
+                          color: isCloudConnected
+                              ? successColor
+                              : Colors.transparent,
+                          shape: BoxShape.circle,
                         ),
-                      );
-                      _fetchSandboxes();
-                    },
-                  ),
-                ],
-              ],
+                      ),
+                      const SizedBox(width: 2),
+                      IconButton(
+                        icon: const Icon(CupertinoIcons.add, size: 16),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        tooltip: LocaleKeys.e2bCreateSandbox.tr,
+                        onPressed: () async {
+                          await CloudWorkspaceSheet.show(
+                            context,
+                            onLaunch: (cfg) => CloudWorkspaceLaunchDialog.show(
+                              context,
+                              config: cfg,
+                            ),
+                          );
+                          _fetchSandboxes();
+                        },
+                      ),
+                    ] else ...[
+                      TextButton.icon(
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                        ),
+                        icon: const Icon(Icons.key, size: 13),
+                        label: Text(
+                          LocaleKeys.e2bConfigApiKey.tr,
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                        onPressed: () async {
+                          final saved = await E2bApiKeyDialog.show(context);
+                          if (saved == true) {
+                            if (mounted) setState(() {});
+                            _fetchSandboxes();
+                          }
+                        },
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ),
             const SizedBox(height: 6),
             if (!hasKey)
@@ -726,13 +718,6 @@ class _LeftDrawerBodyState extends State<LeftDrawerBody> {
         items.add(
           ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-            leading: Icon(
-              isPaused ? Icons.pause_circle_outline : Icons.cloud_outlined,
-              size: 18,
-              color: isPaused
-                  ? theme.colorScheme.outline
-                  : theme.colorScheme.onSurfaceVariant,
-            ),
             title: Text(
               projName,
               style: TextStyle(
@@ -743,11 +728,16 @@ class _LeftDrawerBodyState extends State<LeftDrawerBody> {
               ),
             ),
             trailing: isPaused
-                ? Text(
-                    LocaleKeys.e2bSandboxStatusPaused.tr,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: theme.colorScheme.outline,
+                ? Tooltip(
+                    message: LocaleKeys.e2bSandboxStatusPaused.tr,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      margin: const EdgeInsets.only(right: 4),
+                      decoration: const BoxDecoration(
+                        color: Colors.amber,
+                        shape: BoxShape.circle,
+                      ),
                     ),
                   )
                 : null,
@@ -797,43 +787,55 @@ class _LeftDrawerBodyState extends State<LeftDrawerBody> {
         borderRadius: BorderRadius.circular(12),
         side: BorderSide.none,
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-            dense: true,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-            onTap: _toggleHiddenProjects,
-            leading: Icon(
-              Icons.visibility_off_outlined,
-              size: 18,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-            title: Text(
-              '${LocaleKeys.mobileHiddenProjects.tr} (${keys.length})',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: theme.colorScheme.onSurfaceVariant,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            InkWell(
+              onTap: _toggleHiddenProjects,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.visibility_off_outlined,
+                      size: 18,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '${LocaleKeys.mobileHiddenProjects.tr} (${keys.length})',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    AnimatedRotation(
+                      turns: _hiddenProjectsExpanded ? 0.25 : 0,
+                      duration: const Duration(milliseconds: 150),
+                      child: Icon(
+                        Icons.chevron_right,
+                        size: 18,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            trailing: AnimatedRotation(
-              turns: _hiddenProjectsExpanded ? 0.25 : 0,
-              duration: const Duration(milliseconds: 150),
-              child: Icon(
-                Icons.chevron_right,
-                size: 18,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          if (_hiddenProjectsExpanded) ...[
-            const Divider(height: 1),
-            for (final key in keys)
-              _buildHiddenProjectRow(projectCtrl, theme, key),
-            const SizedBox(height: 4),
+            if (_hiddenProjectsExpanded) ...[
+              const Divider(height: 1),
+              for (final key in keys)
+                _buildHiddenProjectRow(projectCtrl, theme, key),
+              const SizedBox(height: 4),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -852,7 +854,7 @@ class _LeftDrawerBodyState extends State<LeftDrawerBody> {
     final name = project?.displayName ?? (fallbackName ?? key);
     return ListTile(
       dense: true,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12),
       title: Text(
         name,
         maxLines: 1,

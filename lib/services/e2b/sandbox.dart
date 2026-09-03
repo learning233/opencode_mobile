@@ -292,8 +292,8 @@ class Sandbox {
     }
   }
 
-  /// 刷新沙盒 TTL (keep-alive,从当前时刻重新计时)
-  static Future<void> setTimeout(
+  /// 刷新沙盒 TTL (keep-alive,从当前时刻重新计时)，返回实际生效的超时秒数
+  static Future<int> setTimeout(
     String sandboxId, {
     required String apiKey,
     required int timeoutSeconds,
@@ -302,6 +302,7 @@ class Sandbox {
   }) async {
     final client = dio ?? Dio();
     final config = ConnectionConfig(apiKey: apiKey, domain: domain);
+    var appliedTimeout = timeoutSeconds;
     try {
       var res = await client.post(
         '${config.apiUrl}/sandboxes/$sandboxId/timeout',
@@ -327,6 +328,7 @@ class Sandbox {
             ),
             data: {'timeout': 3600},
           );
+          appliedTimeout = 3600;
         }
       }
 
@@ -337,6 +339,7 @@ class Sandbox {
           'set sandbox timeout',
         );
       }
+      return appliedTimeout;
     } on DioException catch (e) {
       throw SandboxException(
         'Failed to set sandbox timeout: ${e.message}',

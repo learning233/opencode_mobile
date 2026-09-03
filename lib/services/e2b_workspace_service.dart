@@ -207,13 +207,24 @@ if [ -n "$GIT_BRANCH" ] && [ -d .git ]; then
   git checkout "$GIT_BRANCH" 2>&1 | tail -n 2 || true
 fi
 
-# 剥离 clone URL 中内嵌的 token,避免凭据持久化进 .git/config
+# 安全保存 Git 凭据并剥离 clone URL 中内嵌的 token
 if [ -d .git ]; then
   remote_url="$(git remote get-url origin 2>/dev/null || true)"
   if [ -n "$remote_url" ]; then
-    stripped="$(printf '%s' "$remote_url" | sed -E 's#^(https?://)[^/@]+@#\1#')"
-    if [ "$stripped" != "$remote_url" ]; then
-      git remote set-url origin "$stripped" 2>/dev/null || true
+    if printf '%s' "$remote_url" | grep -qE '^https?://[^/@]+@'; then
+      cred_line="$(printf '%s' "$remote_url" | sed -E 's#^https?://([^/@]+)@([^/]+).*#https://\1@\2#')"
+      if [ -n "$cred_line" ]; then
+        git config --global credential.helper store 2>/dev/null || true
+        touch "$HOME/.git-credentials"
+        chmod 600 "$HOME/.git-credentials"
+        if ! grep -Fxq "$cred_line" "$HOME/.git-credentials" 2>/dev/null; then
+          printf '%s\n' "$cred_line" >> "$HOME/.git-credentials"
+        fi
+      fi
+      stripped="$(printf '%s' "$remote_url" | sed -E 's#^(https?://)[^/@]+@#\1#')"
+      if [ "$stripped" != "$remote_url" ]; then
+        git remote set-url origin "$stripped" 2>/dev/null || true
+      fi
     fi
   fi
 fi
@@ -920,18 +931,21 @@ fi
     String domain = 'e2b.app',
   }) {
     stopKeepAlive();
-    final safeTimeout = max(600, min(86400, timeoutSeconds));
+    var currentTimeout = max(600, min(86400, timeoutSeconds));
     _keepAliveSandboxId = sandboxId;
     _keepAliveTimer = Timer.periodic(const Duration(minutes: 5), (_) async {
       try {
-        await Sandbox.setTimeout(
+        final applied = await Sandbox.setTimeout(
           sandboxId,
           apiKey: apiKey,
-          timeoutSeconds: safeTimeout,
+          timeoutSeconds: currentTimeout,
           domain: domain,
         );
+        if (applied != currentTimeout) {
+          currentTimeout = applied;
+        }
         AppLogger.d(
-          'E2B keep-alive: sandbox $sandboxId TTL renewed (+${safeTimeout}s)',
+          'E2B keep-alive: sandbox $sandboxId TTL renewed (+${currentTimeout}s)',
         );
       } catch (e) {
         AppLogger.w('E2B keep-alive failed for $sandboxId: $e');

@@ -28,7 +28,7 @@ void main() {
       expect(config.e2bApiKey, '');
       expect(config.templateId, 'opencode');
       expect(config.sandboxPassword, '');
-      expect(config.ttlHours, 2);
+      expect(config.ttlHours, 1);
       expect(config.autoPause, true);
       expect(config.hasActiveSandbox, false);
     });

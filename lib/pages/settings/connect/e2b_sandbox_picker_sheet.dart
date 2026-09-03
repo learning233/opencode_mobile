@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import '../../../api/sidecar_manager.dart';
 import '../../../controllers/project_controller.dart';
+import '../../../controllers/session_controller.dart';
 import '../../../init.dart';
 import '../../../models/e2b_sandbox_info.dart';
 import '../../../services/e2b_workspace_service.dart';
@@ -128,6 +130,11 @@ class _E2bSandboxPickerSheetState extends State<E2bSandboxPickerSheet> {
           await Global.settings.updateCloudWorkspaceConfig(
             (curr) => curr.copyWith(activeSandboxStatus: 'paused'),
           );
+          E2bWorkspaceService.instance.stopKeepAlive();
+          SidecarManager.instance.stop();
+          if (Get.isRegistered<SessionController>()) {
+            Get.find<SessionController>().disconnectSse();
+          }
         }
         await _loadSandboxes();
       } else {
@@ -214,6 +221,11 @@ class _E2bSandboxPickerSheetState extends State<E2bSandboxPickerSheet> {
           await Global.settings.updateCloudWorkspaceConfig(
             (curr) => curr.copyWith(clearActiveSandbox: true),
           );
+          E2bWorkspaceService.instance.stopKeepAlive();
+          SidecarManager.instance.stop();
+          if (Get.isRegistered<SessionController>()) {
+            Get.find<SessionController>().disconnectSse();
+          }
         }
         await _loadSandboxes();
       } else {

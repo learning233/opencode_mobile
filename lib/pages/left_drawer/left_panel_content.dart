@@ -179,6 +179,7 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
   }
 
   Future<void> _switchToSelfHosted() async {
+    if (_isSwitchingBackend) return;
     final url = Global.settings.selfHostedServerUrl?.trim() ?? '';
     if (url.isEmpty) {
       final saved = await SelfHostedConnectionSheet.show(context);
@@ -223,6 +224,7 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
   }
 
   Future<void> _switchToSandbox(E2bSandboxInfo sb) async {
+    if (_isSwitchingBackend) return;
     if (Global.serverUrl.contains(sb.sandboxId)) return;
 
     final config = Global.settings.cloudWorkspaceConfig;
@@ -487,7 +489,8 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
                               vertical: 2,
                             ),
                           ),
-                          onPressed: _switchToSelfHosted,
+                          onPressed:
+                              _isSwitchingBackend ? null : _switchToSelfHosted,
                           icon: const Icon(Icons.swap_horiz, size: 14),
                           label: Text(
                             LocaleKeys.drawerClickToConnect.tr,
@@ -801,20 +804,39 @@ class _LeftPanelContentState extends State<LeftPanelContent> {
         }
       } else {
         final projName = sb.repoName.isNotEmpty ? sb.repoName : sb.sandboxId;
+        final isPaused = sb.isPaused;
 
         items.add(
           ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+            leading: Icon(
+              isPaused ? Icons.pause_circle_outline : Icons.cloud_outlined,
+              size: 18,
+              color: isPaused
+                  ? theme.colorScheme.outline
+                  : theme.colorScheme.onSurfaceVariant,
+            ),
             title: Text(
               projName,
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.normal,
                 fontFamily: sb.repoName.isEmpty ? 'monospace' : null,
+                color: isPaused ? theme.colorScheme.onSurfaceVariant : null,
               ),
             ),
+            trailing: isPaused
+                ? Text(
+                    LocaleKeys.e2bSandboxStatusPaused.tr,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: theme.colorScheme.outline,
+                    ),
+                  )
+                : null,
             dense: true,
-            onTap: () => _switchToSandbox(sb),
+            enabled: !_isSwitchingBackend,
+            onTap: _isSwitchingBackend ? null : () => _switchToSandbox(sb),
           ),
         );
       }

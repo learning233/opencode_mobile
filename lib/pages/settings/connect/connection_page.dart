@@ -56,6 +56,13 @@ class _OpencodeConnectionPageState extends State<OpencodeConnectionPage> {
     _userCtrl.text = Global.selfHostedServerUsername;
     _passCtrl.text = Global.selfHostedServerPassword;
 
+    if (Get.isRegistered<ProjectController>()) {
+      final cached = Get.find<ProjectController>().sandboxes;
+      if (cached.isNotEmpty) {
+        _sandboxes = List.of(cached);
+      }
+    }
+
     final cloudConfig = Global.settings.cloudWorkspaceConfig;
     final argMode = Get.arguments is Map
         ? (Get.arguments as Map)['mode'] as int?

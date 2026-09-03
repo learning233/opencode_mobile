@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'package:dio/dio.dart';
 import '../models/errors.dart';
 import '../models/process_models.dart';
@@ -93,7 +94,7 @@ class Commands {
         if (opts.cwd != null) 'cwd': opts.cwd,
         if (opts.envs.isNotEmpty) 'envs': opts.envs,
       },
-      'stdin': false,
+      'stdin': opts.stdin,
     };
 
     final stream = transport.serverStreamCall(
@@ -204,9 +205,12 @@ class Commands {
       },
     );
 
-    // 等待分配 PID 或超时
+    // 等待分配 PID 或超时 (若配置了较短的命令超时，等待时长不超过命令总超时)
+    final pidTimeout = opts.timeoutMs > 0
+        ? Duration(milliseconds: min(15000, opts.timeoutMs))
+        : const Duration(seconds: 15);
     final pid = await pidCompleter.future.timeout(
-      const Duration(seconds: 15),
+      pidTimeout,
       onTimeout: () => 0,
     );
 
@@ -222,8 +226,8 @@ class Commands {
         fut = fut.timeout(
           Duration(milliseconds: opts.timeoutMs),
           onTimeout: () {
-            // 超时终止远端进程并返回已收集的输出
-            kill(pid, cancelToken: cancelToken).catchError((_) {});
+            // 超时强制终止远端进程 (SIGKILL=9) 并返回已收集的输出
+            kill(pid, signal: 9, cancelToken: cancelToken).catchError((_) {});
             return CommandResult(
               exitCode: -1,
               stdout: stdoutBuffer.toString(),
@@ -286,6 +290,24 @@ class Commands {
         'process': {'pid': pid},
       },
     );
+  }
+
+  /// 列出沙盒内当前运行的所有进程与 PTY 会话（对齐 E2B 官方 Process.List RPC）
+  Future<List<ProcessInfo>> list() async {
+    final res = await transport.unaryCall(
+      sandboxId: sandboxId,
+      path: '/process.Process/List',
+      request: {},
+    );
+
+    final rawList = res['processes'];
+    if (rawList is List) {
+      return rawList
+          .whereType<Map>()
+          .map((item) => ProcessInfo.fromJson(Map<String, dynamic>.from(item)))
+          .toList();
+    }
+    return [];
   }
 }
 

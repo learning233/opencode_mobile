@@ -20,6 +20,9 @@ class CommandOpts {
   /// 标准错误实时回调
   final void Function(String stderr)? onStderr;
 
+  /// 是否开启标准输入管道 (默认 false，开启后可通过 sendStdin / closeStdin 交互)
+  final bool stdin;
+
   /// 超时时间 (毫秒，默认 60,000)
   final int timeoutMs;
 
@@ -30,8 +33,50 @@ class CommandOpts {
     this.envs = const {},
     this.onStdout,
     this.onStderr,
+    this.stdin = false,
     this.timeoutMs = 60000,
   });
+}
+
+/// 沙盒中运行中的进程信息（对齐 E2B 官方 Process.List RPC）
+class ProcessInfo {
+  final int pid;
+  final String? tag;
+  final String cmd;
+  final List<String> args;
+  final Map<String, String> envs;
+  final String? cwd;
+
+  const ProcessInfo({
+    required this.pid,
+    this.tag,
+    this.cmd = '',
+    this.args = const [],
+    this.envs = const {},
+    this.cwd,
+  });
+
+  factory ProcessInfo.fromJson(Map<String, dynamic> json) {
+    final config = (json['config'] is Map)
+        ? json['config'] as Map<String, dynamic>
+        : <String, dynamic>{};
+    return ProcessInfo(
+      pid: json['pid'] as int? ?? 0,
+      tag: json['tag'] as String?,
+      cmd: config['cmd'] as String? ?? '',
+      args: (config['args'] as List?)?.map((e) => e.toString()).toList() ??
+          const [],
+      envs: (config['envs'] as Map?)?.map(
+            (k, v) => MapEntry(k.toString(), v.toString()),
+          ) ??
+          const {},
+      cwd: config['cwd'] as String?,
+    );
+  }
+
+  @override
+  String toString() =>
+      'ProcessInfo(pid: $pid, cmd: $cmd, tag: $tag, cwd: $cwd)';
 }
 
 /// 命令执行结果 (同步完成)

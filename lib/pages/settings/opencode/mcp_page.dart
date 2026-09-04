@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../controllers/settings_controller.dart';
+import '../../../models/mcp_server_status.dart';
 import '../../../utils/app_theme.dart';
 import '../../../utils/snackbar_utils.dart';
 import '../../../utils/translations.dart';

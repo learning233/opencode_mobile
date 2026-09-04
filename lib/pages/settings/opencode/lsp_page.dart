@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../controllers/settings_controller.dart';
+import '../../../models/lsp_server_info.dart';
 import '../../../utils/app_theme.dart';
 import '../../../utils/snackbar_utils.dart';
 import '../../../utils/translations.dart';

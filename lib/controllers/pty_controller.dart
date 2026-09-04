@@ -81,6 +81,7 @@ class PtyController extends GetxController with WidgetsBindingObserver {
   final Set<String> _reconnectingIds = <String>{};
 
   int _fetchSeq = 0;
+  String _lastServerUrl = '';
 
   Worker? _projectWorker;
 
@@ -88,6 +89,7 @@ class PtyController extends GetxController with WidgetsBindingObserver {
   void onInit() {
     super.onInit();
     WidgetsBinding.instance.addObserver(this);
+    _lastServerUrl = SidecarManager.instance.baseUrl;
     try {
       if (Get.isRegistered<ProjectController>()) {
         _projectWorker = ever(Get.find<ProjectController>().activeProject, (
@@ -123,6 +125,7 @@ class PtyController extends GetxController with WidgetsBindingObserver {
   }
 
   void _onProjectChanged(String worktree) {
+    _checkServerUrlChanged();
     final normWorktree = normalizeDirectory(worktree);
     if (normWorktree.isEmpty) return;
 
@@ -132,9 +135,32 @@ class PtyController extends GetxController with WidgetsBindingObserver {
 
     if (matchingSession != null) {
       activePtyId.value = matchingSession.id;
-    } else {
-      fetchSessions(customDirectory: worktree);
     }
+    fetchSessions(customDirectory: worktree);
+  }
+
+  /// 检查服务端基地址是否变更（如自建切沙盒或在不同沙盒间切换）。若变更则释放并清空旧服务端所有会话。
+  void _checkServerUrlChanged() {
+    final currentUrl = SidecarManager.instance.baseUrl;
+    if (_lastServerUrl.isNotEmpty && _lastServerUrl != currentUrl) {
+      AppLogger.i(
+        'PTY: server URL changed from [${maskIpsInText(_lastServerUrl)}] to [${maskIpsInText(currentUrl)}], resetting sessions',
+      );
+      resetAllSessions();
+    }
+    _lastServerUrl = currentUrl;
+  }
+
+  /// 清空所有旧服务端的终端会话，释放资源
+  void resetAllSessions() {
+    _fetchSeq++;
+    _reconnectingIds.clear();
+    for (final s in sessions) {
+      s.dispose();
+    }
+    sessions.clear();
+    activePtyId.value = '';
+    isLoading.value = false;
   }
 
   void setFilterCurrentProjectOnly(bool val) {
@@ -174,6 +200,7 @@ class PtyController extends GetxController with WidgetsBindingObserver {
   }
 
   Future<void> fetchSessions({String? customDirectory}) async {
+    _checkServerUrlChanged();
     // 请求序号：新请求会接管，旧请求的写回一律丢弃，避免项目切换时
     // 旧目录的结果覆盖新目录的会话状态。
     final seq = ++_fetchSeq;
@@ -365,6 +392,10 @@ class PtyController extends GetxController with WidgetsBindingObserver {
       final code = e is DioException ? e.response?.statusCode : null;
       if (code == 401 || code == 403) {
         AppLogger.w('PTY ticket auth failed ($ptyId): $code');
+        return null;
+      }
+      if (code == 404) {
+        AppLogger.w('PTY session not found on server ($ptyId): 404');
         return null;
       }
       AppLogger.w('Fetch ticket error ($ptyId): ${maskIpsInText('$e')}');
@@ -763,7 +794,11 @@ class PtyController extends GetxController with WidgetsBindingObserver {
         activate: false,
       );
       if (newSession == null) {
-        // attach 被终止（如凭据失败 401/403）：保留旧会话的错误视图供手动重试。
+        // attach 被终止（如凭据失败 401/403 或会话在远端已不存在 404）：
+        // 标记 endedByShell 熔断自动重连，展示会话已结束
+        session.endedByShell = true;
+        session.error.value = true;
+        session.errorMsg.value = LocaleKeys.terminalSessionEnded.tr;
         return;
       }
       // 携带旧会话的重试计数，让 autoReconnectCount>=3 的上限跨会话生效，

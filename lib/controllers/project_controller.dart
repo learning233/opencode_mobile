@@ -64,6 +64,7 @@ class ProjectController extends GetxController {
   Future<void> refreshAfterConnect() async {
     projects.clear();
     activeProject.value = null;
+    _client.activeDirectory = null;
     await Future.wait([fetchProjects(), fetchSandboxes()]);
     _restoreLastProject();
   }
@@ -106,6 +107,7 @@ class ProjectController extends GetxController {
       selectProject(projects.first);
     } else {
       activeProject.value = null;
+      _client.activeDirectory = null;
     }
   }
 

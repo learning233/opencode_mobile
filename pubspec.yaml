@@ -2,7 +2,7 @@ name: opencode_app
 description: "A new Flutter project."
 publish_to: 'none'
 
-version: 0.11.2+5
+version: 0.11.3+5
 
 environment:
   sdk: ^3.10.4

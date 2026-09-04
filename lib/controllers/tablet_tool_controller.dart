@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../init.dart';
 import '../models/browser_tab.dart';
 import '../models/opened_file.dart';
+import '../utils/diff_paths.dart';
 import '../utils/url_utils.dart';
 
 class FileLineJumpRequest {
@@ -383,17 +384,46 @@ class TabletToolController extends GetxController {
     }
   }
 
+  bool _matchCacheKey(String k, String targetPath, String? worktree) {
+    final sep = k.indexOf('\u0000');
+    final kWorktree = sep != -1 ? k.substring(0, sep) : '';
+    final kPath = sep != -1 ? k.substring(sep + 1) : k;
+    if (worktree != null &&
+        worktree.isNotEmpty &&
+        kWorktree.isNotEmpty &&
+        kWorktree != worktree) {
+      return false;
+    }
+    final effectiveRoots = [
+      if (worktree != null && worktree.isNotEmpty) worktree,
+      if (kWorktree.isNotEmpty && kWorktree != worktree) kWorktree,
+    ];
+    return diffPathsEqual(kPath, targetPath, effectiveRoots);
+  }
+
   /// Drop the cached content of a path so the next time its tab is (re)created
   /// it re-downloads instead of showing stale cached text. Called on file-change
   /// SSE events so a lazily-built tab never displays out-of-date content.
+  /// 同时通过 [diffPathsEqual] 进行归一化模糊匹配，确保已关闭页签但留存缓存的文件
+  /// 在收到服务端绝对路径变更事件时也能精准失效。
   void invalidateFileContent(String path, {String? worktree}) {
     _removeContentCacheKey(fileKey(path, worktree));
-    _removeBinaryCacheKey(fileKey(path, worktree));
+    for (final k in _contentCache.keys.toList()) {
+      if (_matchCacheKey(k, path, worktree)) {
+        _removeContentCacheKey(k);
+      }
+    }
+    invalidateBinaryContent(path, worktree: worktree);
   }
 
   /// Drop the cached binary content for a path.
   void invalidateBinaryContent(String path, {String? worktree}) {
     _removeBinaryCacheKey(fileKey(path, worktree));
+    for (final k in _binaryCache.keys.toList()) {
+      if (_matchCacheKey(k, path, worktree)) {
+        _removeBinaryCacheKey(k);
+      }
+    }
   }
 
   /// Select an already opened file tab. When [worktree] is null, matches the

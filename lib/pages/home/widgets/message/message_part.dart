@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/cupertino.dart';
@@ -256,7 +257,18 @@ class _FileAttachmentState extends State<_FileAttachment> {
         final comma = url.indexOf(',');
         if (comma == -1) return;
         try {
-          provider = MemoryImage(base64Decode(url.substring(comma + 1)));
+          final bytes = base64Decode(url.substring(comma + 1));
+          provider = MemoryImage(bytes);
+          // 回写本地磁盘缓存：使跨端同步的历史图片下次能从本地磁盘秒开，免除主线程重复 Base64 解码
+          if (widget.part.messageID.isNotEmpty && widget.part.id.isNotEmpty) {
+            unawaited(
+              defaultImageCache.write(
+                widget.part.messageID,
+                widget.part.id,
+                bytes,
+              ),
+            );
+          }
         } catch (e) {
           AppLogger.e('_FileAttachment decode data image failed: $e');
           return;

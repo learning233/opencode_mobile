@@ -11,6 +11,7 @@ import '../services/e2b_workspace_service.dart';
 import '../utils/app_logger.dart';
 
 import 'session_controller.dart';
+import 'tablet_tool_controller.dart';
 
 class ProjectController extends GetxController {
   final OpenCodeClient _client = OpenCodeClient();
@@ -262,6 +263,11 @@ class ProjectController extends GetxController {
     // SSE 失效；切项目时整体清空，避免切回旧项目时命中过期列表。
     invalidateDirectoryCache();
 
+    // 切换项目时清理已打开的文件页签与工作区内容缓存，防止旧项目文件残留在新工程
+    if (Get.isRegistered<TabletToolController>()) {
+      Get.find<TabletToolController>().closeAllFiles();
+    }
+
     // Refresh sessions and re-scope SSE for the new project
     final sessionCtrl = Get.find<SessionController>();
     sessionCtrl.onProjectChanged(project.worktree);
@@ -299,7 +305,7 @@ class ProjectController extends GetxController {
     final key = dirKey(path, effectiveWorktree);
 
     if (!force && directoryCache.containsKey(key)) {
-      return directoryCache[key]!;
+      return List<FileEntry>.unmodifiable(directoryCache[key]!);
     }
 
     final generation = _directoryCacheGeneration;
@@ -334,7 +340,7 @@ class ProjectController extends GetxController {
         }
         directoryCache[key] = list;
       }
-      return list;
+      return List<FileEntry>.unmodifiable(list);
     } else {
       throw Exception('Server error: ${response.statusCode}');
     }

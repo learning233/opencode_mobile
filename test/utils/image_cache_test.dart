@@ -54,4 +54,45 @@ void main() {
     expect(await cache.find('m1', 'old'), isNull);
     expect(await cache.find('m1', 'new'), isNotNull);
   });
+
+  test('cleanup evicts oldest files when exceeding maxFiles limit', () async {
+    for (var i = 0; i < 5; i++) {
+      await cache.write('m$i', 'p$i', [i]);
+    }
+    for (var i = 0; i < 5; i++) {
+      final f = await cache.find('m$i', 'p$i', touch: false);
+      f!.setLastModifiedSync(
+        DateTime.now().subtract(Duration(minutes: 50 - i * 10)),
+      );
+    }
+
+    // 上限 3 个，淘汰最旧的 m0 和 m1
+    await cache.cleanup(maxFiles: 3);
+
+    expect(await cache.find('m0', 'p0', touch: false), isNull);
+    expect(await cache.find('m1', 'p1', touch: false), isNull);
+    expect(await cache.find('m2', 'p2', touch: false), isNotNull);
+    expect(await cache.find('m3', 'p3', touch: false), isNotNull);
+    expect(await cache.find('m4', 'p4', touch: false), isNotNull);
+  });
+
+  test('cleanup evicts oldest files when exceeding maxTotalBytes limit', () async {
+    // 写入 3 个文件，每个 10 字节
+    for (var i = 0; i < 3; i++) {
+      await cache.write('m$i', 'p$i', List.filled(10, i));
+    }
+    for (var i = 0; i < 3; i++) {
+      final f = await cache.find('m$i', 'p$i', touch: false);
+      f!.setLastModifiedSync(
+        DateTime.now().subtract(Duration(minutes: 30 - i * 10)),
+      );
+    }
+
+    // 预算 25 字节，30 字节会超出，淘汰最旧的 m0 (10 字节)，剩下 m1, m2 (20 字节)
+    await cache.cleanup(maxTotalBytes: 25);
+
+    expect(await cache.find('m0', 'p0', touch: false), isNull);
+    expect(await cache.find('m1', 'p1', touch: false), isNotNull);
+    expect(await cache.find('m2', 'p2', touch: false), isNotNull);
+  });
 }

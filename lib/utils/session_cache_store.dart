@@ -41,10 +41,6 @@ class SessionCacheStore {
     final root = _baseDir ?? await getApplicationSupportDirectory();
     final dir = Directory(p.join(root.path, _dirName));
     await dir.create(recursive: true);
-    if (!_pruneDone) {
-      _pruneDone = true;
-      await prune();
-    }
     return dir;
   }
 
@@ -59,6 +55,7 @@ class SessionCacheStore {
 
   /// 读取会话缓存。文件缺失、版本不符、损坏或解析异常一律返回 `null`，
   /// 调用方静默降级为正常网络加载。
+  /// 读路径直达目标文件，不阻塞在目录扫描与淘汰逻辑上，确保秒开性能。
   Future<List<Map<String, dynamic>>?> load(String sessionId) async {
     if (!_isValidId(sessionId)) return null;
     try {
@@ -83,11 +80,20 @@ class SessionCacheStore {
 
   /// 原子写入：jsonEncode 放 compute（大会话数 MB，避免主线程卡顿），
   /// 先写 `.tmp` 再 rename 覆盖，断电/闪退不会留下半截文件。
+  /// 空 messages 时清理磁盘旧快照，防止清空/重置的会话重启后幽灵消息复活。
+  /// 首次写入时在写队列内执行淘汰清理，与所有文件写操作天然串行互斥。
   Future<void> save(String sessionId, List<Map<String, dynamic>> messages) {
-    if (!_isValidId(sessionId) || messages.isEmpty) return Future.value();
+    if (!_isValidId(sessionId)) return Future.value();
+    if (messages.isEmpty) {
+      return delete(sessionId);
+    }
     return _enqueue(() async {
       try {
         final dir = await _dir();
+        if (!_pruneDone) {
+          _pruneDone = true;
+          await _pruneInternal(dir);
+        }
         final json = await compute(jsonEncode, {
           'v': _version,
           'messages': messages,
@@ -138,18 +144,41 @@ class SessionCacheStore {
     });
   }
 
-  /// 淘汰最旧的缓存文件。生产路径仅在首次访问目录时自动执行一次；
-  /// 测试可直接调用并传入更小的上限。
+  /// 淘汰最旧的缓存文件。生产路径仅在首次写入缓存时自动执行一次；
+  /// 测试可直接调用并传入更小的上限。通过 [_enqueue] 串行调度，避免与写操作竞态。
   Future<void> prune({
+    int maxFiles = _maxFiles,
+    int maxTotalBytes = _maxTotalBytes,
+  }) {
+    return _enqueue(() async {
+      final dir = await _dir();
+      await _pruneInternal(
+        dir,
+        maxFiles: maxFiles,
+        maxTotalBytes: maxTotalBytes,
+      );
+    });
+  }
+
+  Future<void> _pruneInternal(
+    Directory dir, {
     int maxFiles = _maxFiles,
     int maxTotalBytes = _maxTotalBytes,
   }) async {
     try {
-      final dir = await _dir();
+      if (!await dir.exists()) return;
       final entries = <File, ({DateTime modified, int size})>{};
       var total = 0;
       await for (final entity in dir.list()) {
-        if (entity is! File || !entity.path.endsWith('.json')) continue;
+        if (entity is! File) continue;
+        // 清理闪退或异常中断残留的孤立 .tmp 文件
+        if (entity.path.endsWith('.tmp')) {
+          try {
+            await entity.delete();
+          } catch (_) {}
+          continue;
+        }
+        if (!entity.path.endsWith('.json')) continue;
         try {
           final stat = await entity.stat();
           entries[entity] = (modified: stat.modified, size: stat.size);

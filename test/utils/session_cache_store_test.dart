@@ -140,6 +140,17 @@ void main() {
       expect(await store.load('s1'), isNull);
     });
 
+    test('saving empty messages deletes existing cache file on disk', () async {
+      await store.save('s1', [_rawMessage('m1', role: 'user', created: 100)]);
+      expect(await store.load('s1'), isNotNull);
+
+      // 保存空列表：应主动删除磁盘文件，防止清空/重置的会话重启后幽灵消息复活
+      await store.save('s1', []);
+      expect(await store.load('s1'), isNull);
+      final file = File('${cacheDir().path}${Platform.pathSeparator}s1.json');
+      expect(file.existsSync(), isFalse);
+    });
+
     test('session ids containing path separators are rejected', () async {
       await store.save('../evil', [
         _rawMessage('m1', role: 'user', created: 100),
@@ -177,6 +188,18 @@ void main() {
       // 最旧的 s0、s1 被淘汰。
       expect(remaining.contains('s0.json'), isFalse);
       expect(remaining.contains('s1.json'), isFalse);
+    });
+
+    test('prune removes orphan tmp files left by crashes', () async {
+      final dir = cacheDir()..createSync(recursive: true);
+      final orphanTmp = File(
+        '${dir.path}${Platform.pathSeparator}s99.json.tmp',
+      );
+      orphanTmp.writeAsStringSync('{"incomplete":');
+      expect(orphanTmp.existsSync(), isTrue);
+
+      await store.prune();
+      expect(orphanTmp.existsSync(), isFalse);
     });
   });
 

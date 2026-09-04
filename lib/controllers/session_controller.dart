@@ -728,6 +728,16 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         final roots = list.where(_isRootSession).toList();
         sessions.assignAll(roots);
 
+        for (final s in list) {
+          final revertMsgId = s.revert?.messageID ?? '';
+          final existing = sessionRuntimeStates[s.id];
+          if (existing != null) {
+            existing.revertMessageID.value = revertMsgId;
+          } else if (revertMsgId.isNotEmpty) {
+            getOrCreateSessionState(s.id).revertMessageID.value = revertMsgId;
+          }
+        }
+
         for (final s in list.where((s) => !_isRootSession(s))) {
           if (s.parentID != null && s.parentID!.isNotEmpty) {
             _parentSessionIds[s.id] = s.parentID!;
@@ -1366,16 +1376,27 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     // 的乱序；缓存缺失/损坏时返回 null，无感降级为正常网络加载。
     // SSE 预填充或重连强刷场景消息非空，自动跳过走原路径。
     if (reloadState.messages.isEmpty) {
-      final cached = await SessionCacheStore.instance.load(sessionId);
-      // 读缓存期间可能已切项目：不重建/不写过期会话状态。
-      if (seq != _sessionFetchSeq) return;
-      if (cached != null) {
-        reloadState.messages.assignAll(
-          cached.map((json) => MessageModel.fromJson(json)).toList(),
+      try {
+        final cached = await SessionCacheStore.instance.load(sessionId);
+        // 读缓存期间可能已切项目：不重建/不写过期会话状态。
+        if (seq != _sessionFetchSeq) return;
+        if (cached != null) {
+          final parsed = cached
+              .map((json) => MessageModel.fromJson(json))
+              .toList();
+          if (parsed.isNotEmpty) {
+            reloadState.messages.assignAll(parsed);
+            reloadState.hasLoadedHistory.value = true;
+            reloadState.partsVersion++;
+            reloadState.rescanHasPendingQuestion();
+            _syncModelFromHistory(reloadState);
+          }
+        }
+      } catch (e) {
+        AppLogger.w(
+          'loadMessages cache read failed for $sessionId: $e, falling back to network',
         );
-        reloadState.hasLoadedHistory.value = true;
-        reloadState.partsVersion++;
-        reloadState.rescanHasPendingQuestion();
+        unawaited(SessionCacheStore.instance.delete(sessionId));
       }
     }
     // Fire the todo fetch concurrently with the full-history GET below so its
@@ -1467,50 +1488,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         // }
 
         // Sync selectedModel and selectedThinkingLevel from last sent/used model in history
-        if (state.messages.isNotEmpty) {
-          final lastMsgWithModel = state.messages.reversed
-              .cast<MessageModel?>()
-              .firstWhere(
-                (m) => m != null && (m.model != null || m.raw['model'] is Map),
-                orElse: () => null,
-              );
-          if (lastMsgWithModel != null) {
-            final modelMap = lastMsgWithModel.model;
-            if (modelMap != null) {
-              final providerID =
-                  (modelMap['providerID'] ?? modelMap['provider_id'])
-                      ?.toString() ??
-                  '';
-              final modelID =
-                  (modelMap['id'] ??
-                          modelMap['modelID'] ??
-                          modelMap['model_id'])
-                      ?.toString() ??
-                  '';
-              final variant = modelMap['variant']?.toString() ?? '';
-
-              // Find if this model exists in availableModels
-              final matched = availableModels.firstWhereOrNull((m) {
-                if (providerID.isNotEmpty && modelID.isNotEmpty) {
-                  return m.providerId == providerID && m.id == modelID;
-                }
-                return m.key == modelID || m.id == modelID;
-              });
-
-              if (matched != null) {
-                state.selectedModel.value = matched.key;
-                if (variant.isNotEmpty && matched.variants.contains(variant)) {
-                  state.selectedThinkingLevel.value = variant;
-                }
-              } else if (availableModels.isNotEmpty) {
-                // Fallback: pick one from availableModels if previous model is no longer available
-                state.selectedModel.value = availableModels.first.key;
-                state.selectedThinkingLevel.value = '';
-              }
-              _syncThinkingLevelsForSelection(state: state);
-            }
-          }
-        }
+        _syncModelFromHistory(state);
 
         // Batch restore of idle sessions: leftover pending questions are stale
         // unless the server still has them pending (live question must survive
@@ -1544,6 +1522,54 @@ class SessionController extends GetxController with WidgetsBindingObserver {
         stateOf(sessionId).hasLoadedHistory.value = true;
       }
     }
+  }
+
+  /// 从会话历史最后一条包含模型信息的消息同步 [selectedModel] 与 [selectedThinkingLevel]。
+  /// 在 SWR 本地缓存秒开命中与网络历史拉取成功两条路径共用，保证秒开后立即使用正确的模型。
+  void _syncModelFromHistory(SessionRuntimeState state) {
+    if (state.messages.isEmpty) return;
+    final lastMsgWithModel = state.messages.reversed
+        .cast<MessageModel?>()
+        .firstWhere(
+          (m) =>
+              m != null &&
+              (m.raw['model'] is Map || m.raw['info']?['model'] is Map),
+          orElse: () => null,
+        );
+    if (lastMsgWithModel == null) return;
+    final rawModel =
+        lastMsgWithModel.raw['model'] ??
+        (lastMsgWithModel.raw['info'] is Map
+            ? (lastMsgWithModel.raw['info'] as Map)['model']
+            : null);
+    if (rawModel is! Map) return;
+    final modelMap = Map<String, dynamic>.from(rawModel);
+    final providerID =
+        (modelMap['providerID'] ?? modelMap['provider_id'])?.toString() ?? '';
+    final modelID =
+        (modelMap['id'] ?? modelMap['modelID'] ?? modelMap['model_id'])
+            ?.toString() ??
+        '';
+    final variant = modelMap['variant']?.toString() ?? '';
+
+    final matched = availableModels.firstWhereOrNull((m) {
+      if (providerID.isNotEmpty && modelID.isNotEmpty) {
+        return m.providerId == providerID && m.id == modelID;
+      }
+      return m.key == modelID || m.id == modelID;
+    });
+
+    if (matched != null) {
+      state.selectedModel.value = matched.key;
+      if (variant.isNotEmpty && matched.variants.contains(variant)) {
+        state.selectedThinkingLevel.value = variant;
+      }
+    } else if (state.selectedModel.value.isEmpty &&
+        availableModels.isNotEmpty) {
+      state.selectedModel.value = availableModels.first.key;
+      state.selectedThinkingLevel.value = '';
+    }
+    _syncThinkingLevelsForSelection(state: state);
   }
 
   /// 重建消息并把当前 [parts] 回写进 raw 副本。
@@ -2912,6 +2938,16 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       ctrl.invalidateFileContent(raw, worktree: currentWorktree);
       ctrl.fileChangeTick.value++;
     }
+    if (Get.isRegistered<ProjectController>()) {
+      final projectCtrl = Get.find<ProjectController>();
+      final effectiveWorktree =
+          _client.activeDirectory ?? projectCtrl.activeProject.value?.worktree;
+      projectCtrl.invalidateDirectoryCache(
+        worktree: (effectiveWorktree != null && effectiveWorktree.isNotEmpty)
+            ? effectiveWorktree
+            : null,
+      );
+    }
   }
 
   void _onSessionCreated(SseEvent event) {
@@ -2948,6 +2984,13 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     final info = event.info;
     if (info.isNotEmpty) {
       final updated = SessionModel.fromJson(info);
+      final revertMsgId = updated.revert?.messageID ?? '';
+      final existingState = sessionRuntimeStates[updated.id];
+      if (existingState != null) {
+        existingState.revertMessageID.value = revertMsgId;
+      } else if (revertMsgId.isNotEmpty) {
+        getOrCreateSessionState(updated.id).revertMessageID.value = revertMsgId;
+      }
       if (!_isRootSession(updated)) {
         unawaited(_registerParentSession(updated.id, updated.parentID!));
       }

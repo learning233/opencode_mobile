@@ -146,4 +146,30 @@ void main() {
       expect(ctrl.cachedBinaryContent('c.png'), isNotNull);
     });
   });
+
+  group('SessionRuntimeState revertMessageID', () {
+    test('tracks revertMessageID for timeline trimming', () {
+      final state = SessionRuntimeState('ses_1');
+      expect(state.revertMessageID.value, isEmpty);
+
+      state.revertMessageID.value = 'msg_rev_123';
+      expect(state.revertMessageID.value, 'msg_rev_123');
+
+      state.revertMessageID.value = '';
+      expect(state.revertMessageID.value, isEmpty);
+    });
+
+    test(
+      'revertMessageID is cleared when session state receives null or empty revert',
+      () {
+        final state = SessionRuntimeState('ses_1');
+        state.revertMessageID.value = 'msg_old_rev';
+
+        // 模拟会话撤销恢复后，服务端下发 revert 为 null 的更新事件
+        String? nextRevertId;
+        state.revertMessageID.value = nextRevertId ?? '';
+        expect(state.revertMessageID.value, isEmpty);
+      },
+    );
+  });
 }

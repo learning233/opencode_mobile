@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import '../../controllers/pty_controller.dart';
+import '../../models/pty_session.dart';
 import '../../utils/translations.dart';
 
 class PtyIndicator extends StatelessWidget {

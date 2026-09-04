@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:kterm/kterm.dart';
 import 'package:web_socket_channel/io.dart';
-import 'package:web_socket_channel/web_socket_channel.dart';
 import '../api/endpoints.dart';
 import '../api/opencode_client.dart';
 import '../api/sidecar_manager.dart';
@@ -15,58 +14,7 @@ import '../utils/app_logger.dart';
 import '../utils/snackbar_utils.dart';
 import '../utils/translations.dart';
 import '../utils/url_utils.dart';
-
-class PtySession {
-  final String id;
-  final String title;
-  final String directory;
-  final Terminal terminal;
-  final TerminalController controller;
-  final FocusNode focusNode;
-  WebSocketChannel? channel;
-  final RxBool connected;
-  final RxBool error = false.obs;
-  final RxString errorMsg = ''.obs;
-  Timer? resizeTimer;
-  StreamSubscription? _streamSub;
-  int autoReconnectCount = 0;
-  Timer? autoReconnectTimer;
-  bool endedByShell = false;
-
-  PtySession({
-    required this.id,
-    required this.title,
-    required this.directory,
-    required this.terminal,
-    required this.controller,
-    required this.focusNode,
-    required this.connected,
-    this.channel,
-  });
-
-  void sendInput(String input) {
-    if (connected.value && channel != null) {
-      try {
-        channel!.sink.add(input);
-      } catch (_) {}
-    }
-  }
-
-  void dispose() {
-    autoReconnectTimer?.cancel();
-    autoReconnectTimer = null;
-    focusNode.dispose();
-    controller.dispose();
-    resizeTimer?.cancel();
-    resizeTimer = null;
-    // 取消 WS 订阅，避免 dispose 后在途帧写入已销毁的 Terminal。
-    _streamSub?.cancel();
-    _streamSub = null;
-    try {
-      channel?.sink.close();
-    } catch (_) {}
-  }
-}
+import '../models/pty_session.dart';
 
 class PtyController extends GetxController with WidgetsBindingObserver {
   final _client = OpenCodeClient();
@@ -524,8 +472,8 @@ class PtyController extends GetxController with WidgetsBindingObserver {
             connected.value = false;
             // 中止被超时抛弃的连接：不取消订阅的话，晚到完成的握手会让服务端
             // 回放数据继续写入错误视图下的 Terminal，socket 与远端 PTY 也长期悬挂。
-            unawaited(session?._streamSub?.cancel());
-            session?._streamSub = null;
+            unawaited(session?.streamSub?.cancel());
+            session?.streamSub = null;
             try {
               channel.sink.close();
             } catch (_) {}
@@ -559,7 +507,7 @@ class PtyController extends GetxController with WidgetsBindingObserver {
           }
         });
 
-    session._streamSub = channel.stream.listen(
+    session.streamSub = channel.stream.listen(
       (data) {
         if (data != null) {
           if (data is List<int>) {

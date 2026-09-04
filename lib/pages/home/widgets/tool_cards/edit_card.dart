@@ -1,12 +1,12 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import '../../../../models/diff_line.dart';
 import '../../../../utils/translations.dart';
 import '../../../../api/models/message.dart';
 import '../../../../utils/app_theme.dart';
 import '../../../../widgets/detail_bottom_sheet.dart';
 import '../../tablet/diff_code_view.dart';
-import '../../tablet/diff_view.dart';
 
 /// E2：`_collectEntries` 与 header 统计的按 part 实例 memo（Part 不可变、
 /// 更新即整体换实例）。Expando 随 part 回收，无需淘汰。

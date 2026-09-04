@@ -1,13 +1,13 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import '../../../../models/diff_line.dart';
 import '../../../../utils/translations.dart';
 
 import '../../../../api/models/message.dart';
 import '../../../../utils/app_theme.dart';
 import '../../../../widgets/detail_bottom_sheet.dart';
 import '../../tablet/diff_code_view.dart';
-import '../../tablet/diff_view.dart';
 
 /// Renders the real `apply_patch` tool as a batch-oriented patch card.
 class BatchCard extends StatefulWidget {

@@ -6,22 +6,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../init.dart';
 import '../models/browser_tab.dart';
 import '../models/opened_file.dart';
+import '../models/file_line_jump_request.dart';
 import '../utils/diff_paths.dart';
 import '../utils/url_utils.dart';
-
-class FileLineJumpRequest {
-  final String path;
-  final String? worktree;
-  final int line;
-  final int timestamp;
-
-  const FileLineJumpRequest({
-    required this.path,
-    this.worktree,
-    required this.line,
-    required this.timestamp,
-  });
-}
 
 /// 一条文件变更记录：SSE `file` 原始路径 + 事件到达时间。
 typedef FileChangeRecord = ({String path, DateTime at});

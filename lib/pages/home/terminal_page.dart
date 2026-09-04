@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:kterm/kterm.dart';
 import '../../controllers/pty_controller.dart';
 import '../../controllers/session_controller.dart';
+import '../../models/pty_session.dart';
 import '../../init.dart';
 import '../../utils/layout_utils.dart';
 import '../../utils/translations.dart';

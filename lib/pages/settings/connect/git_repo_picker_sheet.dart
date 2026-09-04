@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import '../../../models/git_model.dart';
 import '../../../services/git_repo_service.dart';
 import '../../../utils/snackbar_utils.dart';
 import '../../../utils/translations.dart';

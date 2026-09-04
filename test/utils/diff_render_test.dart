@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:opencode_app/models/diff_line.dart';
 import 'package:opencode_app/utils/diff_render.dart';
-import 'package:opencode_app/pages/home/tablet/diff_view.dart';
 
 DiffLine _line(DiffLineType type, String text, {int? oldNum, int? newNum}) =>
     DiffLine(type, text, oldLineNum: oldNum, newLineNum: newNum);

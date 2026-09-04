@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:re_editor/re_editor.dart';
 
+import '../../../models/diff_line.dart';
 import '../../../utils/app_theme.dart';
 import '../../../utils/diff_render.dart';
 import 'diff_view.dart';

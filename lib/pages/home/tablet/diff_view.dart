@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../api/models/snapshot_file_diff.dart';
+import '../../../models/diff_line.dart';
 import '../../../utils/app_theme.dart';
 import 'diff_code_view.dart';
 
@@ -227,15 +228,4 @@ List<List<int>> computeChangeBlocks(List<DiffLine> lines) {
   }
   if (start != -1) blocks.add([start, lines.length - 1]);
   return blocks;
-}
-
-enum DiffLineType { unchanged, added, removed }
-
-class DiffLine {
-  final DiffLineType type;
-  final String text;
-  final int? oldLineNum;
-  final int? newLineNum;
-
-  DiffLine(this.type, this.text, {this.oldLineNum, this.newLineNum});
 }

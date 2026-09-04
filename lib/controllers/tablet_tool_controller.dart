@@ -391,12 +391,14 @@ class TabletToolController extends GetxController {
     if (worktree != null &&
         worktree.isNotEmpty &&
         kWorktree.isNotEmpty &&
-        kWorktree != worktree) {
+        kWorktree.toLowerCase() != worktree.toLowerCase()) {
       return false;
     }
     final effectiveRoots = [
       if (worktree != null && worktree.isNotEmpty) worktree,
-      if (kWorktree.isNotEmpty && kWorktree != worktree) kWorktree,
+      if (kWorktree.isNotEmpty &&
+          kWorktree.toLowerCase() != (worktree ?? '').toLowerCase())
+        kWorktree,
     ];
     return diffPathsEqual(kPath, targetPath, effectiveRoots);
   }

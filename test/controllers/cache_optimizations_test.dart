@@ -146,25 +146,44 @@ void main() {
       expect(ctrl.cachedBinaryContent('c.png'), isNotNull);
     });
 
-    test('invalidateFileContent with absolute path clears relative path cache', () {
-      final ctrl = TabletToolController();
-      const worktree = '/workspace/project';
-      ctrl.cacheFileContent('lib/main.dart', 'void main() {}', worktree: worktree);
-      expect(
-        ctrl.cachedContent('lib/main.dart', worktree: worktree),
-        'void main() {}',
-      );
+    test(
+      'invalidateFileContent with absolute path clears relative path cache',
+      () {
+        final ctrl = TabletToolController();
+        const worktree = '/workspace/project';
+        ctrl.cacheFileContent(
+          'lib/main.dart',
+          'void main() {}',
+          worktree: worktree,
+        );
+        expect(
+          ctrl.cachedContent('lib/main.dart', worktree: worktree),
+          'void main() {}',
+        );
 
-      // 模拟 Agent 修改文件后，服务端下发的绝对路径事件
-      ctrl.invalidateFileContent('$worktree/lib/main.dart', worktree: worktree);
-      expect(ctrl.cachedContent('lib/main.dart', worktree: worktree), isNull);
-    });
+        // 模拟 Agent 修改文件后，服务端下发的绝对路径事件
+        ctrl.invalidateFileContent(
+          '$worktree/lib/main.dart',
+          worktree: worktree,
+        );
+        expect(ctrl.cachedContent('lib/main.dart', worktree: worktree), isNull);
+      },
+    );
 
     test('closeAllFiles drops opened files and all caches', () {
       final ctrl = TabletToolController();
-      ctrl.openFile('lib/a.dart', 'a.dart', worktree: '/proj', content: 'hello');
+      ctrl.openFile(
+        'lib/a.dart',
+        'a.dart',
+        worktree: '/proj',
+        content: 'hello',
+      );
       ctrl.cacheFileContent('lib/a.dart', 'hello', worktree: '/proj');
-      ctrl.cacheBinaryContent('img.png', Uint8List.fromList([1, 2]), worktree: '/proj');
+      ctrl.cacheBinaryContent(
+        'img.png',
+        Uint8List.fromList([1, 2]),
+        worktree: '/proj',
+      );
 
       expect(ctrl.openedFiles, isNotEmpty);
       expect(ctrl.cachedContent('lib/a.dart', worktree: '/proj'), isNotNull);
@@ -177,6 +196,30 @@ void main() {
       expect(ctrl.cachedBinaryContent('img.png', worktree: '/proj'), isNull);
       expect(ctrl.activeFilePath.value, isEmpty);
     });
+
+    test(
+      'invalidateFileContent handles case-insensitive worktree mismatch on Windows paths',
+      () {
+        final ctrl = TabletToolController();
+        const worktree = 'D:/Workspace/Project';
+        ctrl.cacheFileContent(
+          'lib/app.dart',
+          'void run() {}',
+          worktree: worktree,
+        );
+        expect(
+          ctrl.cachedContent('lib/app.dart', worktree: worktree),
+          'void run() {}',
+        );
+
+        // 模拟传入小写驱动器盘符的绝对路径事件
+        ctrl.invalidateFileContent(
+          'd:/workspace/project/lib/app.dart',
+          worktree: 'd:/workspace/project',
+        );
+        expect(ctrl.cachedContent('lib/app.dart', worktree: worktree), isNull);
+      },
+    );
   });
 
   group('SessionRuntimeState revertMessageID', () {

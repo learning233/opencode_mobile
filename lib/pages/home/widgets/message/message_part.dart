@@ -248,7 +248,12 @@ class _FileAttachmentState extends State<_FileAttachment> {
       );
       if (cached != null) {
         try {
-          provider = MemoryImage(await cached.readAsBytes());
+          final bytes = await cached.readAsBytes();
+          if (bytes.isNotEmpty) {
+            provider = MemoryImage(bytes);
+          } else {
+            unawaited(cached.delete().catchError((_) => cached));
+          }
         } catch (e) {
           AppLogger.e('_FileAttachment load cached image failed: $e');
         }

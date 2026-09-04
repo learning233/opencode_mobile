@@ -1631,11 +1631,14 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     String sessionId,
     SessionRuntimeState state,
   ) {
-    if (state.messages.isEmpty ||
-        state.isGenerating.value ||
+    if (state.isGenerating.value ||
         _localSendInFlight.contains(sessionId) ||
         state.streamingPartText.isNotEmpty ||
         state.revertMessageID.value.isNotEmpty) {
+      return;
+    }
+    if (state.messages.isEmpty) {
+      unawaited(SessionCacheStore.instance.delete(sessionId));
       return;
     }
     unawaited(

@@ -25,6 +25,21 @@ void main() {
     expect(await file!.readAsBytes(), [1, 2, 3]);
   });
 
+  test(
+    'write overwrites previous file atomically without leaving tmp',
+    () async {
+      await cache.write('m1', 'prt_1', [1, 2, 3]);
+      await cache.write('m1', 'prt_1', [4, 5, 6, 7]);
+
+      final file = await cache.find('m1', 'prt_1');
+      expect(file, isNotNull);
+      expect(await file!.readAsBytes(), [4, 5, 6, 7]);
+
+      final tmpFile = File('${file.path}.tmp');
+      expect(tmpFile.existsSync(), isFalse);
+    },
+  );
+
   test('find returns null when no entry exists', () async {
     expect(await cache.find('m1', 'nope'), isNull);
   });
@@ -76,23 +91,49 @@ void main() {
     expect(await cache.find('m4', 'p4', touch: false), isNotNull);
   });
 
-  test('cleanup evicts oldest files when exceeding maxTotalBytes limit', () async {
-    // 写入 3 个文件，每个 10 字节
-    for (var i = 0; i < 3; i++) {
-      await cache.write('m$i', 'p$i', List.filled(10, i));
-    }
-    for (var i = 0; i < 3; i++) {
-      final f = await cache.find('m$i', 'p$i', touch: false);
-      f!.setLastModifiedSync(
-        DateTime.now().subtract(Duration(minutes: 30 - i * 10)),
-      );
-    }
+  test(
+    'cleanup evicts oldest files when exceeding maxTotalBytes limit',
+    () async {
+      // 写入 3 个文件，每个 10 字节
+      for (var i = 0; i < 3; i++) {
+        await cache.write('m$i', 'p$i', List.filled(10, i));
+      }
+      for (var i = 0; i < 3; i++) {
+        final f = await cache.find('m$i', 'p$i', touch: false);
+        f!.setLastModifiedSync(
+          DateTime.now().subtract(Duration(minutes: 30 - i * 10)),
+        );
+      }
 
-    // 预算 25 字节，30 字节会超出，淘汰最旧的 m0 (10 字节)，剩下 m1, m2 (20 字节)
-    await cache.cleanup(maxTotalBytes: 25);
+      // 预算 25 字节，30 字节会超出，淘汰最旧的 m0 (10 字节)，剩下 m1, m2 (20 字节)
+      await cache.cleanup(maxTotalBytes: 25);
 
-    expect(await cache.find('m0', 'p0', touch: false), isNull);
-    expect(await cache.find('m1', 'p1', touch: false), isNotNull);
-    expect(await cache.find('m2', 'p2', touch: false), isNotNull);
+      expect(await cache.find('m0', 'p0', touch: false), isNull);
+      expect(await cache.find('m1', 'p1', touch: false), isNotNull);
+      expect(await cache.find('m2', 'p2', touch: false), isNotNull);
+    },
+  );
+
+  test('write ignores empty bytes and does not create file', () async {
+    await cache.write('m1', 'p_empty', []);
+    expect(await cache.find('m1', 'p_empty'), isNull);
+  });
+
+  test('cleanup removes orphan tmp files and 0-byte corrupt files', () async {
+    final orphanTmp = File('${temp.path}/image_cache/orphan.img.tmp')
+      ..createSync(recursive: true);
+    orphanTmp.writeAsBytesSync([1, 2, 3]);
+
+    final zeroByteImg = File('${temp.path}/image_cache/m_zero_p_zero.img')
+      ..createSync(recursive: true);
+    zeroByteImg.writeAsBytesSync([]);
+
+    expect(orphanTmp.existsSync(), isTrue);
+    expect(zeroByteImg.existsSync(), isTrue);
+
+    await cache.cleanup();
+
+    expect(orphanTmp.existsSync(), isFalse);
+    expect(zeroByteImg.existsSync(), isFalse);
   });
 }

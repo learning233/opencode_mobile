@@ -33,12 +33,18 @@ class ImageCache {
       id.isNotEmpty && !id.contains('/') && !id.contains('\\');
 
   Future<void> write(String messageId, String partId, List<int> bytes) async {
-    if (!_isValidId(messageId) || !_isValidId(partId)) return;
+    if (!_isValidId(messageId) || !_isValidId(partId) || bytes.isEmpty) return;
     try {
       final dir = await _dir();
-      await File(
-        p.join(dir.path, '${messageId}_$partId.img'),
-      ).writeAsBytes(bytes, flush: true);
+      final file = File(p.join(dir.path, '${messageId}_$partId.img'));
+      final tmp = File('${file.path}.tmp');
+      try {
+        await tmp.writeAsBytes(bytes, flush: true);
+        await tmp.rename(file.path);
+      } catch (_) {
+        if (await tmp.exists()) await tmp.delete();
+        rethrow;
+      }
     } catch (e) {
       AppLogger.e('ImageCache.write failed: $e');
     }
@@ -82,10 +88,19 @@ class ImageCache {
       var total = 0;
 
       await for (final entity in dir.list()) {
-        if (entity is! File || !entity.path.endsWith('.img')) continue;
+        if (entity is! File) continue;
+        // 清理闪退或中断残留的孤立 .tmp 文件
+        if (entity.path.endsWith('.tmp')) {
+          try {
+            await entity.delete();
+          } catch (_) {}
+          continue;
+        }
+        if (!entity.path.endsWith('.img')) continue;
         try {
           final stat = await entity.stat();
-          if (now.difference(stat.modified) > maxAge) {
+          // 0 字节损坏文件或超期文件直接清理
+          if (stat.size == 0 || now.difference(stat.modified) > maxAge) {
             await entity.delete();
           } else {
             entries[entity] = (modified: stat.modified, size: stat.size);

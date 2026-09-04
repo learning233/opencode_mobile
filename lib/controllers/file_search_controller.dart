@@ -55,6 +55,13 @@ class FileSearchController extends GetxController {
   void setMode(SearchMode newMode, {String? worktree}) {
     if (mode.value == newMode) return;
     mode.value = newMode;
+    // 切换模式时清空另一模式的历史结果与错误信息，保证 loading 态与空态正常展示
+    if (newMode == SearchMode.files) {
+      textResults.clear();
+    } else {
+      fileResults.clear();
+    }
+    errorMessage.value = null;
     if (hasQuery) {
       performSearch(worktree: worktree);
     }
@@ -74,6 +81,9 @@ class FileSearchController extends GetxController {
 
     isSearching.value = true;
     errorMessage.value = null;
+    // 搜索开始时清空旧结果，使 loading 态立即生效，避免旧模式残存结果干扰
+    fileResults.clear();
+    textResults.clear();
 
     try {
       if (mode.value == SearchMode.files) {
@@ -117,8 +127,10 @@ class FileSearchController extends GetxController {
               : [];
           final matches = <TextSearchMatch>[];
           for (final item in rawList) {
-            if (item is Map<String, dynamic>) {
-              matches.add(TextSearchMatch.fromJson(item));
+            if (item is Map) {
+              matches.add(
+                TextSearchMatch.fromJson(Map<String, dynamic>.from(item)),
+              );
             }
           }
 

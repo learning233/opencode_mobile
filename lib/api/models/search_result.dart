@@ -65,8 +65,10 @@ class TextSearchMatch {
     final submatchesList = <TextSubmatch>[];
     if (rawSubmatches is List) {
       for (final item in rawSubmatches) {
-        if (item is Map<String, dynamic>) {
-          submatchesList.add(TextSubmatch.fromJson(item));
+        if (item is Map) {
+          submatchesList.add(
+            TextSubmatch.fromJson(Map<String, dynamic>.from(item)),
+          );
         }
       }
     }

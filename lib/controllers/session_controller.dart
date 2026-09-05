@@ -326,10 +326,6 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     var state = sessionRuntimeStates[sessionId];
     if (state == null) {
       state = SessionRuntimeState(sessionId);
-      final defaultKey = Global.settings.defaultModelKey;
-      if (defaultKey != null && defaultKey.isNotEmpty) {
-        state.selectedModel.value = defaultKey;
-      }
       sessionRuntimeStates[sessionId] = state;
       _syncThinkingLevelsForSelection(state: state);
     }
@@ -1638,7 +1634,12 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       return;
     }
     if (state.messages.isEmpty) {
-      unawaited(SessionCacheStore.instance.delete(sessionId));
+      // 只有"加载过历史且为空"才是权威空（会话被清空/重置），才删磁盘快照。
+      // 后台 SSE idle/error 会为从未打开的会话凭空建出空状态，此时内存为空
+      // 只是未知态，不得据此删掉已落盘的秒开缓存。
+      if (state.hasLoadedHistory.value) {
+        unawaited(SessionCacheStore.instance.delete(sessionId));
+      }
       return;
     }
     unawaited(
@@ -2690,7 +2691,7 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       }
     };
     _sseSub = _sseClient!.stream.listen(
-      _handleEvent,
+      handleEvent,
       onError: (e) {
         AppLogger.e('SSE stream error: $e');
       },
@@ -2850,7 +2851,8 @@ class SessionController extends GetxController with WidgetsBindingObserver {
     completer.complete(trimmed != null && trimmed.isNotEmpty ? trimmed : null);
   }
 
-  void _handleEvent(SseEvent event) {
+  @visibleForTesting
+  void handleEvent(SseEvent event) {
     final sid = event.sessionID;
     if (sid.isNotEmpty && _hiddenSessionIds.contains(sid)) {
       _handleHiddenEvent(sid, event);

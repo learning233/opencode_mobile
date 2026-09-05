@@ -41,7 +41,6 @@ class AppSettingsStore {
   static const _keywords = 'keywords';
   static const _keywordDetectionEnabled = 'keyword_detection_enabled';
   static const _quickPhrases = 'quick_phrases';
-  static const _defaultModelKey = 'default_model_key';
   static const _savedModelId = 'saved_model_id';
   static const _visionModelKey = 'vision_model_key';
   static const _savedThinkingLevel = 'saved_thinking_level';
@@ -287,10 +286,6 @@ class AppSettingsStore {
       _prefs.getStringList(_terminalQuickCommands) ?? const [];
   Future<void> setTerminalQuickCommands(List<String> value) =>
       _prefs.setStringList(_terminalQuickCommands, value);
-
-  String? get defaultModelKey => _prefs.getString(_defaultModelKey);
-  Future<void> setDefaultModelKey(String value) =>
-      _prefs.setString(_defaultModelKey, value);
 
   String? get savedModelId => _prefs.getString(_savedModelId);
   Future<void> setSavedModelId(String? value) {

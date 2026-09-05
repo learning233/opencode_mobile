@@ -66,8 +66,6 @@ class SettingsController extends GetxController {
   Future<bool>? _configPatchTail;
   static const agentModes = ['primary', 'subagent', 'all'];
 
-  final defaultModelKey = ''.obs;
-
   final globalConfig = Rxn<Map<String, dynamic>>();
   final projectConfig = Rxn<Map<String, dynamic>>();
   final isLoadingGlobalConfig = false.obs;
@@ -603,7 +601,6 @@ class SettingsController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    defaultModelKey.value = Global.settings.defaultModelKey ?? '';
     notificationEnabled.value = Global.settings.notificationEnabled;
     _loadModelVisibilityPrefs();
   }
@@ -612,11 +609,6 @@ class SettingsController extends GetxController {
   void onClose() {
     _registryClient.dispose();
     super.onClose();
-  }
-
-  Future<void> setDefaultModel(String key) async {
-    defaultModelKey.value = key;
-    await Global.settings.setDefaultModelKey(key);
   }
 
   Future<void> checkHealth() async {

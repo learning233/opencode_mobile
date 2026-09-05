@@ -50,6 +50,7 @@ dev_dependencies:
   integration_test:
     sdk: flutter
   path_provider_platform_interface: ^2.1.0
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true

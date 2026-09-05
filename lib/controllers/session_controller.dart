@@ -1634,12 +1634,20 @@ class SessionController extends GetxController with WidgetsBindingObserver {
       return;
     }
     if (state.messages.isEmpty) {
-      // 只有"加载过历史且为空"才是权威空（会话被清空/重置），才删磁盘快照。
-      // 后台 SSE idle/error 会为从未打开的会话凭空建出空状态，此时内存为空
-      // 只是未知态，不得据此删掉已落盘的秒开缓存。
-      if (state.hasLoadedHistory.value) {
+      // 只有"成功加载过历史且为空"才是权威空（会话被清空/重置），才删磁盘
+      // 快照。后台 SSE idle/error 会为从未打开的会话凭空建出空状态，此时内存
+      // 为空只是未知态；historyLoadFailed 排除断网导致的假"已加载"，网络
+      // 失败不构成删除授权。
+      if (state.hasLoadedHistory.value && !state.historyLoadFailed.value) {
         unawaited(SessionCacheStore.instance.delete(sessionId));
       }
+      return;
+    }
+    // 与删除分支对称：只有"加载过历史"的内存才是权威全量。后台 SSE 会为
+    // 从未打开的会话凭空建状态并塞入本轮局部消息（part.updated/message.updated
+    // 建壳），此时落盘会把磁盘上的完整快照覆盖截断成本轮片段——跳过，快照
+    // 留给下次 loadMessages 的全量 revalidate 落盘自愈。
+    if (!state.hasLoadedHistory.value) {
       return;
     }
     unawaited(

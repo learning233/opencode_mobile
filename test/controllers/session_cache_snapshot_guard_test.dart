@@ -60,6 +60,26 @@ void main() {
     properties: {'sessionID': sessionId},
   );
 
+  SseEvent partUpdatedEvent(
+    String sessionId,
+    String messageId,
+    String partId,
+    String text,
+  ) => SseEvent(
+    id: 'evt-part-$partId',
+    type: EventTypes.messagePartUpdated,
+    properties: {
+      'sessionID': sessionId,
+      'part': {
+        'id': partId,
+        'messageID': messageId,
+        'sessionID': sessionId,
+        'type': 'text',
+        'text': text,
+      },
+    },
+  );
+
   group('_persistSessionCacheSnapshot empty-messages guard', () {
     test(
       'idle for never-loaded background session keeps existing disk cache',
@@ -99,5 +119,56 @@ void main() {
         expect(cacheFile('empty-sess').existsSync(), isFalse);
       },
     );
+  });
+
+  group('_persistSessionCacheSnapshot partial-messages guard', () {
+    test(
+      'background turn must not overwrite full snapshot with partial messages',
+      () async {
+        // 磁盘上已有上一轮的完整快照（3 条）。
+        final full = [
+          {'id': 'm1', 'role': 'user', 'parts': []},
+          {'id': 'm2', 'role': 'assistant', 'parts': []},
+          {'id': 'm3', 'role': 'user', 'parts': []},
+        ];
+        await SessionCacheStore.instance.save('bg-sess', full);
+        expect((await SessionCacheStore.instance.load('bg-sess'))!.length, 3);
+
+        // 另一端在会话中跑了一个任务：part.updated 为从未打开的会话凭空
+        // 建出状态（hasLoadedHistory=false）并塞入本轮局部消息。
+        ctrl.handleEvent(partUpdatedEvent('bg-sess', 'm-new', 'p-new', 'hi'));
+        expect(
+          ctrl.getOrCreateSessionState('bg-sess').hasLoadedHistory.value,
+          isFalse,
+        );
+
+        // 回合收尾 idle：局部消息不得覆盖磁盘全量快照。
+        ctrl.handleEvent(idleEvent('bg-sess'));
+        await drainWriteQueue();
+
+        final cached = await SessionCacheStore.instance.load('bg-sess');
+        expect(cached, isNotNull);
+        expect(cached!.length, 3);
+        expect(cacheFile('bg-sess').existsSync(), isTrue);
+      },
+    );
+
+    test('failed history load does not authorize deleting disk cache', () async {
+      await SessionCacheStore.instance.save('fail-sess', [
+        {'id': 'm1', 'role': 'user', 'parts': []},
+      ]);
+
+      // loadMessages 网络失败后的状态：内存空，finally 置 hasLoadedHistory=true
+      // + historyLoadFailed=true。此时收到 idle/error 收尾不得据此删快照。
+      final state = ctrl.getOrCreateSessionState('fail-sess');
+      state.hasLoadedHistory.value = true;
+      state.historyLoadFailed.value = true;
+
+      ctrl.handleEvent(idleEvent('fail-sess'));
+      await drainWriteQueue();
+
+      expect(await SessionCacheStore.instance.load('fail-sess'), isNotNull);
+      expect(cacheFile('fail-sess').existsSync(), isTrue);
+    });
   });
 }

@@ -107,14 +107,15 @@ class _TerminalPanelBodyState extends State<TerminalPanelBody> {
                           ptyCtrl.setFilterCurrentProjectOnly(val);
                         },
                       ),
-                      SwitchListTile(
-                        title: Text(LocaleKeys.terminalShowExtraKeys.tr),
-                        subtitle: Text(LocaleKeys.terminalShowExtraKeysDesc.tr),
-                        value: Global.showTerminalExtraKeysRx.value,
-                        onChanged: (val) {
-                          Global.setShowTerminalExtraKeys(val);
-                        },
-                      ),
+                      if (!isDesktop)
+                        SwitchListTile(
+                          title: Text(LocaleKeys.terminalShowExtraKeys.tr),
+                          subtitle: Text(LocaleKeys.terminalShowExtraKeysDesc.tr),
+                          value: Global.showTerminalExtraKeysRx.value,
+                          onChanged: (val) {
+                            Global.setShowTerminalExtraKeys(val);
+                          },
+                        ),
                       SwitchListTile(
                         title: Text(LocaleKeys.terminalShowQuickCommands.tr),
                         subtitle: Text(
@@ -406,7 +407,7 @@ class _TerminalPanelBodyState extends State<TerminalPanelBody> {
                 onEdit: (cmd) => _showCommandDialog(context, initial: cmd),
                 onAdd: () => _showCommandDialog(context),
               ),
-            if (Global.showTerminalExtraKeysRx.value)
+            if (Global.showTerminalExtraKeysRx.value && !isDesktop)
               _TermuxExtraKeysBar(
                 onSendInput: (seq) => _sendTerminalInput(context, seq),
                 ctrlNotifier: _ctrlNotifier,

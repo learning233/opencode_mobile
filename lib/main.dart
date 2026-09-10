@@ -1,7 +1,10 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'app.dart';
 import 'init.dart';
 import 'utils/app_logger.dart';
+import 'utils/window/windows_adaptor.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -12,5 +15,12 @@ void main() async {
   // 未处理异常。省一次 platform-channel 往返不值得冒这个险。
   await AppLogger.init();
   await Global.init();
+
+  if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
+    await WindowsAdapter.setSize().catchError(
+      (Object e) => AppLogger.e('WindowsAdapter.setSize failed', e),
+    );
+  }
+
   runApp(const OpenCodeApp());
 }

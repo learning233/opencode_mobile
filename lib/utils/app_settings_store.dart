@@ -65,6 +65,10 @@ class AppSettingsStore {
   static const _showTerminalExtraKeys = 'terminal_show_extra_keys';
   static const _showTerminalQuickCommands = 'terminal_show_quick_commands';
   static const _cloudWorkspaceConfig = 'cloud_workspace_config_v1';
+  static const _isMax = 'isMax';
+  static const _onTop = 'onTop';
+  static const _windowSize = 'windowSize';
+  static const _windowPosition = 'windowPosition';
 
   bool get ptyFilterCurrentProjectOnly =>
       _prefs.getBool(_filterCurrentProjectOnly) ?? true;
@@ -426,4 +430,20 @@ class AppSettingsStore {
       await _prefs.setString(_cloudWorkspaceConfig, updated.serialize());
     });
   }
+
+  bool get isMax => _prefs.getBool(_isMax) ?? false;
+  Future<void> setIsMax(bool value) => _prefs.setBool(_isMax, value);
+
+  bool get onTop => _prefs.getBool(_onTop) ?? false;
+  Future<void> setOnTop(bool value) => _prefs.setBool(_onTop, value);
+
+  List<String> get windowSize =>
+      _prefs.getStringList(_windowSize) ?? ['1200', '800'];
+  Future<void> setWindowSize(List<String> value) =>
+      _prefs.setStringList(_windowSize, value);
+
+  List<String> get windowPosition =>
+      _prefs.getStringList(_windowPosition) ?? [];
+  Future<void> setWindowPosition(List<String> value) =>
+      _prefs.setStringList(_windowPosition, value);
 }

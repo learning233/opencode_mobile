@@ -19,6 +19,7 @@ class Global {
   static late AppSettingsStore settings;
 
   static double iconSize = 18;
+  static double titleBarHeight = 32;
   static ThemeData themeData = dark;
   static Locale? language;
 

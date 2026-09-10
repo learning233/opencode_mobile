@@ -42,6 +42,7 @@ dependencies:
   image: ^4.8.0
   package_info_plus: ^10.2.1
   flutter_slidable: ^4.0.3
+  window_manager: ^0.5.1
 
 dev_dependencies:
   flutter_test:

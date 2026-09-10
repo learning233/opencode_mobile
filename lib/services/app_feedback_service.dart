@@ -4,11 +4,13 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:get/get.dart';
+import 'package:window_manager/window_manager.dart';
 import '../api/sidecar_manager.dart';
 import '../controllers/session_controller.dart';
 import '../init.dart';
 import '../routes.dart';
 import '../utils/app_logger.dart';
+import '../utils/layout_utils.dart';
 import 'voice_input_service.dart';
 
 enum FeedbackType {
@@ -46,21 +48,35 @@ class AppFeedbackService extends GetxService {
       requestSoundPermission: true,
       requestBadgePermission: false,
     );
-    const settings = InitializationSettings(android: android, iOS: darwin);
-    await _notifications.initialize(
-      settings: settings,
-      onDidReceiveNotificationResponse: _onNotificationTap,
+    const windows = WindowsInitializationSettings(
+      appName: 'OpenCode',
+      appUserModelId: 'com.example.opencode_app',
+      guid: '3c6e94f1-6a2e-4e4b-928d-194fa8db4521',
     );
+    const settings = InitializationSettings(
+      android: android,
+      iOS: darwin,
+      macOS: darwin,
+      windows: windows,
+    );
+    try {
+      await _notifications.initialize(
+        settings: settings,
+        onDidReceiveNotificationResponse: _onNotificationTap,
+      );
 
-    if (GetPlatform.isAndroid) {
-      await _notifications
-          .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin
-          >()
-          ?.requestNotificationsPermission();
+      if (GetPlatform.isAndroid) {
+        await _notifications
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >()
+            ?.requestNotificationsPermission();
+      }
+
+      await _handleLaunchDetails();
+    } catch (e) {
+      AppLogger.e('AppFeedbackService: notifications init failed: $e');
     }
-
-    await _handleLaunchDetails();
   }
 
   /// Cold-start path: app launched by tapping a notification.
@@ -70,6 +86,7 @@ class AppFeedbackService extends GetxService {
       final didLaunch = details?.didNotificationLaunchApp ?? false;
       final response = details?.notificationResponse;
       if (didLaunch && response != null) {
+        await _bringWindowToFront();
         final sessionId = response.payload ?? '';
         if (sessionId.isNotEmpty) {
           await _openSessionWithRetry(sessionId);
@@ -77,6 +94,19 @@ class AppFeedbackService extends GetxService {
       }
     } catch (e) {
       AppLogger.e('AppFeedbackService: read launch details failed: $e');
+    }
+  }
+
+  Future<void> _bringWindowToFront() async {
+    if (!isDesktop) return;
+    try {
+      if (await windowManager.isMinimized()) {
+        await windowManager.restore();
+      }
+      await windowManager.show();
+      await windowManager.focus();
+    } catch (e) {
+      AppLogger.e('AppFeedbackService: bring window to front failed: $e');
     }
   }
 
@@ -193,16 +223,24 @@ class AppFeedbackService extends GetxService {
       presentBanner: true,
       presentList: true,
     );
+    const windows = WindowsNotificationDetails();
     await _notifications.show(
       id: (sessionId.hashCode ^ type.hashCode) & 0x7fffffff,
       title: title,
       body: message,
-      notificationDetails: NotificationDetails(android: android, iOS: darwin),
+      notificationDetails: NotificationDetails(
+        android: android,
+        iOS: darwin,
+        macOS: darwin,
+        windows: windows,
+      ),
       payload: sessionId,
     );
   }
 
   Future<void> _onNotificationTap(NotificationResponse response) async {
+    AppLogger.d('AppFeedbackService: onNotificationTap payload=${response.payload}');
+    await _bringWindowToFront();
     final sessionId = response.payload ?? '';
     if (sessionId.isEmpty) return;
     await _openSessionWithRetry(sessionId);

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:opencode_app/utils/layout_utils.dart';
 import '../../controllers/session_controller.dart';
 import '../../controllers/tablet_tool_controller.dart';
+import '../../utils/layout_utils.dart';
 import '../../utils/translations.dart';
 import 'session_indicator.dart';
 

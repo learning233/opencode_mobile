@@ -1,12 +1,11 @@
-import 'dart:io';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:window_manager/window_manager.dart';
 import '../../controllers/project_controller.dart';
 import '../../controllers/tablet_tool_controller.dart';
 import '../../init.dart';
+import '../../utils/layout_utils.dart';
 import '../../utils/translations.dart';
 import 'window_button.dart';
 import 'window_controller.dart';
@@ -18,8 +17,7 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (kIsWeb ||
-        (!Platform.isWindows && !Platform.isMacOS && !Platform.isLinux)) {
+    if (!isDesktop) {
       return const SizedBox.shrink();
     }
 

@@ -21,5 +21,5 @@ bool isTabletLayout(BuildContext context) {
       (isLandscape && w >= kDefaultLandscapeBreakpoint);
 }
 
-bool isDesktop =
+final bool isDesktop =
     !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);

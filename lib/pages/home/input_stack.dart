@@ -10,6 +10,7 @@ import '../../models/session_runtime_state.dart';
 import '../../utils/diff_paths.dart';
 import '../../utils/layout_utils.dart';
 import '../../utils/translations.dart';
+import 'tablet/review_page.dart';
 import 'widgets/tool_cards/question_card.dart';
 
 /// Stack of resident status panels (todo / changed files) with a temporary
@@ -238,10 +239,21 @@ class SessionDiffPanel extends StatelessWidget {
           onToggle: onToggle,
           child: _SessionDiffList(
             diffs: diffs,
-            onFileTap: isTabletLayout(context)
-                ? (file) => Get.find<TabletToolController>()
-                      .openReviewSessionFile(sessionId, selectFile: file)
-                : null,
+            onFileTap: (file) {
+              final isTablet = isTabletLayout(context);
+              Get.find<TabletToolController>().openReviewSessionFile(
+                sessionId,
+                selectFile: file,
+              );
+              if (!isTablet) {
+                Get.to(
+                  () => Scaffold(
+                    appBar: AppBar(title: Text(LocaleKeys.csTabReview.tr)),
+                    body: const ReviewPage(),
+                  ),
+                );
+              }
+            },
           ),
         ),
       );

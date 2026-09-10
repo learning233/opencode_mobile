@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import '../../../api/models/snapshot_file_diff.dart';
 import '../../../models/diff_line.dart';
 import '../../../utils/app_theme.dart';
+import '../../../utils/file_kind.dart';
 import 'diff_code_view.dart';
+import 'multi_view/audio_player_view.dart';
+import 'multi_view/image_viewer.dart';
 
 /// Shared single-file diff viewer with full unified-diff patch rendering.
 ///
@@ -122,8 +125,52 @@ class _DiffFileViewState extends State<DiffFileView> {
             const Divider(height: 1, thickness: 0.5),
           ],
 
-          // Code Diff Lines（re_editor 行虚拟化）
-          if (lines.isEmpty || widget.diff.patch.trim().isEmpty)
+          // Binary (Image / Audio) or Code Diff Lines
+          if (isImageFilePath(widget.diff.file))
+            if (widget.diff.status == 'deleted')
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Center(
+                  child: Text(
+                    'Image file deleted.',
+                    style: TextStyle(
+                      color: theme.colorScheme.error,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              )
+            else
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: widget.maxHeight ?? 320),
+                child: ImageViewer(
+                  key: ValueKey('diff_image_${widget.diff.file}'),
+                  filePath: widget.diff.file,
+                ),
+              )
+          else if (isAudioFilePath(widget.diff.file))
+            if (widget.diff.status == 'deleted')
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Center(
+                  child: Text(
+                    'Audio file deleted.',
+                    style: TextStyle(
+                      color: theme.colorScheme.error,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              )
+            else
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: widget.maxHeight ?? 320),
+                child: AudioPlayerView(
+                  key: ValueKey('diff_audio_${widget.diff.file}'),
+                  filePath: widget.diff.file,
+                ),
+              )
+          else if (lines.isEmpty || widget.diff.patch.trim().isEmpty)
             Padding(
               padding: const EdgeInsets.all(10),
               child: Text(

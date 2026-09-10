@@ -307,6 +307,59 @@ void main() {
         expect(ctrl.isVisible.value, isFalse);
       },
     );
+
+    test(
+      'openReviewAll switches to review tab, updates state, and shows panel',
+      () {
+        final ctrl = TabletToolController();
+        ctrl.activeTabIndex.value = TabletToolController.tabCode;
+        ctrl.isVisible.value = false;
+        final tickBefore = ctrl.reviewReloadTick.value;
+
+        ctrl.openReviewAll(selectFile: 'c.dart');
+
+        expect(ctrl.reviewType.value, TabletToolController.reviewTypeAll);
+        expect(ctrl.reviewSessionId.value, isEmpty);
+        expect(ctrl.reviewMessageId.value, isEmpty);
+        expect(ctrl.reviewSelectedFile.value, 'c.dart');
+        expect(ctrl.reviewReloadTick.value, tickBefore + 1);
+        expect(ctrl.activeTabIndex.value, TabletToolController.tabReview);
+        expect(ctrl.isVisible.value, isTrue);
+      },
+    );
+
+    test(
+      'openReviewAllFile in same scope switches file tab and shows panel',
+      () {
+        final ctrl = TabletToolController();
+        ctrl.openReviewAll(selectFile: 'a.dart');
+        ctrl.activeTabIndex.value = TabletToolController.tabCode;
+        ctrl.isVisible.value = false;
+
+        ctrl.openReviewAllFile(selectFile: 'b.dart');
+
+        expect(ctrl.reviewSelectedFile.value, 'b.dart');
+        expect(ctrl.activeTabIndex.value, TabletToolController.tabReview);
+        expect(ctrl.isVisible.value, isTrue);
+      },
+    );
+
+    test(
+      'openReviewAllFile in different scope refetches and switches',
+      () {
+        final ctrl = TabletToolController();
+        ctrl.openReviewSession('s1', selectFile: 'a.dart');
+        ctrl.activeTabIndex.value = TabletToolController.tabCode;
+        final tickBefore = ctrl.reviewReloadTick.value;
+
+        ctrl.openReviewAllFile(selectFile: 'b.dart');
+
+        expect(ctrl.reviewType.value, TabletToolController.reviewTypeAll);
+        expect(ctrl.reviewSelectedFile.value, 'b.dart');
+        expect(ctrl.reviewReloadTick.value, tickBefore + 1);
+        expect(ctrl.activeTabIndex.value, TabletToolController.tabReview);
+      },
+    );
   });
 
   group('TabletToolController browser tabs', () {

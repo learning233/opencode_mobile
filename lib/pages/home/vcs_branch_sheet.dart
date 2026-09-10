@@ -7,6 +7,7 @@ import '../../controllers/project_controller.dart';
 import '../../controllers/tablet_tool_controller.dart';
 import '../../controllers/vcs_controller.dart';
 import '../../routes.dart';
+import '../../utils/diff_paths.dart';
 import '../../utils/layout_utils.dart';
 import '../../utils/snackbar_utils.dart';
 import '../../utils/translations.dart';
@@ -22,6 +23,8 @@ class VcsBranchSheet extends StatefulWidget {
 
 class _VcsBranchSheetState extends State<VcsBranchSheet> {
   VcsController get _vcsCtrl => Get.find<VcsController>();
+  TabletToolController get _toolCtrl => Get.find<TabletToolController>();
+  bool _hasRefreshedDiff = false;
 
   @override
   void initState() {
@@ -29,7 +32,28 @@ class _VcsBranchSheetState extends State<VcsBranchSheet> {
     _vcsCtrl.refreshAll();
   }
 
-  void _openChangedFile(String path) {
+  void _openChangedFileDiff(String path) {
+    if (path.isEmpty) return;
+
+    if (!_hasRefreshedDiff) {
+      _toolCtrl.openReviewAll(selectFile: path);
+      _hasRefreshedDiff = true;
+    } else {
+      _toolCtrl.openReviewAllFile(selectFile: path);
+    }
+
+    final isTablet = isTabletLayout(context);
+    if (!isTablet) {
+      Get.to(
+        () => Scaffold(
+          appBar: AppBar(title: Text(LocaleKeys.csTabReview.tr)),
+          body: const ReviewPage(),
+        ),
+      );
+    }
+  }
+
+  void _openFileInEditor(String path) {
     if (path.isEmpty) return;
     final fileName = path.contains('/')
         ? path.split('/').last
@@ -51,14 +75,10 @@ class _VcsBranchSheetState extends State<VcsBranchSheet> {
   }
 
   void _openFullReview() {
-    final toolCtrl = Get.find<TabletToolController>();
-    toolCtrl.setReviewAll();
-    toolCtrl.activeTabIndex.value = TabletToolController.tabReview;
-    if (!toolCtrl.isVisible.value) toolCtrl.isVisible.value = true;
+    _toolCtrl.openReviewAll();
+    _hasRefreshedDiff = true;
 
     final isTablet = isTabletLayout(context);
-    Navigator.of(context).pop();
-
     if (!isTablet) {
       Get.to(
         () => Scaffold(
@@ -445,11 +465,23 @@ class _VcsBranchSheetState extends State<VcsBranchSheet> {
                               ? rawPath.substring(0, rawPath.lastIndexOf('\\'))
                               : '');
 
+                    final isSelected = diffPathsEqual(
+                      _toolCtrl.reviewSelectedFile.value,
+                      rawPath,
+                    );
+
                     return ListTile(
+                      selected: isSelected,
+                      selectedTileColor: theme.colorScheme.primary.withValues(
+                        alpha: 0.1,
+                      ),
                       dense: true,
                       visualDensity: VisualDensity.compact,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                       contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 4,
+                        horizontal: 8,
                         vertical: 2,
                       ),
                       leading: _buildStatusBadge(theme, file),
@@ -462,7 +494,9 @@ class _VcsBranchSheetState extends State<VcsBranchSheet> {
                               ? theme.colorScheme.onSurface.withValues(
                                   alpha: 0.5,
                                 )
-                              : theme.colorScheme.onSurface,
+                              : (isSelected
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.onSurface),
                           decoration: file.isDeleted
                               ? TextDecoration.lineThrough
                               : null,
@@ -511,14 +545,17 @@ class _VcsBranchSheetState extends State<VcsBranchSheet> {
                           Icon(
                             Icons.chevron_right_rounded,
                             size: 16,
-                            color: theme.colorScheme.onSurfaceVariant
-                                .withValues(alpha: 0.5),
+                            color: isSelected
+                                ? theme.colorScheme.primary
+                                : theme.colorScheme.onSurfaceVariant
+                                    .withValues(alpha: 0.5),
                           ),
                         ],
                       ),
-                      onTap: file.isDeleted
+                      onTap: () => _openChangedFileDiff(rawPath),
+                      onLongPress: file.isDeleted
                           ? null
-                          : () => _openChangedFile(rawPath),
+                          : () => _openFileInEditor(rawPath),
                     );
                   },
                 );

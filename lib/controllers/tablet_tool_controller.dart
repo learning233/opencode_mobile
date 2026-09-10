@@ -677,9 +677,40 @@ class TabletToolController extends GetxController {
     }
   }
 
-  /// Switch the Review tab to show all workspace changes.
-  void setReviewAll() {
+  /// Open the Review tab scoped to all workspace changes.
+  /// Always refetches, even when the scope is unchanged.
+  void openReviewAll({String? selectFile, bool switchTab = true}) {
     reviewType.value = reviewTypeAll;
+    reviewSessionId.value = '';
+    reviewMessageId.value = '';
+    reviewSelectedFile.value = selectFile ?? '';
+    reviewReloadTick.value++;
+    if (switchTab) {
+      activeTabIndex.value = tabReview;
+      if (!isVisible.value) isVisible.value = true;
+    }
+  }
+
+  /// File tap from all workspace changes: if the Review tab is
+  /// already scoped to all changes, just switch the file tab locally.
+  /// Otherwise open the all-changes scope and preselect the file.
+  void openReviewAllFile({required String selectFile}) {
+    final isSameScope = reviewType.value == reviewTypeAll;
+    if (isSameScope) {
+      reviewSelectedFile.value = selectFile;
+      activeTabIndex.value = tabReview;
+      if (!isVisible.value) isVisible.value = true;
+    } else {
+      openReviewAll(selectFile: selectFile);
+    }
+  }
+
+  /// Switch the Review tab to show all workspace changes.
+  void setReviewAll({String? selectFile}) {
+    reviewType.value = reviewTypeAll;
+    reviewSessionId.value = '';
+    reviewMessageId.value = '';
+    reviewSelectedFile.value = selectFile ?? '';
     reviewReloadTick.value++;
   }
 

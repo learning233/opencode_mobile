@@ -5,15 +5,19 @@ import 'package:get/get.dart';
 import '../../../api/endpoints.dart';
 import '../../../api/models/snapshot_file_diff.dart';
 import '../../../api/opencode_client.dart';
+import '../../../controllers/project_controller.dart';
 import '../../../controllers/session_controller.dart';
 import '../../../controllers/tablet_tool_controller.dart';
 import '../../../init.dart';
 import '../../../models/session_runtime_state.dart';
 import '../../../utils/app_logger.dart';
 import '../../../utils/diff_paths.dart';
+import '../../../utils/file_kind.dart';
 import '../../../utils/translations.dart';
 import 'diff_code_view.dart';
 import 'diff_view.dart';
+import 'multi_view/audio_player_view.dart';
+import 'multi_view/image_viewer.dart';
 
 /// Review tab content for the tablet tool panel.
 ///
@@ -311,6 +315,9 @@ class _ReviewPageState extends State<ReviewPage> {
       });
     }
 
+    final isBinary =
+        isImageFilePath(_selectedPath) || isAudioFilePath(_selectedPath);
+
     return Stack(
       children: [
         Column(
@@ -322,7 +329,7 @@ class _ReviewPageState extends State<ReviewPage> {
             Expanded(child: _buildBody(theme)),
           ],
         ),
-        if (hasFiles)
+        if (hasFiles && !isBinary)
           Positioned(right: 60, bottom: 220, child: _buildNavButtons(theme)),
       ],
     );
@@ -557,16 +564,45 @@ class _ReviewPageState extends State<ReviewPage> {
                     width: 1,
                   ),
                 ),
-                child: Text(
-                  _fileName(d),
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontFamily: 'monospace',
-                    fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-                    color: isActive
-                        ? theme.colorScheme.onPrimaryContainer
-                        : theme.colorScheme.onSurfaceVariant,
-                  ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (isImageFilePath(d.file))
+                      Padding(
+                        padding: const EdgeInsets.only(right: 5),
+                        child: Icon(
+                          Icons.image_outlined,
+                          size: 13,
+                          color: isActive
+                              ? theme.colorScheme.onPrimaryContainer
+                              : theme.colorScheme.onSurfaceVariant,
+                        ),
+                      )
+                    else if (isAudioFilePath(d.file))
+                      Padding(
+                        padding: const EdgeInsets.only(right: 5),
+                        child: Icon(
+                          Icons.audiotrack_outlined,
+                          size: 13,
+                          color: isActive
+                              ? theme.colorScheme.onPrimaryContainer
+                              : theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    Text(
+                      _fileName(d),
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontFamily: 'monospace',
+                        fontWeight: isActive
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                        color: isActive
+                            ? theme.colorScheme.onPrimaryContainer
+                            : theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -612,6 +648,34 @@ class _ReviewPageState extends State<ReviewPage> {
     }
 
     final selected = _selectedDiff!;
+    final filePath = selected.file;
+    final isImage = isImageFilePath(filePath);
+    final isAudio = isAudioFilePath(filePath);
+
+    if (isImage || isAudio) {
+      if (selected.status == 'deleted') {
+        return _buildDeletedBinaryView(theme, selected, isImage: isImage);
+      }
+
+      final activeProject = Get.isRegistered<ProjectController>()
+          ? Get.find<ProjectController>().activeProject.value
+          : null;
+      final worktree = activeProject?.worktree;
+
+      if (isImage) {
+        return ImageViewer(
+          key: ValueKey('review_image_${selected.file}'),
+          filePath: filePath,
+          worktree: worktree,
+        );
+      } else {
+        return AudioPlayerView(
+          key: ValueKey('review_audio_${selected.file}'),
+          filePath: filePath,
+          worktree: worktree,
+        );
+      }
+    }
 
     return Container(
       color: theme.scaffoldBackgroundColor,
@@ -622,6 +686,55 @@ class _ReviewPageState extends State<ReviewPage> {
           lines: parsePatchLines(selected.patch),
           hideContextLines: _toolCtrl.showChangesOnly.value,
           showLineNumbers: false,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDeletedBinaryView(
+    ThemeData theme,
+    SnapshotFileDiff diff, {
+    required bool isImage,
+  }) {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.errorContainer.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: theme.colorScheme.error.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isImage
+                  ? Icons.image_not_supported_outlined
+                  : Icons.music_off_outlined,
+              size: 48,
+              color: theme.colorScheme.error,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '${_fileName(diff)} (${diff.status})',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: theme.colorScheme.error,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              isImage ? '图片文件已从工作区中删除' : '音频文件已从工作区中删除',
+              style: TextStyle(
+                fontSize: 12,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
         ),
       ),
     );

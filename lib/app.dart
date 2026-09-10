@@ -7,8 +7,10 @@ import 'init.dart';
 import 'routes.dart';
 import 'utils/app_logger.dart';
 import 'utils/app_theme.dart';
+import 'utils/layout_utils.dart';
 import 'utils/snackbar_utils.dart';
 import 'utils/translations.dart';
+import 'utils/window/desktop_title_bar.dart';
 
 class OpenCodeApp extends StatefulWidget {
   const OpenCodeApp({super.key});
@@ -73,6 +75,21 @@ class _OpenCodeAppState extends State<OpenCodeApp> {
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: const [Locale('en', 'US'), Locale('zh', 'CN')],
+      builder: (context, child) {
+        if (!isDesktop) {
+          return child ?? const SizedBox.shrink();
+        }
+        final theme = Theme.of(context);
+        return Material(
+          color: theme.scaffoldBackgroundColor,
+          child: Column(
+            children: [
+              const DesktopTitleBar(),
+              Expanded(child: child ?? const SizedBox.shrink()),
+            ],
+          ),
+        );
+      },
     );
   }
 }

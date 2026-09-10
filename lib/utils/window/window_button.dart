@@ -15,7 +15,13 @@ class WindowsButtons extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final ctrl = controller ?? Get.find<TitleBarController>();
+    final TitleBarController ctrl = controller ??
+        (Get.isRegistered<TitleBarController>()
+            ? Get.find<TitleBarController>()
+            : Get.put<TitleBarController>(
+                TitleBarController(),
+                permanent: true,
+              ));
 
     return Container(
       height: Global.titleBarHeight,
@@ -30,7 +36,6 @@ class WindowsButtons extends StatelessWidget {
             iconSize: 15,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-            tooltip: isDark ? '浅色模式' : '深色模式',
             icon: Icon(
               isDark ? CupertinoIcons.sun_max : CupertinoIcons.moon,
               color: theme.textTheme.bodyMedium?.color?.withValues(
@@ -50,7 +55,6 @@ class WindowsButtons extends StatelessWidget {
                   minWidth: 28,
                   minHeight: 28,
                 ),
-                tooltip: c.onTop ? '取消置顶' : '窗口置顶',
                 icon: Icon(
                   c.onTop ? CupertinoIcons.pin_fill : CupertinoIcons.pin,
                   color: c.onTop
@@ -69,7 +73,6 @@ class WindowsButtons extends StatelessWidget {
             iconSize: 15,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-            tooltip: '最小化',
             icon: Icon(
               CupertinoIcons.minus,
               color: theme.textTheme.bodyMedium?.color?.withValues(
@@ -90,7 +93,6 @@ class WindowsButtons extends StatelessWidget {
                   minWidth: 28,
                   minHeight: 28,
                 ),
-                tooltip: c.isMax ? '向下还原' : '最大化',
                 icon: Icon(
                   c.isMax
                       ? CupertinoIcons.square_on_square
@@ -115,7 +117,6 @@ class WindowsButtons extends StatelessWidget {
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
             hoverColor: Colors.red,
-            tooltip: '关闭',
             style: IconButton.styleFrom(
               shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
             ),

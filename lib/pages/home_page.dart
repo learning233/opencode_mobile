@@ -6,7 +6,6 @@ import '../controllers/session_controller.dart';
 import '../controllers/tablet_tool_controller.dart';
 import '../utils/layout_utils.dart';
 import '../utils/translations.dart';
-import '../utils/window/desktop_title_bar.dart';
 import 'home/home_app_bar.dart';
 import 'home/home_chat_body.dart';
 import 'home/tablet/resizable_divider.dart';
@@ -119,14 +118,7 @@ class _HomePageState extends State<HomePage> {
         if (didPop) return;
         await _handlePop(context);
       },
-      child: isDesktop
-          ? Column(
-              children: [
-                const DesktopTitleBar(),
-                Expanded(child: content),
-              ],
-            )
-          : content,
+      child: content,
     );
   }
 

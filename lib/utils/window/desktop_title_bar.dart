@@ -6,7 +6,6 @@ import '../../controllers/project_controller.dart';
 import '../../controllers/tablet_tool_controller.dart';
 import '../../init.dart';
 import '../../utils/layout_utils.dart';
-import '../../utils/translations.dart';
 import 'window_button.dart';
 import 'window_controller.dart';
 
@@ -22,7 +21,9 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
     }
 
     final theme = Theme.of(context);
-    final controller = Get.find<TitleBarController>();
+    final controller = Get.isRegistered<TitleBarController>()
+        ? Get.find<TitleBarController>()
+        : Get.put(TitleBarController(), permanent: true);
     final projectCtrl = Get.isRegistered<ProjectController>()
         ? Get.find<ProjectController>()
         : null;
@@ -44,14 +45,6 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
         },
         child: Container(
           height: Global.titleBarHeight,
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(
-                color: theme.dividerColor.withValues(alpha: 0.12),
-                width: 0.8,
-              ),
-            ),
-          ),
           padding: const EdgeInsets.only(left: 12),
           child: Row(
             children: [
@@ -87,9 +80,11 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
                 ),
               // Draggable middle area
               const Spacer(),
-              // Panel layout toggle button (right panel)
+              // Panel layout toggle button (right panel) - only shown when project is active
               if (Get.isRegistered<TabletToolController>())
                 Obx(() {
+                  final hasProject = projectCtrl?.activeProject.value != null;
+                  if (!hasProject) return const SizedBox.shrink();
                   final toolCtrl = Get.find<TabletToolController>();
                   final isVisible = toolCtrl.isVisible.value;
                   return IconButton(
@@ -100,7 +95,6 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
                       minWidth: 28,
                       minHeight: 28,
                     ),
-                    tooltip: LocaleKeys.tabletToggleToolPanel.tr,
                     icon: Icon(
                       CupertinoIcons.sidebar_right,
                       color: isVisible

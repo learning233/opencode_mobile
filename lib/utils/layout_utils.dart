@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 /// Default breakpoints for tablet layout detection.
@@ -17,3 +20,6 @@ bool isTabletLayout(BuildContext context) {
   return w >= kDefaultTabletBreakpoint ||
       (isLandscape && w >= kDefaultLandscapeBreakpoint);
 }
+
+bool isDesktop =
+    !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);

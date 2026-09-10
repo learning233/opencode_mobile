@@ -1,13 +1,9 @@
-import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:window_manager/window_manager.dart';
+import 'package:opencode_app/utils/layout_utils.dart';
 import '../../controllers/session_controller.dart';
 import '../../controllers/tablet_tool_controller.dart';
 import '../../utils/translations.dart';
-import '../../utils/window/window_button.dart';
-import '../../utils/window/window_controller.dart';
 import 'session_indicator.dart';
 
 /// Home 页面专用的顶层 AppBar 组件。
@@ -44,28 +40,10 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDesktop =
-        !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
 
     return AppBar(
       toolbarHeight: isTablet ? 40.0 : kToolbarHeight,
       centerTitle: true,
-      flexibleSpace: isDesktop
-          ? GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onPanStart: (_) async {
-                await windowManager.startDragging();
-              },
-              onDoubleTap: () async {
-                final ctrl = Get.find<TitleBarController>();
-                if (ctrl.isMax) {
-                  await ctrl.pressUnMax();
-                } else {
-                  await ctrl.pressMax();
-                }
-              },
-            )
-          : null,
       title: opened.isNotEmpty
           ? SessionIndicator(
               openedIds: opened,
@@ -81,7 +59,7 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
           : Text(title, style: const TextStyle(fontSize: 16)),
       automaticallyImplyLeading: showMenu,
       actions: [
-        if (showToolPanelToggle)
+        if (showToolPanelToggle && !isDesktop)
           Obx(() {
             final toolCtrl = Get.find<TabletToolController>();
             return IconButton(
@@ -104,7 +82,6 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
               onPressed: () => Scaffold.of(ctx).openEndDrawer(),
             ),
           ),
-        if (isDesktop) const WindowsButtons(),
       ],
       bottom: opened.isNotEmpty
           ? PreferredSize(

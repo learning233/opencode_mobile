@@ -6,6 +6,7 @@ import '../controllers/session_controller.dart';
 import '../controllers/tablet_tool_controller.dart';
 import '../utils/layout_utils.dart';
 import '../utils/translations.dart';
+import '../utils/window/desktop_title_bar.dart';
 import 'home/home_app_bar.dart';
 import 'home/home_chat_body.dart';
 import 'home/tablet/resizable_divider.dart';
@@ -108,15 +109,24 @@ class _HomePageState extends State<HomePage> {
     final width = MediaQuery.of(context).size.width;
     final isTablet = isTabletLayout(context);
 
+    final content = isTablet
+        ? tabletWidget(sessionCtrl, toolCtrl, width)
+        : phoneWidget(sessionCtrl, toolCtrl);
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
         await _handlePop(context);
       },
-      child: isTablet
-          ? tabletWidget(sessionCtrl, toolCtrl, width)
-          : phoneWidget(sessionCtrl, toolCtrl),
+      child: isDesktop
+          ? Column(
+              children: [
+                const DesktopTitleBar(),
+                Expanded(child: content),
+              ],
+            )
+          : content,
     );
   }
 

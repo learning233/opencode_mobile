@@ -682,13 +682,20 @@ class StartExecutionButton extends StatelessWidget {
           );
         },
         style: OutlinedButton.styleFrom(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(3)),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          minimumSize: const Size(100, 30),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(isDesktop ? 6 : 3),
+          ),
+          padding: isDesktop
+              ? const EdgeInsets.symmetric(horizontal: 14, vertical: 8)
+              : const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          minimumSize: isDesktop ? null : const Size(100, 30),
         ),
         child: Text(
           LocaleKeys.makePlan.tr,
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            fontSize: isDesktop ? 13 : 12,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       );
 
@@ -704,23 +711,31 @@ class StartExecutionButton extends StatelessWidget {
           );
         },
         style: FilledButton.styleFrom(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(3)),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          minimumSize: const Size(100, 30),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(isDesktop ? 6 : 3),
+          ),
+          padding: isDesktop
+              ? const EdgeInsets.symmetric(horizontal: 14, vertical: 8)
+              : const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          minimumSize: isDesktop ? null : const Size(100, 30),
         ),
         child: Text(
           LocaleKeys.startExecution.tr,
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            fontSize: isDesktop ? 13 : 12,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       );
 
+      final alignLeft = isTablet && !isDesktop;
       return Padding(
         padding: const EdgeInsets.only(bottom: 4),
         child: Row(
-          mainAxisAlignment: isTablet
+          mainAxisAlignment: alignLeft
               ? MainAxisAlignment.start
               : MainAxisAlignment.end,
-          children: isTablet
+          children: alignLeft
               ? [execBtn, const SizedBox(width: 8), planBtn]
               : [planBtn, const SizedBox(width: 8), execBtn],
         ),

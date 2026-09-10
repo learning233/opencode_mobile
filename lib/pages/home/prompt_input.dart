@@ -1,9 +1,10 @@
 import 'dart:async';
-// import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:super_clipboard/super_clipboard.dart';
 import 'package:get/get.dart';
 import '../../api/models/project.dart';
 import '../../controllers/project_controller.dart';
@@ -16,7 +17,6 @@ import '../../models/model_info.dart';
 import '../../models/session_runtime_state.dart';
 import '../../routes.dart';
 import '../../utils/app_theme.dart';
-// import '../../utils/app_logger.dart';
 import '../../utils/snackbar_utils.dart';
 import '../../utils/translations.dart';
 import '../../utils/url_utils.dart';
@@ -54,6 +54,7 @@ class _PromptInputState extends State<PromptInput> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    _focusNode.onKeyEvent = _onKeyEvent;
     WidgetsBinding.instance.addObserver(this);
     _textController.addListener(() {
       // 值不变不 setState：IME 组合、光标移动等每次输入事件都会进 listener，
@@ -107,6 +108,132 @@ class _PromptInputState extends State<PromptInput> with WidgetsBindingObserver {
 
   void _handleSend() {
     _submitMessage(_textController.text);
+  }
+
+  KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent) {
+      // 1. Ctrl+V (Windows/Linux) 或 Cmd+V (macOS)：优先尝试粘贴剪贴板二进制图片
+      if (event.logicalKey == LogicalKeyboardKey.keyV &&
+          (HardwareKeyboard.instance.isControlPressed ||
+              HardwareKeyboard.instance.isMetaPressed)) {
+        _handlePaste();
+        return KeyEventResult.handled;
+      }
+
+      // 2. Enter 键发送（支持主键盘 Enter 与小键盘 NumPad Enter，排除 Shift+Enter 换行）
+      final isEnter = event.logicalKey == LogicalKeyboardKey.enter ||
+          event.logicalKey == LogicalKeyboardKey.numpadEnter;
+      if (isEnter && !HardwareKeyboard.instance.isShiftPressed) {
+        // IME 输入法合成态防护：打拼音时无论是空格还是 Enter 上屏，绝不触发误发送
+        final composing = _textController.value.composing;
+        if (composing.isValid && !composing.isCollapsed) {
+          return KeyEventResult.ignored;
+        }
+
+        final state = _ctrl.stateOf(widget.sessionId);
+        final hasPendingPermission =
+            _ctrl.sessionIdWithPendingPermission(widget.sessionId) != null;
+        final inputEnabled =
+            widget.sessionId.isNotEmpty && !hasPendingPermission;
+        final canSend =
+            _hasText ||
+            state.attachedFiles.isNotEmpty ||
+            state.attachedImages.isNotEmpty;
+
+        if (inputEnabled && canSend) {
+          _handleSend();
+          return KeyEventResult.handled;
+        }
+        // 若空消息或不可发送，吞掉 Enter 避免插入无谓换行
+        return KeyEventResult.handled;
+      }
+
+      // 3. Esc 键闭环：生成中按 Esc 中止生成；空闲时失焦
+      if (event.logicalKey == LogicalKeyboardKey.escape) {
+        final state = _ctrl.stateOf(widget.sessionId);
+        if (state.isGenerating.value) {
+          _handleAbort();
+          return KeyEventResult.handled;
+        } else if (_focusNode.hasFocus) {
+          _focusNode.unfocus();
+          return KeyEventResult.handled;
+        }
+      }
+    }
+    return KeyEventResult.ignored;
+  }
+
+  Future<void> _handlePaste() async {
+    try {
+      final image = await _readClipboardImage();
+      if (image != null && image.bytes.isNotEmpty) {
+        final state = _ctrl.stateOf(widget.sessionId);
+        if (state.attachedImages.length >= 5) {
+          Snack.warning('最多只能上传 5 张图片');
+          return;
+        }
+        state.attachedImages.add(image);
+        return;
+      }
+    } catch (_) {
+      // 读取剪贴板图像异常时静默降级为文本粘贴
+    }
+
+    // 剪贴板无图片时，回退到系统文本粘贴
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text;
+    if (text != null && text.isNotEmpty) {
+      _insertTextAtCursor(text);
+    }
+  }
+
+  Future<PickedImage?> _readClipboardImage() async {
+    final clipboard = SystemClipboard.instance;
+    if (clipboard == null) return null;
+
+    final reader = await clipboard.read();
+    final format = reader.canProvide(Formats.png)
+        ? Formats.png
+        : (reader.canProvide(Formats.jpeg) ? Formats.jpeg : null);
+    if (format == null) return null;
+
+    final completer = Completer<Uint8List?>();
+    final progress = reader.getFile(
+      format,
+      (file) async {
+        if (!completer.isCompleted) {
+          completer.complete(await file.readAll());
+        }
+      },
+      onError: (_) {
+        if (!completer.isCompleted) completer.complete(null);
+      },
+    );
+    if (progress == null) return null;
+    final bytes = await completer.future;
+    if (bytes == null || bytes.isEmpty) return null;
+
+    final isPng = format == Formats.png;
+    return (
+      bytes: bytes,
+      mime: isPng ? 'image/png' : 'image/jpeg',
+      ext: isPng ? 'png' : 'jpg',
+    );
+  }
+
+  void _insertTextAtCursor(String text) {
+    final selection = _textController.selection;
+    final currentText = _textController.text;
+    final start = selection.start < 0 ? currentText.length : selection.start;
+    final end = selection.end < 0 ? currentText.length : selection.end;
+    final before = currentText.substring(0, start);
+    final after = currentText.substring(end);
+    final newText = '$before$text$after';
+    final newOffset = start + text.length;
+    _textController.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: newOffset),
+    );
   }
 
   /// 统一发送入口：文本 + 已附图片/文件一并发送，发送后清空附件。
@@ -366,9 +493,10 @@ class _PromptInputState extends State<PromptInput> with WidgetsBindingObserver {
                   TextField(
                     controller: _textController,
                     focusNode: _focusNode,
-                    maxLines: 4,
-                    minLines: 1,
+                    minLines: isDesktop ? 2 : 1,
+                    maxLines: isDesktop ? 8 : 4,
                     enabled: inputEnabled,
+                    keyboardType: TextInputType.multiline,
                     textInputAction: TextInputAction.newline,
                     decoration: InputDecoration(
                       hintText: !hasSession
@@ -383,14 +511,18 @@ class _PromptInputState extends State<PromptInput> with WidgetsBindingObserver {
                       focusedBorder: InputBorder.none,
                       disabledBorder: InputBorder.none,
                       filled: false,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
+                      contentPadding: EdgeInsets.fromLTRB(
+                        10,
+                        isDesktop ? 10 : 8,
+                        10,
+                        isDesktop ? 10 : 8,
                       ),
                       isDense: true,
                     ),
-                    style: theme.textTheme.bodyMedium?.copyWith(fontSize: 14),
-                    onSubmitted: inputEnabled ? (_) => _handleSend() : null,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontSize: 14,
+                      height: isDesktop ? 1.5 : null,
+                    ),
                   ),
                   _ActionBar(
                     hasSession: hasSession,

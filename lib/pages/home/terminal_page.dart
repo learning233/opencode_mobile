@@ -168,6 +168,14 @@ class _TerminalPanelBodyState extends State<TerminalPanelBody> {
     );
   }
 
+  void _onSearchPressed(BuildContext context, PtySession session) {
+    if (isDesktop || isTabletLayout(context)) {
+      session.controller.openSearch();
+    } else {
+      _showSearchBottomSheet(context, session);
+    }
+  }
+
   void _showSearchBottomSheet(BuildContext context, PtySession session) {
     session.controller.openSearch();
 
@@ -366,7 +374,7 @@ class _TerminalPanelBodyState extends State<TerminalPanelBody> {
                       icon: const Icon(Icons.search, size: 18),
                       visualDensity: VisualDensity.compact,
                       onPressed: () =>
-                          _showSearchBottomSheet(context, activeSession),
+                          _onSearchPressed(context, activeSession),
                     ),
                     IconButton(
                       icon: const Icon(CupertinoIcons.xmark, size: 18),
@@ -526,6 +534,7 @@ class _TerminalPanelBodyState extends State<TerminalPanelBody> {
                 return const Center(child: CircularProgressIndicator());
               }
 
+              final isDesktopOrTablet = isDesktop || isTabletLayout(context);
               return TerminalView(
                 session.terminal,
                 controller: session.controller,
@@ -535,6 +544,7 @@ class _TerminalPanelBodyState extends State<TerminalPanelBody> {
                 autoResize: true,
                 keyboardType: TextInputType.text,
                 padding: const EdgeInsets.all(4),
+                showSearchBar: isDesktopOrTablet,
                 onSendToAi: (text) => _handleSendToAi(context, text),
                 externalCtrl: _ctrlNotifier,
                 externalAlt: _altNotifier,
@@ -583,7 +593,7 @@ class _TerminalPageState extends State<TerminalPage> {
             if (activeSession != null) ...[
               IconButton(
                 icon: const Icon(CupertinoIcons.search),
-                onPressed: () => _showSearchBottomSheet(context, activeSession),
+                onPressed: () => _onSearchPressed(context, activeSession),
               ),
               IconButton(
                 icon: const Icon(CupertinoIcons.xmark),
@@ -671,6 +681,14 @@ class _TerminalPageState extends State<TerminalPage> {
         ],
       ),
     );
+  }
+
+  void _onSearchPressed(BuildContext context, PtySession session) {
+    if (isDesktop || isTabletLayout(context)) {
+      session.controller.openSearch();
+    } else {
+      _showSearchBottomSheet(context, session);
+    }
   }
 
   void _showSearchBottomSheet(BuildContext context, PtySession session) {

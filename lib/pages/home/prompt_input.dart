@@ -1787,6 +1787,22 @@ Future<T?> _showPopup<T>({
   final appColors = context.appColors;
   final completer = Completer<T?>();
 
+  // 桌面端：自绘标题栏 32px 在 Navigator/Overlay 上方，Overlay 原点不在
+  // 全局 (0,0)。调用方传的是 localToGlobal 全局坐标，Positioned 要的是
+  // 浮层局部坐标，必须减掉 Overlay 原点，否则弹窗整体下移约 32px。
+  // 仅桌面转换，手机/平板保持原行为。
+  double adjLeft = left;
+  double adjTop = top;
+  if (isDesktop) {
+    final overlayBox =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (overlayBox != null) {
+      final origin = overlayBox.localToGlobal(Offset.zero);
+      adjLeft = left - origin.dx;
+      adjTop = top - origin.dy;
+    }
+  }
+
   late OverlayEntry overlayEntry;
   overlayEntry = OverlayEntry(
     builder: (dialogContext) {
@@ -1802,8 +1818,8 @@ Future<T?> _showPopup<T>({
             ),
           ),
           Positioned(
-            left: left,
-            top: top,
+            left: adjLeft,
+            top: adjTop,
             child: Material(
               elevation: 8,
               borderRadius: BorderRadius.circular(8),

@@ -9,6 +9,7 @@ import 'package:opencode_app/init.dart';
 import 'package:opencode_app/pages/home/desktop_session_tab_bar.dart';
 import 'package:opencode_app/pages/home/home_app_bar.dart';
 import 'package:opencode_app/utils/app_settings_store.dart';
+import 'package:opencode_app/utils/translations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -201,6 +202,16 @@ void main() {
 
       await tester.pumpWidget(
         GetMaterialApp(
+          // 模拟桌面真机布局（见 app.dart builder）：自绘标题栏 32px 在
+          // Navigator/Overlay 上方，Overlay 原点在 y=32 而非 (0,0)。
+          // 必须用 builder 包在 Navigator 外层，直接包 home 是包反了，
+          // 测不出 32px 下移。
+          builder: (context, child) => Column(
+            children: [
+              const SizedBox(height: 32, width: double.infinity),
+              Expanded(child: child ?? const SizedBox.shrink()),
+            ],
+          ),
           home: Scaffold(
             appBar: HomeAppBar(
               sessionCtrl: sessionCtrl,
@@ -214,7 +225,7 @@ void main() {
       );
       await tester.pump();
 
-      // 在第二个 tab 上触发右键 (secondary click)
+      // 在第二个 tab 上触发右键 (secondary click，按下即弹)
       final secondTab = find.text(sessionCtrl.getSessionName('s2'));
       await tester.tap(secondTab, buttons: kSecondaryMouseButton);
       await tester.pumpAndSettle();
@@ -223,6 +234,13 @@ void main() {
       expect(find.byIcon(CupertinoIcons.xmark), findsWidgets);
       expect(find.byIcon(CupertinoIcons.clear_thick), findsOneWidget);
       expect(find.byIcon(CupertinoIcons.trash), findsOneWidget);
+
+      // 验证右键菜单在鼠标点击位置附近弹出，没有过大的向下间隙（不再下移 32px 标题栏高度）
+      final closeItemFinder = find.widgetWithText(PopupMenuItem<String>, LocaleKeys.close.tr);
+      final menuTop = tester.getTopLeft(closeItemFinder).dy;
+      final tabBottom = tester.getBottomLeft(secondTab).dy;
+      // 菜单顶部紧贴点击位置 / 页签位置（相距在 15px 内），而不是距离 32px 以上
+      expect((menuTop - tabBottom).abs(), lessThan(15.0));
     } finally {
       debugDefaultTargetPlatformOverride = null;
     }

@@ -375,7 +375,7 @@ class _DesktopTabItemState extends State<_DesktopTabItem>
     super.dispose();
   }
 
-  void _showContextMenu(BuildContext context, TapUpDetails details) async {
+  void _showContextMenu(BuildContext context, TapDownDetails details) async {
     final overlay =
         Overlay.of(context).context.findRenderObject() as RenderBox?;
     if (overlay == null) return;
@@ -384,8 +384,11 @@ class _DesktopTabItemState extends State<_DesktopTabItem>
     final selected = await showMenu<String>(
       context: context,
       position: RelativeRect.fromRect(
-        details.globalPosition & const Size(40, 40),
-        Offset.zero & overlay.size,
+        details.globalPosition & const Size(1, 1),
+        // 桌面端顶部有自绘标题栏（DesktopTitleBar 高 32），Overlay 原点不在
+        // 全局 (0,0)，必须用 overlay 自身的全局偏移做容器矩形，否则菜单会
+        // 整体下移一个标题栏高度。平板嵌套 Navigator 同理。
+        overlay.localToGlobal(Offset.zero) & overlay.size,
       ),
       elevation: 4,
       shape: RoundedRectangleBorder(
@@ -509,7 +512,8 @@ class _DesktopTabItemState extends State<_DesktopTabItem>
               _stopBlinking();
               widget.onTap();
             },
-            onSecondaryTapUp: (details) => _showContextMenu(context, details),
+            onSecondaryTapDown: (details) =>
+                _showContextMenu(context, details),
             onTertiaryTapDown: (_) =>
                 widget.sessionCtrl.closeSession(widget.id),
             child: Stack(

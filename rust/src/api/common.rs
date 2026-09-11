@@ -141,6 +141,17 @@ pub fn configure_onnxruntime_dylib() {
 
     #[cfg(target_os = "windows")]
     {
+        if let Ok(exe_path) = std::env::current_exe() {
+            if let Some(exe_dir) = exe_path.parent() {
+                let candidate = exe_dir.join("onnxruntime.dll");
+                if candidate.exists() {
+                    let s = candidate.to_string_lossy().to_string();
+                    std::env::set_var("ORT_DYLIB_PATH", &s);
+                    log::info!("Configured ORT_DYLIB_PATH={}", s);
+                    return;
+                }
+            }
+        }
         let candidates = [
             "onnx/onnxruntime.dll",
             "onnxruntime.dll",

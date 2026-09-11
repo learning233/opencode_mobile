@@ -367,6 +367,22 @@ class VoiceInputService {
   }
 
   Future<bool> initialize({Function(String error)? onError}) async {
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      try {
+        final recorder = AudioRecorder();
+        final hasPerm = await recorder.hasPermission();
+        await recorder.dispose();
+        if (!hasPerm) {
+          onError?.call(LocaleKeys.voiceMicPermissionDenied.tr);
+          return false;
+        }
+        return true;
+      } catch (e) {
+        debugPrint('Desktop mic permission check skipped or failed: $e');
+        return true;
+      }
+    }
+
     try {
       var status = await Permission.microphone.status;
       if (!status.isGranted) {

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart' as inapp;
 import 'package:get/get.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart' as wf;
@@ -613,7 +614,7 @@ class _BrowserTabViewState extends State<_BrowserTabView>
     _envInitStarted = true;
     try {
       final appSupportDir = await getApplicationSupportDirectory();
-      final envDir = '${appSupportDir.path}/inappwebview';
+      final envDir = p.join(appSupportDir.path, 'inappwebview');
       _windowsWebViewEnvironment = await inapp.WebViewEnvironment.create(
         settings: inapp.WebViewEnvironmentSettings(userDataFolder: envDir),
       );

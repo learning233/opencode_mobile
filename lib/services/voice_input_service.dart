@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
@@ -60,11 +61,11 @@ class VoiceInputService {
 
   Future<File> getModelFile() async {
     final dir = await getApplicationSupportDirectory();
-    final q8File = File('${dir.path}/model_q8.onnx');
+    final q8File = File(p.join(dir.path, 'model_q8.onnx'));
     if (await q8File.exists() && (await q8File.length()) >= _minModelFileSize) {
       return q8File;
     }
-    final legacyFile = File('${dir.path}/model1_small.onnx');
+    final legacyFile = File(p.join(dir.path, 'model1_small.onnx'));
     if (await legacyFile.exists() &&
         (await legacyFile.length()) >= _minModelFileSize) {
       debugPrint(
@@ -86,8 +87,8 @@ class VoiceInputService {
     CancelToken? cancelToken,
   }) async {
     final dir = await getApplicationSupportDirectory();
-    final modelFile = File('${dir.path}/model_q8.onnx');
-    final tmpFile = File('${dir.path}/model_q8.onnx.tmp');
+    final modelFile = File(p.join(dir.path, 'model_q8.onnx'));
+    final tmpFile = File(p.join(dir.path, 'model_q8.onnx.tmp'));
 
     try {
       if (await tmpFile.exists()) {
@@ -435,8 +436,8 @@ class VoiceInputService {
     if (cached != null) return cached;
     final dir = await getApplicationSupportDirectory();
     final modelFile = await getModelFile();
-    final vocabFile = File('${dir.path}/tokens.txt');
-    final vadFile = File('${dir.path}/vad_stream.onnx');
+    final vocabFile = File(p.join(dir.path, 'tokens.txt'));
+    final vadFile = File(p.join(dir.path, 'vad_stream.onnx'));
 
     if (!await modelFile.exists() || (await modelFile.length()) == 0) {
       throw StateError('语音识别模型未下载');
@@ -445,7 +446,7 @@ class VoiceInputService {
     await _copyAssetIfNeeded('assets/vad_stream.onnx', vadFile);
 
     if (Platform.isAndroid) {
-      final soFile = File('${dir.path}/libonnxruntime.so');
+      final soFile = File(p.join(dir.path, 'libonnxruntime.so'));
       debugPrint('VoiceInputService: ensuring libonnxruntime.so asset...');
       await _copyAssetIfNeeded('onnx/libonnxruntime.so', soFile);
       debugPrint(

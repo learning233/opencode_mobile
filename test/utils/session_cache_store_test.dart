@@ -79,6 +79,27 @@ void main() {
       expect(loaded!.map((m) => m['id']), ['m2', 'm3']);
     });
 
+    test('repeated overwrites keep latest snapshot with no tmp behind', () async {
+      // Windows 回归：同一会话二次 save 即 rename 覆盖已存在目标，
+      // fallback 路径也必须无 tmp 残留且内容为最新。
+      for (var i = 0; i < 3; i++) {
+        await store.save('s1', [
+          _rawMessage('m$i', role: 'user', created: i),
+        ]);
+      }
+
+      final loaded = await store.load('s1');
+      expect(loaded, hasLength(1));
+      expect(loaded![0]['id'], 'm2');
+
+      final tmpFiles = cacheDir()
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.tmp'))
+          .toList();
+      expect(tmpFiles, isEmpty);
+    });
+
     test('save leaves no tmp file behind (atomic rename)', () async {
       await store.save('s1', [_rawMessage('m1', role: 'user', created: 100)]);
 

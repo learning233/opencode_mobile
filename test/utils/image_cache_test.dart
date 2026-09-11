@@ -44,6 +44,18 @@ void main() {
     expect(await cache.find('m1', 'nope'), isNull);
   });
 
+  test('repeated overwrites keep latest bytes without leaving tmp', () async {
+    // Windows 回归：同一 key 多次 write 即 rename 覆盖已存在目标。
+    await cache.write('m1', 'prt_1', [1]);
+    await cache.write('m1', 'prt_1', [2, 3]);
+    await cache.write('m1', 'prt_1', [4, 5, 6]);
+
+    final file = await cache.find('m1', 'prt_1');
+    expect(file, isNotNull);
+    expect(await file!.readAsBytes(), [4, 5, 6]);
+    expect(File('${file.path}.tmp').existsSync(), isFalse);
+  });
+
   test('keys are isolated by message and part id', () async {
     await cache.write('m1', 'prt_a', [1]);
     await cache.write('m2', 'prt_a', [2]);

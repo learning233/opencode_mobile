@@ -597,7 +597,8 @@ class _BrowserTabViewState extends State<_BrowserTabView>
   static inapp.WebViewEnvironment? _windowsWebViewEnvironment;
   static bool _envInitStarted = false;
 
-  static Future<inapp.WebViewEnvironment?> _getOrCreateWebViewEnvironment() async {
+  static Future<inapp.WebViewEnvironment?>
+  _getOrCreateWebViewEnvironment() async {
     if (_windowsWebViewEnvironment != null) return _windowsWebViewEnvironment;
     if (_envInitStarted) {
       while (_envInitStarted && _windowsWebViewEnvironment == null) {
@@ -1106,8 +1107,9 @@ class _BrowserTabViewState extends State<_BrowserTabView>
       }
     }
 
-    final hasController =
-        _isWindows ? (_inAppController != null) : (_controller != null);
+    final hasController = _isWindows
+        ? (_inAppController != null)
+        : (_controller != null);
 
     return Stack(
       children: [

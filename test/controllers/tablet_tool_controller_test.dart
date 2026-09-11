@@ -344,22 +344,19 @@ void main() {
       },
     );
 
-    test(
-      'openReviewAllFile in different scope refetches and switches',
-      () {
-        final ctrl = TabletToolController();
-        ctrl.openReviewSession('s1', selectFile: 'a.dart');
-        ctrl.activeTabIndex.value = TabletToolController.tabCode;
-        final tickBefore = ctrl.reviewReloadTick.value;
+    test('openReviewAllFile in different scope refetches and switches', () {
+      final ctrl = TabletToolController();
+      ctrl.openReviewSession('s1', selectFile: 'a.dart');
+      ctrl.activeTabIndex.value = TabletToolController.tabCode;
+      final tickBefore = ctrl.reviewReloadTick.value;
 
-        ctrl.openReviewAllFile(selectFile: 'b.dart');
+      ctrl.openReviewAllFile(selectFile: 'b.dart');
 
-        expect(ctrl.reviewType.value, TabletToolController.reviewTypeAll);
-        expect(ctrl.reviewSelectedFile.value, 'b.dart');
-        expect(ctrl.reviewReloadTick.value, tickBefore + 1);
-        expect(ctrl.activeTabIndex.value, TabletToolController.tabReview);
-      },
-    );
+      expect(ctrl.reviewType.value, TabletToolController.reviewTypeAll);
+      expect(ctrl.reviewSelectedFile.value, 'b.dart');
+      expect(ctrl.reviewReloadTick.value, tickBefore + 1);
+      expect(ctrl.activeTabIndex.value, TabletToolController.tabReview);
+    });
   });
 
   group('TabletToolController browser tabs', () {

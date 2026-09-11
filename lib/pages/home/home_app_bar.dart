@@ -59,23 +59,23 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
       titleSpacing: isDesktop ? 6.0 : NavigationToolbar.kMiddleSpacing,
       title: opened.isNotEmpty
           ? (isDesktop
-              ? DesktopSessionTabBar(
-                  openedIds: opened,
-                  activeId: sessionId,
-                  sessionCtrl: sessionCtrl,
-                  onSelectSession: onSelectSession,
-                )
-              : SessionIndicator(
-                  openedIds: opened,
-                  activeId: sessionId,
-                  onTap: (id) {
-                    if (onSelectSession != null) {
-                      onSelectSession!(id);
-                    } else {
-                      sessionCtrl.selectSession(id);
-                    }
-                  },
-                ))
+                ? DesktopSessionTabBar(
+                    openedIds: opened,
+                    activeId: sessionId,
+                    sessionCtrl: sessionCtrl,
+                    onSelectSession: onSelectSession,
+                  )
+                : SessionIndicator(
+                    openedIds: opened,
+                    activeId: sessionId,
+                    onTap: (id) {
+                      if (onSelectSession != null) {
+                        onSelectSession!(id);
+                      } else {
+                        sessionCtrl.selectSession(id);
+                      }
+                    },
+                  ))
           : Text(
               title,
               style: TextStyle(
@@ -111,118 +111,109 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
       ],
       bottom: opened.isNotEmpty
           ? PreferredSize(
-                  preferredSize: Size.fromHeight(isDesktop ? 2.5 : 28),
-                  child: Obx(() {
-                    final tokens = sessionCtrl.activeSessionMessageTokens(
-                      sessionId,
-                    );
-                    final maxLimit = sessionCtrl.modelContextLimitFor(
-                      sessionId,
-                    );
-                    final hasLimit = maxLimit > 0 && tokens > 0;
-                    final ratio = hasLimit
-                        ? (tokens / maxLimit).clamp(0.0, 1.0)
-                        : 0.0;
+              preferredSize: Size.fromHeight(isDesktop ? 2.5 : 28),
+              child: Obx(() {
+                final tokens = sessionCtrl.activeSessionMessageTokens(
+                  sessionId,
+                );
+                final maxLimit = sessionCtrl.modelContextLimitFor(sessionId);
+                final hasLimit = maxLimit > 0 && tokens > 0;
+                final ratio = hasLimit
+                    ? (tokens / maxLimit).clamp(0.0, 1.0)
+                    : 0.0;
 
-                    final barColor = ratio >= 0.9
-                        ? Colors.red
-                        : ratio >= 0.75
-                        ? Colors.orange
-                        : theme.colorScheme.primary;
+                final barColor = ratio >= 0.9
+                    ? Colors.red
+                    : ratio >= 0.75
+                    ? Colors.orange
+                    : theme.colorScheme.primary;
 
-                    if (isDesktop) {
-                      return Tooltip(
-                        message: hasLimit
-                            ? 'Token: $tokens / $maxLimit (${(ratio * 100).toStringAsFixed(1)}%)'
-                            : '',
-                        waitDuration: const Duration(milliseconds: 500),
-                        child: Container(
-                          width: double.infinity,
-                          height: 2.5,
-                          color: theme.colorScheme.outline.withValues(
-                            alpha: 0.12,
-                          ),
-                          child: hasLimit
-                              ? Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: FractionallySizedBox(
-                                    widthFactor: ratio,
-                                    child: Container(
-                                      color: barColor.withValues(alpha: 0.85),
-                                    ),
-                                  ),
-                                )
-                              : const SizedBox.shrink(),
-                        ),
-                      );
-                    }
-
-                    return Container(
+                if (isDesktop) {
+                  return Tooltip(
+                    message: hasLimit
+                        ? 'Token: $tokens / $maxLimit (${(ratio * 100).toStringAsFixed(1)}%)'
+                        : '',
+                    waitDuration: const Duration(milliseconds: 500),
+                    child: Container(
                       width: double.infinity,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surfaceContainerHighest
-                            .withValues(alpha: 0.2),
-                        border: Border(
-                          top: BorderSide(
-                            color: theme.colorScheme.outline.withValues(
-                              alpha: 0.1,
+                      height: 2.5,
+                      color: theme.colorScheme.outline.withValues(alpha: 0.12),
+                      child: hasLimit
+                          ? Align(
+                              alignment: Alignment.centerLeft,
+                              child: FractionallySizedBox(
+                                widthFactor: ratio,
+                                child: Container(
+                                  color: barColor.withValues(alpha: 0.85),
+                                ),
+                              ),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                  );
+                }
+
+                return Container(
+                  width: double.infinity,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest.withValues(
+                      alpha: 0.2,
+                    ),
+                    border: Border(
+                      top: BorderSide(
+                        color: theme.colorScheme.outline.withValues(alpha: 0.1),
+                        width: 0.5,
+                      ),
+                      bottom: BorderSide(
+                        color: theme.colorScheme.outline.withValues(alpha: 0.1),
+                        width: 0.5,
+                      ),
+                    ),
+                  ),
+                  child: Stack(
+                    children: [
+                      // Centered Session Title
+                      Positioned.fill(
+                        child: Center(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Text(
+                              title,
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                                color: theme.colorScheme.onSurface,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
                             ),
-                            width: 0.5,
-                          ),
-                          bottom: BorderSide(
-                            color: theme.colorScheme.outline.withValues(
-                              alpha: 0.1,
-                            ),
-                            width: 0.5,
                           ),
                         ),
                       ),
-                      child: Stack(
-                        children: [
-                          // Centered Session Title
-                          Positioned.fill(
-                            child: Center(
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                ),
-                                child: Text(
-                                  title,
-                                  style: TextStyle(
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.w600,
-                                    color: theme.colorScheme.onSurface,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  textAlign: TextAlign.center,
-                                ),
+                      // Context Token Usage Progress Bar (Bottom Divider Line)
+                      if (hasLimit)
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          height: 1.5,
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: FractionallySizedBox(
+                              widthFactor: ratio,
+                              child: Container(
+                                color: barColor.withValues(alpha: 0.85),
                               ),
                             ),
                           ),
-                          // Context Token Usage Progress Bar (Bottom Divider Line)
-                          if (hasLimit)
-                            Positioned(
-                              left: 0,
-                              right: 0,
-                              bottom: 0,
-                              height: 1.5,
-                              child: Align(
-                                alignment: Alignment.centerLeft,
-                                child: FractionallySizedBox(
-                                  widthFactor: ratio,
-                                  child: Container(
-                                    color: barColor.withValues(alpha: 0.85),
-                                  ),
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    );
-                  }),
-                )
+                        ),
+                    ],
+                  ),
+                );
+              }),
+            )
           : null,
     );
   }

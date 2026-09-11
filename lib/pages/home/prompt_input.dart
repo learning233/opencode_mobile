@@ -124,7 +124,8 @@ class _PromptInputState extends State<PromptInput> with WidgetsBindingObserver {
       }
 
       // 2. Enter 键发送（支持主键盘 Enter 与小键盘 NumPad Enter，排除 Shift+Enter 换行）
-      final isEnter = event.logicalKey == LogicalKeyboardKey.enter ||
+      final isEnter =
+          event.logicalKey == LogicalKeyboardKey.enter ||
           event.logicalKey == LogicalKeyboardKey.numpadEnter;
       if (isEnter && !HardwareKeyboard.instance.isShiftPressed) {
         // IME 输入法合成态防护：打拼音时无论是空格还是 Enter 上屏，绝不触发误发送

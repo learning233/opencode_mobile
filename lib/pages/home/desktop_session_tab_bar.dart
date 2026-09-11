@@ -92,8 +92,10 @@ class _DesktopSessionTabBarState extends State<DesktopSessionTabBar> {
       builder: (context, constraints) {
         const newBtnWidth = 30.0;
         final maxBarWidth = constraints.maxWidth;
-        final availableWidth =
-            (maxBarWidth - newBtnWidth - 8).clamp(0.0, double.infinity);
+        final availableWidth = (maxBarWidth - newBtnWidth - 8).clamp(
+          0.0,
+          double.infinity,
+        );
         final count = widget.openedIds.length;
 
         // 1. 测量每个 Tab 的自然内容宽度（自适应标题长度，短标题紧凑，长标题适度舒展）
@@ -119,10 +121,8 @@ class _DesktopSessionTabBarState extends State<DesktopSessionTabBar> {
         }
 
         const tabMargin = 2.0;
-        final totalNaturalWidth = naturalWidths.fold<double>(
-              0.0,
-              (sum, w) => sum + w,
-            ) +
+        final totalNaturalWidth =
+            naturalWidths.fold<double>(0.0, (sum, w) => sum + w) +
             (count > 0 ? (count - 1) * tabMargin : 0.0);
 
         // 2. 根据可用宽度进行计算：未撑满时按自然长度展示，撑满后按溢出量等比压缩
@@ -164,10 +164,8 @@ class _DesktopSessionTabBarState extends State<DesktopSessionTabBar> {
 
         _cachedWidths = finalWidths;
 
-        final totalFinalWidth = finalWidths.fold<double>(
-              0.0,
-              (sum, w) => sum + w,
-            ) +
+        final totalFinalWidth =
+            finalWidths.fold<double>(0.0, (sum, w) => sum + w) +
             (count > 0 ? (count - 1) * tabMargin : 0.0);
         final isScrollable = totalFinalWidth > availableWidth;
 
@@ -222,12 +220,9 @@ class _DesktopSessionTabBarState extends State<DesktopSessionTabBar> {
               if (pointerSignal is PointerScrollEvent &&
                   _scrollController.hasClients &&
                   pointerSignal.scrollDelta.dy != 0) {
-                final target = (_scrollController.offset +
-                        pointerSignal.scrollDelta.dy)
-                    .clamp(
-                  0.0,
-                  _scrollController.position.maxScrollExtent,
-                );
+                final target =
+                    (_scrollController.offset + pointerSignal.scrollDelta.dy)
+                        .clamp(0.0, _scrollController.position.maxScrollExtent);
                 _scrollController.jumpTo(target);
               }
             },
@@ -240,10 +235,7 @@ class _DesktopSessionTabBarState extends State<DesktopSessionTabBar> {
           );
         }
 
-        return Align(
-          alignment: Alignment.centerLeft,
-          child: tabRow,
-        );
+        return Align(alignment: Alignment.centerLeft, child: tabRow);
       },
     );
   }
@@ -411,10 +403,7 @@ class _DesktopTabItemState extends State<_DesktopTabItem>
             children: [
               const Icon(CupertinoIcons.xmark, size: 13),
               const SizedBox(width: 8),
-              Text(
-                LocaleKeys.close.tr,
-                style: const TextStyle(fontSize: 12.5),
-              ),
+              Text(LocaleKeys.close.tr, style: const TextStyle(fontSize: 12.5)),
             ],
           ),
         ),
@@ -455,8 +444,7 @@ class _DesktopTabItemState extends State<_DesktopTabItem>
     if (selected == 'close') {
       widget.sessionCtrl.closeSession(widget.id);
     } else if (selected == 'close_others') {
-      final others =
-          widget.openedIds.where((id) => id != widget.id).toList();
+      final others = widget.openedIds.where((id) => id != widget.id).toList();
       for (final id in others) {
         widget.sessionCtrl.closeSession(id);
       }
@@ -473,8 +461,9 @@ class _DesktopTabItemState extends State<_DesktopTabItem>
       final isGenerating = widget.runState.isGenerating.value;
       widget.runState.pendingPermission.value;
       final hasError = widget.runState.lastError.value?.isNotEmpty == true;
-      final requiresAction =
-          widget.isActive ? false : widget.runState.requiresAction;
+      final requiresAction = widget.isActive
+          ? false
+          : widget.runState.requiresAction;
       final sessionTitle = widget.sessionCtrl.getSessionName(widget.id);
 
       // 遵循移动端指示器三色：
@@ -537,16 +526,18 @@ class _DesktopTabItemState extends State<_DesktopTabItem>
                             alpha: 0.45,
                           )
                         : (_isHovered
-                            ? theme.colorScheme.surfaceContainerHighest
-                                .withValues(alpha: 0.22)
-                            : Colors.transparent),
+                              ? theme.colorScheme.surfaceContainerHighest
+                                    .withValues(alpha: 0.22)
+                              : Colors.transparent),
                     borderRadius: BorderRadius.circular(6),
                     border: Border.all(
                       color: widget.isActive
                           ? theme.colorScheme.outline.withValues(alpha: 0.18)
                           : (_isHovered
-                              ? theme.colorScheme.outline.withValues(alpha: 0.1)
-                              : Colors.transparent),
+                                ? theme.colorScheme.outline.withValues(
+                                    alpha: 0.1,
+                                  )
+                                : Colors.transparent),
                       width: 0.8,
                     ),
                     boxShadow: widget.isActive
@@ -584,9 +575,11 @@ class _DesktopTabItemState extends State<_DesktopTabItem>
                                     color: widget.isActive
                                         ? theme.colorScheme.onSurface
                                         : (_isHovered
-                                            ? theme.colorScheme.onSurface
-                                            : theme.colorScheme.onSurfaceVariant
-                                                .withValues(alpha: 0.85)),
+                                              ? theme.colorScheme.onSurface
+                                              : theme
+                                                    .colorScheme
+                                                    .onSurfaceVariant
+                                                    .withValues(alpha: 0.85)),
                                   ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
@@ -596,14 +589,16 @@ class _DesktopTabItemState extends State<_DesktopTabItem>
                               if (showClose)
                                 GestureDetector(
                                   behavior: HitTestBehavior.opaque,
-                                  onTap: () =>
-                                      widget.sessionCtrl.closeSession(widget.id),
+                                  onTap: () => widget.sessionCtrl.closeSession(
+                                    widget.id,
+                                  ),
                                   child: Container(
                                     padding: const EdgeInsets.all(2.0),
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
                                       color: theme
-                                          .colorScheme.surfaceContainerHighest
+                                          .colorScheme
+                                          .surfaceContainerHighest
                                           .withValues(alpha: 0.6),
                                     ),
                                     child: Icon(
@@ -657,22 +652,24 @@ class _DesktopTabItemState extends State<_DesktopTabItem>
                                 },
                               )
                             : (widget.isActive || hasError
-                                ? Container(
-                                    decoration: BoxDecoration(
-                                      color: dotColor,
-                                      borderRadius: BorderRadius.circular(1.5),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: dotColor.withValues(
-                                            alpha: 0.35,
-                                          ),
-                                          blurRadius: 2.5,
-                                          spreadRadius: 0.3,
+                                  ? Container(
+                                      decoration: BoxDecoration(
+                                        color: dotColor,
+                                        borderRadius: BorderRadius.circular(
+                                          1.5,
                                         ),
-                                      ],
-                                    ),
-                                  )
-                                : const SizedBox.shrink()),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: dotColor.withValues(
+                                              alpha: 0.35,
+                                            ),
+                                            blurRadius: 2.5,
+                                            spreadRadius: 0.3,
+                                          ),
+                                        ],
+                                      ),
+                                    )
+                                  : const SizedBox.shrink()),
                       ),
                     ],
                   ),

@@ -495,8 +495,8 @@ class _VcsBranchSheetState extends State<VcsBranchSheet> {
                                   alpha: 0.5,
                                 )
                               : (isSelected
-                                  ? theme.colorScheme.primary
-                                  : theme.colorScheme.onSurface),
+                                    ? theme.colorScheme.primary
+                                    : theme.colorScheme.onSurface),
                           decoration: file.isDeleted
                               ? TextDecoration.lineThrough
                               : null,
@@ -547,8 +547,9 @@ class _VcsBranchSheetState extends State<VcsBranchSheet> {
                             size: 16,
                             color: isSelected
                                 ? theme.colorScheme.primary
-                                : theme.colorScheme.onSurfaceVariant
-                                    .withValues(alpha: 0.5),
+                                : theme.colorScheme.onSurfaceVariant.withValues(
+                                    alpha: 0.5,
+                                  ),
                           ),
                         ],
                       ),

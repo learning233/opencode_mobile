@@ -239,7 +239,9 @@ class AppFeedbackService extends GetxService {
   }
 
   Future<void> _onNotificationTap(NotificationResponse response) async {
-    AppLogger.d('AppFeedbackService: onNotificationTap payload=${response.payload}');
+    AppLogger.d(
+      'AppFeedbackService: onNotificationTap payload=${response.payload}',
+    );
     await _bringWindowToFront();
     final sessionId = response.payload ?? '';
     if (sessionId.isEmpty) return;

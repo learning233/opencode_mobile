@@ -34,9 +34,7 @@ class WindowsButtons extends StatelessWidget {
             constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
             icon: Icon(
               isDark ? CupertinoIcons.sun_max : CupertinoIcons.moon,
-              color: theme.textTheme.bodyMedium?.color?.withValues(
-                alpha: 0.7,
-              ),
+              color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.7),
             ),
           ),
           // Pin Button
@@ -47,10 +45,7 @@ class WindowsButtons extends StatelessWidget {
                 onPressed: c.pressTop,
                 iconSize: 15,
                 padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(
-                  minWidth: 28,
-                  minHeight: 28,
-                ),
+                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
                 icon: Icon(
                   c.onTop ? CupertinoIcons.pin_fill : CupertinoIcons.pin,
                   color: c.onTop
@@ -71,9 +66,7 @@ class WindowsButtons extends StatelessWidget {
             constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
             icon: Icon(
               CupertinoIcons.minus,
-              color: theme.textTheme.bodyMedium?.color?.withValues(
-                alpha: 0.7,
-              ),
+              color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.7),
             ),
           ),
           const SizedBox(width: 4),
@@ -85,10 +78,7 @@ class WindowsButtons extends StatelessWidget {
                 onPressed: c.isMax ? c.pressUnMax : c.pressMax,
                 iconSize: 15,
                 padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(
-                  minWidth: 28,
-                  minHeight: 28,
-                ),
+                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
                 icon: Icon(
                   c.isMax
                       ? CupertinoIcons.square_on_square
@@ -114,7 +104,9 @@ class WindowsButtons extends StatelessWidget {
             constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
             hoverColor: Colors.red,
             style: IconButton.styleFrom(
-              shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.zero,
+              ),
             ),
             icon: const Icon(CupertinoIcons.clear),
           ),

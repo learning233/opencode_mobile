@@ -110,7 +110,9 @@ class _TerminalPanelBodyState extends State<TerminalPanelBody> {
                       if (!isDesktop)
                         SwitchListTile(
                           title: Text(LocaleKeys.terminalShowExtraKeys.tr),
-                          subtitle: Text(LocaleKeys.terminalShowExtraKeysDesc.tr),
+                          subtitle: Text(
+                            LocaleKeys.terminalShowExtraKeysDesc.tr,
+                          ),
                           value: Global.showTerminalExtraKeysRx.value,
                           onChanged: (val) {
                             Global.setShowTerminalExtraKeys(val);
@@ -373,8 +375,7 @@ class _TerminalPanelBodyState extends State<TerminalPanelBody> {
                     IconButton(
                       icon: const Icon(Icons.search, size: 18),
                       visualDensity: VisualDensity.compact,
-                      onPressed: () =>
-                          _onSearchPressed(context, activeSession),
+                      onPressed: () => _onSearchPressed(context, activeSession),
                     ),
                     IconButton(
                       icon: const Icon(CupertinoIcons.xmark, size: 18),

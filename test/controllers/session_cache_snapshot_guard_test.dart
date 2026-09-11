@@ -44,15 +44,13 @@ void main() {
     supportDir.deleteSync(recursive: true);
   });
 
-  File cacheFile(String sessionId) => File(
-    p.join(supportDir.path, 'session_cache', '$sessionId.json'),
-  );
+  File cacheFile(String sessionId) =>
+      File(p.join(supportDir.path, 'session_cache', '$sessionId.json'));
 
   // persist 走 unawaited(_enqueue)，删除/保存均为异步：入队一个无害任务并
   // await 它，即可保证队列中先行任务（含被测的 delete）已全部执行完。
-  Future<void> drainWriteQueue() => SessionCacheStore.instance.delete(
-    '__drain__',
-  );
+  Future<void> drainWriteQueue() =>
+      SessionCacheStore.instance.delete('__drain__');
 
   SseEvent idleEvent(String sessionId) => SseEvent(
     id: 'evt-$sessionId',
@@ -153,22 +151,25 @@ void main() {
       },
     );
 
-    test('failed history load does not authorize deleting disk cache', () async {
-      await SessionCacheStore.instance.save('fail-sess', [
-        {'id': 'm1', 'role': 'user', 'parts': []},
-      ]);
+    test(
+      'failed history load does not authorize deleting disk cache',
+      () async {
+        await SessionCacheStore.instance.save('fail-sess', [
+          {'id': 'm1', 'role': 'user', 'parts': []},
+        ]);
 
-      // loadMessages 网络失败后的状态：内存空，finally 置 hasLoadedHistory=true
-      // + historyLoadFailed=true。此时收到 idle/error 收尾不得据此删快照。
-      final state = ctrl.getOrCreateSessionState('fail-sess');
-      state.hasLoadedHistory.value = true;
-      state.historyLoadFailed.value = true;
+        // loadMessages 网络失败后的状态：内存空，finally 置 hasLoadedHistory=true
+        // + historyLoadFailed=true。此时收到 idle/error 收尾不得据此删快照。
+        final state = ctrl.getOrCreateSessionState('fail-sess');
+        state.hasLoadedHistory.value = true;
+        state.historyLoadFailed.value = true;
 
-      ctrl.handleEvent(idleEvent('fail-sess'));
-      await drainWriteQueue();
+        ctrl.handleEvent(idleEvent('fail-sess'));
+        await drainWriteQueue();
 
-      expect(await SessionCacheStore.instance.load('fail-sess'), isNotNull);
-      expect(cacheFile('fail-sess').existsSync(), isTrue);
-    });
+        expect(await SessionCacheStore.instance.load('fail-sess'), isNotNull);
+        expect(cacheFile('fail-sess').existsSync(), isTrue);
+      },
+    );
   });
 }

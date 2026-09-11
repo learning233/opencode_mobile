@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
@@ -21,5 +19,21 @@ bool isTabletLayout(BuildContext context) {
       (isLandscape && w >= kDefaultLandscapeBreakpoint);
 }
 
-final bool isDesktop =
-    !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
+/// Whether the app runs on a desktop OS (Windows / macOS / Linux).
+///
+/// Web-safe: implemented via [defaultTargetPlatform] instead of `dart:io`
+/// [Platform], so UI files importing this (mobile included) still compile
+/// for Web. Returns `false` on Web and on Android/iOS/Fuchsia.
+bool get isDesktop {
+  if (kIsWeb) return false;
+  switch (defaultTargetPlatform) {
+    case TargetPlatform.windows:
+    case TargetPlatform.macOS:
+    case TargetPlatform.linux:
+      return true;
+    case TargetPlatform.android:
+    case TargetPlatform.iOS:
+    case TargetPlatform.fuchsia:
+      return false;
+  }
+}

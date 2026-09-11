@@ -1,9 +1,8 @@
-import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'app.dart';
 import 'init.dart';
 import 'utils/app_logger.dart';
+import 'utils/layout_utils.dart';
 import 'utils/window/windows_adaptor.dart';
 
 void main() async {
@@ -16,7 +15,7 @@ void main() async {
   await AppLogger.init();
   await Global.init();
 
-  if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
+  if (isDesktop) {
     await WindowsAdapter.setSize().catchError(
       (Object e) => AppLogger.e('WindowsAdapter.setSize failed', e),
     );

@@ -1,5 +1,3 @@
-import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'controllers/file_search_controller.dart';
 import 'controllers/project_controller.dart';
@@ -9,6 +7,7 @@ import 'controllers/settings_controller.dart';
 import 'controllers/tablet_tool_controller.dart';
 import 'controllers/vcs_controller.dart';
 import 'services/app_feedback_service.dart';
+import 'utils/layout_utils.dart';
 import 'utils/window/window_controller.dart';
 
 class GlobalBinding extends Bindings {
@@ -22,7 +21,7 @@ class GlobalBinding extends Bindings {
     Get.put<FileSearchController>(FileSearchController(), permanent: true);
     Get.put<VcsController>(VcsController(), permanent: true);
     Get.put<AppFeedbackService>(AppFeedbackService(), permanent: true);
-    if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
+    if (isDesktop) {
       Get.put<TitleBarController>(TitleBarController(), permanent: true);
     }
   }

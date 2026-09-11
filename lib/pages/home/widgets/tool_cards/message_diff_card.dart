@@ -23,11 +23,15 @@ class MessageDiffCard extends StatefulWidget {
   final String userMessageId;
   final List<SnapshotFileDiff> diffs;
 
+  /// 文件所属 worktree；null 时回退当前活跃项目（单工作区行为不变）。
+  final String? worktree;
+
   const MessageDiffCard({
     super.key,
     required this.sessionId,
     required this.userMessageId,
     required this.diffs,
+    this.worktree,
   });
 
   @override
@@ -55,6 +59,7 @@ class _MessageDiffCardState extends State<MessageDiffCard> {
         sessionId: widget.sessionId,
         userMessageId: widget.userMessageId,
         fallbackDiffs: widget.diffs,
+        worktree: widget.worktree,
       ),
     );
   }
@@ -321,11 +326,13 @@ class _DiffSheetContent extends StatefulWidget {
   final String sessionId;
   final String userMessageId;
   final List<SnapshotFileDiff> fallbackDiffs;
+  final String? worktree;
 
   const _DiffSheetContent({
     required this.sessionId,
     required this.userMessageId,
     required this.fallbackDiffs,
+    this.worktree,
   });
 
   @override
@@ -413,7 +420,11 @@ class _DiffSheetContentState extends State<_DiffSheetContent> {
             children: [
               for (var i = 0; i < _diffs.length; i++) ...[
                 if (i > 0) const SizedBox(height: 16),
-                DiffFileView(diff: _diffs[i], maxHeight: cap),
+                DiffFileView(
+                  diff: _diffs[i],
+                  maxHeight: cap,
+                  worktree: widget.worktree,
+                ),
               ],
             ],
           ),

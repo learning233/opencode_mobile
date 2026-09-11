@@ -641,11 +641,15 @@ class _TimelineScrollbarState extends State<_TimelineScrollbar> {
                 );
                 final double thumbTop = percentage * thumbScrollableRange;
 
-                return AnimatedOpacity(
-                  opacity: (_isHovered || _isDragging || _scrollbarOpacity > 0)
-                      ? 1.0
-                      : 0.0,
-                  duration: const Duration(milliseconds: 200),
+                // 隐藏时必须 IgnorePointer，否则 12px 右缘热区在手机上长期
+                // 劫持触摸（AnimatedOpacity opacity==0 仍参与命中测试）。
+                final bool scrollbarVisible =
+                    _isHovered || _isDragging || _scrollbarOpacity > 0;
+                return IgnorePointer(
+                  ignoring: !scrollbarVisible,
+                  child: AnimatedOpacity(
+                    opacity: scrollbarVisible ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 200),
                   child: Stack(
                     key: _trackKey,
                     children: [
@@ -760,6 +764,7 @@ class _TimelineScrollbarState extends State<_TimelineScrollbar> {
                         ),
                       ),
                     ],
+                    ),
                   ),
                 );
               },

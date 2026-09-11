@@ -663,6 +663,9 @@ class _ReviewPageState extends State<ReviewPage> {
       final worktree = activeProject?.worktree;
 
       if (isImage) {
+        if (!isPreviewableImageFilePath(filePath)) {
+          return _buildUnsupportedImageView(theme, selected);
+        }
         return ImageViewer(
           key: ValueKey('review_image_${selected.file}'),
           filePath: filePath,
@@ -687,6 +690,53 @@ class _ReviewPageState extends State<ReviewPage> {
           hideContextLines: _toolCtrl.showChangesOnly.value,
           showLineNumbers: false,
         ),
+      ),
+    );
+  }
+
+  Widget _buildUnsupportedImageView(ThemeData theme, SnapshotFileDiff diff) {
+    final lines = parsePatchLines(diff.patch);
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.hide_image_outlined,
+                  size: 48,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Unsupported image format',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${diff.file}\nPNG / JPG / GIF / WebP / BMP / WBMP 以外暂不支持预览',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          if (lines.isNotEmpty && diff.patch.trim().isNotEmpty)
+            Container(
+              color: theme.scaffoldBackgroundColor,
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: DiffCodeView(
+                  lines: lines,
+                  hideContextLines: _toolCtrl.showChangesOnly.value,
+                  showLineNumbers: false,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

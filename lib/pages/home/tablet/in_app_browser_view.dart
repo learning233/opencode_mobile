@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
@@ -22,7 +21,12 @@ import '../../../utils/url_utils.dart';
 
 const String _kDesktopUserAgent =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-final bool _isWindows = !kIsWeb && Platform.isWindows;
+// Web-safe：用 defaultTargetPlatform 代替 dart:io Platform，保证 Web 仍可编译。
+// Web 上恒 false（桌面浏览器 Web 走移动分支，与 layout_utils.isDesktop 一致）。
+bool get _isWindows {
+  if (kIsWeb) return false;
+  return defaultTargetPlatform == TargetPlatform.windows;
+}
 
 /// Open a URL in the in-app multi-tab browser.
 ///

@@ -33,6 +33,10 @@ class DiffFileView extends StatefulWidget {
   /// Sheet 内高度上限：`min(内容高, maxHeight)`，保证 re_editor 纵向虚拟化生效。
   final double? maxHeight;
 
+  /// 文件所属 worktree（多 worktree/E2B 下图片/音频按此目录读取）。
+  /// null 时回退到当前活跃项目（单工作区行为不变）。
+  final String? worktree;
+
   const DiffFileView({
     super.key,
     required this.diff,
@@ -40,6 +44,7 @@ class DiffFileView extends StatefulWidget {
     this.showLineNumbers = true,
     this.hideContextLines = false,
     this.maxHeight = 320,
+    this.worktree,
   });
 
   @override
@@ -140,12 +145,24 @@ class _DiffFileViewState extends State<DiffFileView> {
                   ),
                 ),
               )
+            else if (!isPreviewableImageFilePath(widget.diff.file))
+              _UnsupportedImageBlock(
+                filePath: widget.diff.file,
+                patch: widget.diff.patch,
+                lines: lines,
+                hideContextLines: widget.hideContextLines,
+                showLineNumbers: widget.showLineNumbers,
+                maxHeight: widget.maxHeight,
+              )
             else
               ConstrainedBox(
                 constraints: BoxConstraints(maxHeight: widget.maxHeight ?? 320),
                 child: ImageViewer(
-                  key: ValueKey('diff_image_${widget.diff.file}'),
+                  key: ValueKey(
+                    'diff_image_${widget.worktree ?? ''}_${widget.diff.file}',
+                  ),
                   filePath: widget.diff.file,
+                  worktree: widget.worktree,
                 ),
               )
           else if (isAudioFilePath(widget.diff.file))
@@ -166,8 +183,11 @@ class _DiffFileViewState extends State<DiffFileView> {
               ConstrainedBox(
                 constraints: BoxConstraints(maxHeight: widget.maxHeight ?? 320),
                 child: AudioPlayerView(
-                  key: ValueKey('diff_audio_${widget.diff.file}'),
+                  key: ValueKey(
+                    'diff_audio_${widget.worktree ?? ''}_${widget.diff.file}',
+                  ),
                   filePath: widget.diff.file,
+                  worktree: widget.worktree,
                 ),
               )
           else if (lines.isEmpty || widget.diff.patch.trim().isEmpty)
@@ -187,6 +207,70 @@ class _DiffFileViewState extends State<DiffFileView> {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// 非原生可解码图片（svg/ico/tiff/avif/heic 等）的占位：
+/// 显示“不支持”而非空白；若有 patch 文本则继续展示 patch，避免信息丢失。
+class _UnsupportedImageBlock extends StatelessWidget {
+  final String filePath;
+  final String patch;
+  final List<DiffLine> lines;
+  final bool hideContextLines;
+  final bool showLineNumbers;
+  final double? maxHeight;
+
+  const _UnsupportedImageBlock({
+    required this.filePath,
+    required this.patch,
+    required this.lines,
+    required this.hideContextLines,
+    required this.showLineNumbers,
+    required this.maxHeight,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.hide_image_outlined,
+                size: 40,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Unsupported image format',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '$filePath\nPNG / JPG / GIF / WebP / BMP / WBMP 以外暂不支持预览',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
+              ),
+            ],
+          ),
+        ),
+        if (lines.isNotEmpty && patch.trim().isNotEmpty)
+          DiffCodeView(
+            lines: lines,
+            hideContextLines: hideContextLines,
+            showLineNumbers: showLineNumbers,
+            maxHeight: maxHeight,
+          ),
+      ],
     );
   }
 }

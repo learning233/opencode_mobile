@@ -1,7 +1,7 @@
 /// File kinds supported by the multi-view system.
 enum FileKind { code, markdown, image, audio }
 
-/// Known image extensions supported for direct viewing.
+/// Known image extensions (broad set, used for kind detection).
 const kImageExtensions = {
   '.png',
   '.jpg',
@@ -9,12 +9,28 @@ const kImageExtensions = {
   '.gif',
   '.webp',
   '.bmp',
+  '.wbmp',
   '.ico',
   '.svg',
   '.tiff',
   '.tif',
   '.avif',
   '.heic',
+  '.heif',
+};
+
+/// Flutter 原生解码器（Skia `ui.instantiateImageCodec` / `Image.memory`）
+/// 可直接渲染的子集：JPEG/PNG/GIF（含动图)/WebP（含动图)/BMP/WBMP。
+/// svg/ico/tiff/tif/avif/heic/heif 不在此列（svg 需 flutter_svg，
+/// ico/tiff/avif/heic 需 image 包或原生解码），UI 应显示“不支持”而非空白。
+const kPreviewableImageExtensions = {
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+  '.bmp',
+  '.wbmp',
 };
 
 /// Known audio extensions supported for direct playback.
@@ -57,6 +73,15 @@ FileKind detectFileKind(String path, {String? mimeType}) {
 
 /// Check whether [path] is an image file based on extension.
 bool isImageFilePath(String path) => detectFileKind(path) == FileKind.image;
+
+/// Check whether [path] can be rendered by Flutter's native image codec.
+/// svg/ico/tiff/avif/heic 等返回 false，调用方应显示“不支持”占位。
+bool isPreviewableImageFilePath(String path) {
+  final dotIdx = path.lastIndexOf('.');
+  if (dotIdx == -1) return false;
+  final ext = path.substring(dotIdx).toLowerCase();
+  return kPreviewableImageExtensions.contains(ext);
+}
 
 /// Check whether [path] is an audio file based on extension.
 bool isAudioFilePath(String path) => detectFileKind(path) == FileKind.audio;

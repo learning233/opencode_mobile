@@ -9,6 +9,7 @@ import '../../../../api/opencode_client.dart';
 import '../../../../controllers/project_controller.dart';
 import '../../../../controllers/tablet_tool_controller.dart';
 import '../../../../utils/app_logger.dart';
+import '../../../../utils/file_kind.dart';
 import '../../../../utils/translations.dart';
 
 export '../../../../utils/file_kind.dart'
@@ -46,6 +47,12 @@ class _ImageViewerState extends State<ImageViewer> {
   bool _isLoading = false;
   String? _error;
   int _requestSeq = 0;
+  // 原生解码器解码失败（通常是实际内容非可渲染格式）：用于提示而非空白。
+  bool _decodeFailed = false;
+  // 扩展名即知不支持（svg/ico/tiff/avif/heic 等）：免网络请求直接占位。
+  bool get _unsupportedFormat =>
+      widget.filePath.isNotEmpty &&
+      !isPreviewableImageFilePath(widget.filePath);
 
   static const double _minScale = 0.1;
   static const double _maxScale = 10.0;
@@ -54,6 +61,11 @@ class _ImageViewerState extends State<ImageViewer> {
   @override
   void initState() {
     super.initState();
+    // 不支持的格式不发网络请求，直接占位（bytes 直传时仍尝试解码，以解码结果为准）。
+    if (widget.bytes == null && _unsupportedFormat) {
+      _isLoading = false;
+      return;
+    }
     if (widget.bytes != null) {
       _bytes = widget.bytes;
       _decodeImageInfo();
@@ -80,6 +92,7 @@ class _ImageViewerState extends State<ImageViewer> {
     setState(() {
       _isLoading = true;
       _error = null;
+      _decodeFailed = false;
     });
 
     try {
@@ -166,7 +179,10 @@ class _ImageViewerState extends State<ImageViewer> {
         final frame = await codec.getNextFrame();
         if (mounted) {
           _decodedImage?.dispose();
-          setState(() => _decodedImage = frame.image);
+          setState(() {
+            _decodedImage = frame.image;
+            _decodeFailed = false;
+          });
         } else {
           // Widget already disposed: release the decoded frame immediately.
           frame.image.dispose();
@@ -174,8 +190,11 @@ class _ImageViewerState extends State<ImageViewer> {
       } finally {
         codec.dispose();
       }
-    } catch (_) {
-      // Ignore decode errors
+    } catch (e) {
+      AppLogger.e('Image decode failed for ${widget.filePath}: $e');
+      if (mounted) {
+        setState(() => _decodeFailed = true);
+      }
     }
   }
 
@@ -223,6 +242,50 @@ class _ImageViewerState extends State<ImageViewer> {
           ),
         ),
         body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_unsupportedFormat) {
+      return Scaffold(
+        appBar: AppBar(
+          toolbarHeight: 40,
+          title: Text(
+            widget.filePath,
+            style: TextStyle(
+              fontSize: 11,
+              color: theme.colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.normal,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        body: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.hide_image_outlined,
+                  size: 48,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Unsupported image format',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'PNG / JPG / GIF / WebP / BMP / WBMP 以外暂不支持预览',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+        ),
       );
     }
 
@@ -332,7 +395,15 @@ class _ImageViewerState extends State<ImageViewer> {
                   ),
                 ),
                 const Spacer(),
-                if (_decodedImage != null)
+                if (_decodeFailed)
+                  Text(
+                    'Decode failed',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontSize: 11,
+                      color: theme.colorScheme.error,
+                    ),
+                  )
+                else if (_decodedImage != null)
                   Text(
                     '${_decodedImage!.width} × ${_decodedImage!.height}',
                     style: theme.textTheme.bodySmall?.copyWith(
@@ -367,6 +438,32 @@ class _ImageViewerState extends State<ImageViewer> {
                           _bytes!,
                           fit: BoxFit.contain,
                           gaplessPlayback: true,
+                          errorBuilder: (context, error, stackTrace) => Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.broken_image_outlined,
+                                  size: 48,
+                                  color: theme.colorScheme.error,
+                                ),
+                                const SizedBox(height: 12),
+                                const Text(
+                                  'Image decode failed',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '该图片无法解码（可能是不支持的格式）',
+                                  textAlign: TextAlign.center,
+                                  style: theme.textTheme.bodySmall,
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       )
                     : const SizedBox.shrink(),

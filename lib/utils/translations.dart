@@ -61,6 +61,8 @@ class LocaleKeys {
   static const newProject = "titlebar_new_project";
   static const noRecentProjects = "titlebar_no_recent_projects";
   static const recentProjects = "titlebar_recent_projects";
+  static const tabCloseOthers = "tab_close_others";
+  static const tabCloseAll = "tab_close_all";
 
   // ── Command Palette ──
   static const cmdNewSession = "cmd_new_session";
@@ -1370,6 +1372,8 @@ class Messages extends Translations {
     LocaleKeys.newProject: '新项目',
     LocaleKeys.noRecentProjects: '无最近打开的项目',
     LocaleKeys.recentProjects: '最近打开',
+    LocaleKeys.tabCloseOthers: '关闭其他页签',
+    LocaleKeys.tabCloseAll: '关闭所有页签',
 
     // ── Command Palette ──
     LocaleKeys.cmdNewSession: '新建会话',
@@ -2677,6 +2681,8 @@ class Messages extends Translations {
     LocaleKeys.newProject: 'New Project',
     LocaleKeys.noRecentProjects: 'No recent projects',
     LocaleKeys.recentProjects: 'Recent Projects',
+    LocaleKeys.tabCloseOthers: 'Close Other Tabs',
+    LocaleKeys.tabCloseAll: 'Close All Tabs',
 
     // ── Command Palette ──
     LocaleKeys.cmdNewSession: 'New Session',

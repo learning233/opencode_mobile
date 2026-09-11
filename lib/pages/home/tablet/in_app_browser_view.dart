@@ -636,6 +636,10 @@ class _BrowserTabViewState extends State<_BrowserTabView>
   String? _errorMessage;
   String _currentUrl = '';
   String _currentTitle = '';
+  // Windows 冷启动竞态：env 就绪前 / WebView 创建前的 loadUrl 会因
+  // _inAppController==null 被吞掉。用 _pendingUrl 排队，在 onWebViewCreated
+  // 或 didUpdateWidget(initialUrl 变化) 时 flush。
+  String? _pendingUrl;
   Completer<Uint8List?>? _shotCompleter;
   String? _shotError;
 
@@ -661,12 +665,48 @@ class _BrowserTabViewState extends State<_BrowserTabView>
     }
   }
 
+  @override
+  void didUpdateWidget(covariant _BrowserTabView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialUrl != widget.initialUrl) {
+      final next = normalizeWebUrl(widget.initialUrl);
+      if (next.isNotEmpty && next != _currentUrl) {
+        loadUrl(next);
+      }
+    }
+    if (oldWidget.initialDesktopMode != widget.initialDesktopMode &&
+        widget.initialDesktopMode != _isDesktopMode) {
+      setDesktopMode(widget.initialDesktopMode);
+    }
+  }
+
   Future<void> _initWindowsEnv() async {
-    await _getOrCreateWebViewEnvironment();
+    final env = await _getOrCreateWebViewEnvironment();
     if (mounted) {
       setState(() {
-        _envReady = true;
+        // 环境创建失败时保持 !_envReady，占位页 + 重试，而不是带 null environment 建 WebView。
+        _envReady = env != null;
+        if (env == null) {
+          _errorMessage = LocaleKeys.browserWebViewInitFailed.tr;
+        } else {
+          _errorMessage = null;
+          _flushPendingUrl();
+        }
       });
+    }
+  }
+
+  /// 把排队的首导航发出去（仅 Windows，_inAppController 就绪后调用）。
+  void _flushPendingUrl() {
+    final pending = _pendingUrl;
+    if (pending == null || pending.isEmpty) return;
+    final c = _inAppController;
+    if (c == null) return;
+    _pendingUrl = null;
+    try {
+      c.loadUrl(urlRequest: inapp.URLRequest(url: inapp.WebUri(pending)));
+    } catch (_) {
+      _pendingUrl = pending;
     }
   }
 
@@ -855,13 +895,19 @@ class _BrowserTabViewState extends State<_BrowserTabView>
     });
 
     if (_isWindows) {
-      try {
-        if (_inAppController != null) {
-          _inAppController?.loadUrl(
+      final c = _inAppController;
+      if (c != null) {
+        try {
+          c.loadUrl(
             urlRequest: inapp.URLRequest(url: inapp.WebUri(normalized)),
           );
+        } catch (_) {
+          _pendingUrl = normalized;
         }
-      } catch (_) {}
+      } else {
+        // WebView 尚未创建（env 未就绪 / onWebViewCreated 未回）：排队等 flush，不丢弃。
+        _pendingUrl = normalized;
+      }
       return;
     }
 
@@ -1009,7 +1055,8 @@ class _BrowserTabViewState extends State<_BrowserTabView>
       try {
         final settings = await c.getSettings();
         if (settings != null) {
-          settings.userAgent = next ? _kDesktopUserAgent : '';
+          // 切回移动模式用 null 恢复系统默认 UA；空串会发出空 UA 头导致站点异常。
+          settings.userAgent = next ? _kDesktopUserAgent : null;
           await c.setSettings(settings: settings);
           c.reload();
         }
@@ -1036,19 +1083,57 @@ class _BrowserTabViewState extends State<_BrowserTabView>
 
     Widget webWidget;
     if (_isWindows) {
-      if (!_envReady || _currentUrl.isEmpty) {
+      if (!_envReady) {
+        // 环境失败时给重试入口；否则保持原空白占位（冷启动 env 准备中 / 无 URL）。
+        if (_errorMessage != null) {
+          webWidget = Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    CupertinoIcons.exclamationmark_circle,
+                    size: 48,
+                    color: theme.colorScheme.error,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    _errorMessage!,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton.tonal(
+                    onPressed: () {
+                      setState(() => _errorMessage = null);
+                      _initWindowsEnv();
+                    },
+                    child: Text(LocaleKeys.retry.tr),
+                  ),
+                ],
+              ),
+            ),
+          );
+        } else {
+          webWidget = const _EmptyWebPlaceholder();
+        }
+      } else if (_currentUrl.isEmpty) {
         webWidget = const _EmptyWebPlaceholder();
       } else {
         webWidget = inapp.InAppWebView(
           webViewEnvironment: _windowsWebViewEnvironment,
           initialUrlRequest: inapp.URLRequest(url: inapp.WebUri(_currentUrl)),
           initialSettings: inapp.InAppWebViewSettings(
-            userAgent: _isDesktopMode ? _kDesktopUserAgent : '',
+            userAgent: _isDesktopMode ? _kDesktopUserAgent : null,
             transparentBackground: true,
             isInspectable: kDebugMode,
           ),
           onWebViewCreated: (controller) {
             _inAppController = controller;
+            _flushPendingUrl();
           },
           onLoadStart: (controller, url) {
             if (!mounted) return;

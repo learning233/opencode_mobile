@@ -152,9 +152,18 @@ class _PromptInputState extends State<PromptInput> with WidgetsBindingObserver {
         return KeyEventResult.handled;
       }
 
-      // 3. Esc 键闭环：生成中按 Esc 中止生成；空闲时失焦。
-      // 有 Dialog / BottomSheet 盖在上面时不处理，把 Esc 让给上层关闭。
+      // 3. Esc 键闭环：优先关闭自定义 Overlay 弹窗/路由弹窗，其次中止生成；空闲时失焦。
+      // 有 Dialog / BottomSheet / PopupMenuRoute 盖在上面时不处理，把 Esc 让给上层关闭。
       if (event.logicalKey == LogicalKeyboardKey.escape) {
+        final dismissPopup = _activePromptPopupDismiss;
+        if (dismissPopup != null) {
+          dismissPopup();
+          return KeyEventResult.handled;
+        }
+        // showMenu 等 Material 路由弹窗不在 Get 统计内：顶层路由不是本页时让给它。
+        if (ModalRoute.of(context)?.isCurrent == false) {
+          return KeyEventResult.ignored;
+        }
         if (Get.isDialogOpen == true || Get.isBottomSheetOpen == true) {
           return KeyEventResult.ignored;
         }
@@ -1776,6 +1785,27 @@ class _PopupItem<T> {
   });
 }
 
+/// 当前打开的自定义 Overlay 弹窗（模型/等级选择器）的关闭回调。
+/// 非空时 Esc 优先关闭弹窗（见 _PromptInputState._onKeyEvent），而不是中止生成。
+/// 假设：同一时刻只保留一个活跃弹窗（后开顶掉先开）；多 _PromptInputState
+/// 实例（如多会话 PageView 缓存）共用该回调，后开实例的弹窗会关闭先开实例的，
+/// 当前一次只交互一个输入框，可接受。
+VoidCallback? _activePromptPopupDismiss;
+
+void _closePromptPopup<T>(
+  OverlayEntry entry,
+  Completer<T?> completer, [
+  T? result,
+]) {
+  try {
+    if (entry.mounted) entry.remove();
+  } catch (_) {
+    // Overlay/Navigator 已 dispose 等极端情况：忽略移除异常，保证 future 仍能完成。
+  }
+  _activePromptPopupDismiss = null;
+  if (!completer.isCompleted) completer.complete(result);
+}
+
 Future<T?> _showPopup<T>({
   required BuildContext context,
   required double left,
@@ -1810,10 +1840,7 @@ Future<T?> _showPopup<T>({
         children: [
           Positioned.fill(
             child: GestureDetector(
-              onTap: () {
-                overlayEntry.remove();
-                if (!completer.isCompleted) completer.complete(null);
-              },
+              onTap: () => _closePromptPopup(overlayEntry, completer),
               behavior: HitTestBehavior.translucent,
             ),
           ),
@@ -1840,12 +1867,11 @@ Future<T?> _showPopup<T>({
                   children: items.map((item) {
                     return InkWell(
                       onTap: item.enabled
-                          ? () {
-                              overlayEntry.remove();
-                              if (!completer.isCompleted) {
-                                completer.complete(item.value);
-                              }
-                            }
+                          ? () => _closePromptPopup(
+                              overlayEntry,
+                              completer,
+                              item.value,
+                            )
                           : null,
                       child: Container(
                         height: item.height,
@@ -1877,7 +1903,11 @@ Future<T?> _showPopup<T>({
     },
   );
 
+  // 后开的弹窗顶掉先开的：先关旧弹窗（完成其 future 为 null），再挂新弹窗。
+  _activePromptPopupDismiss?.call();
   Overlay.of(context).insert(overlayEntry);
+  _activePromptPopupDismiss =
+      () => _closePromptPopup(overlayEntry, completer);
   return completer.future;
 }
 

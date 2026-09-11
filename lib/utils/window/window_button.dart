@@ -39,7 +39,6 @@ class WindowsButtons extends StatelessWidget {
           ),
           // Pin Button
           GetBuilder<TitleBarController>(
-            init: ctrl,
             builder: (c) {
               return IconButton(
                 onPressed: c.pressTop,
@@ -72,7 +71,6 @@ class WindowsButtons extends StatelessWidget {
           const SizedBox(width: 4),
           // Maximize / Restore Button
           GetBuilder<TitleBarController>(
-            init: ctrl,
             builder: (c) {
               return IconButton(
                 onPressed: c.isMax ? c.pressUnMax : c.pressMax,

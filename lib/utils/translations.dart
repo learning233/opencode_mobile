@@ -1248,6 +1248,7 @@ class LocaleKeys {
   static const browserScreenshotFailedReason =
       "browser_screenshot_failed_reason";
   static const browserScreenshotNoSession = "browser_screenshot_no_session";
+  static const browserWebViewInitFailed = "browser_webview_init_failed";
 
   // ── Preview Port ──
   static const previewBindTitle = "preview_bind_title";
@@ -2567,6 +2568,7 @@ class Messages extends Translations {
     LocaleKeys.browserScreenshotFailed: '截图失败，请重试',
     LocaleKeys.browserScreenshotFailedReason: '截图失败：{reason}',
     LocaleKeys.browserScreenshotNoSession: '创建会话失败，请稍后重试',
+    LocaleKeys.browserWebViewInitFailed: 'WebView2 初始化失败，请重试',
     // ── Preview Port ──
     LocaleKeys.previewBindTitle: '绑定预览端口（项目）',
     LocaleKeys.previewPortHint: '端口号（1-65535）',
@@ -3998,6 +4000,8 @@ class Messages extends Translations {
     LocaleKeys.browserScreenshotFailedReason: 'Screenshot failed: {reason}',
     LocaleKeys.browserScreenshotNoSession:
         'Failed to create a session. Please retry later',
+    LocaleKeys.browserWebViewInitFailed:
+        'WebView2 initialization failed, please retry',
     // ── Preview Port ──
     LocaleKeys.previewBindTitle: 'Bind preview port',
     LocaleKeys.previewPortHint: 'Port (1-65535)',

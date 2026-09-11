@@ -21,9 +21,9 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
     }
 
     final theme = Theme.of(context);
-    final controller = Get.isRegistered<TitleBarController>()
-        ? Get.find<TitleBarController>()
-        : Get.put(TitleBarController(), permanent: true);
+    // TitleBarController 由 GlobalBinding 常驻注册，这里只取不用兜底创建，
+    // 时序异常时直接抛错而不是静默双注册。
+    final controller = Get.find<TitleBarController>();
     final projectCtrl = Get.isRegistered<ProjectController>()
         ? Get.find<ProjectController>()
         : null;
@@ -80,11 +80,12 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
                 ),
               // Draggable middle area
               const Spacer(),
-              // Panel layout toggle button (right panel) - only shown when project is active
+              // Panel layout toggle button (right panel). Always available:
+              // the panel hosts terminal/browser/review tabs that work
+              // without an active project; hiding it would leave no way
+              // to reopen the panel on desktop (HomeAppBar hides its own).
               if (Get.isRegistered<TabletToolController>())
                 Obx(() {
-                  final hasProject = projectCtrl?.activeProject.value != null;
-                  if (!hasProject) return const SizedBox.shrink();
                   final toolCtrl = Get.find<TabletToolController>();
                   final isVisible = toolCtrl.isVisible.value;
                   return IconButton(

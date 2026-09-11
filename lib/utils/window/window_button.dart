@@ -15,13 +15,9 @@ class WindowsButtons extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final TitleBarController ctrl = controller ??
-        (Get.isRegistered<TitleBarController>()
-            ? Get.find<TitleBarController>()
-            : Get.put<TitleBarController>(
-                TitleBarController(),
-                permanent: true,
-              ));
+    // 同 DesktopTitleBar：只 Get.find，不在 build 期兜底注册。
+    final TitleBarController ctrl =
+        controller ?? Get.find<TitleBarController>();
 
     return Container(
       height: Global.titleBarHeight,

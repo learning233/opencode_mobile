@@ -11,6 +11,10 @@ class WindowsAdapter {
 
     await windowManager.ensureInitialized();
 
+    // 拦截原生关闭信号，使 TitleBarController.onWindowClose 能执行
+    // sidecar 清理；否则点系统 X / Alt+F4 会直接退出留下孤儿进程。
+    await windowManager.setPreventClose(true);
+
     final isMax = Global.settings.isMax;
     final windowSize = Global.settings.windowSize;
     final windowPosition = Global.settings.windowPosition;

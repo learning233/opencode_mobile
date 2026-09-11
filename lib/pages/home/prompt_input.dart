@@ -111,6 +111,9 @@ class _PromptInputState extends State<PromptInput> with WidgetsBindingObserver {
   }
 
   KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
+    // 桌面端快捷键（Enter 发送 / Ctrl+V 贴图 / Esc 闭环）仅桌面生效：
+    // 移动端保留系统原生行为，外接物理键盘也不拦截。
+    if (!isDesktop) return KeyEventResult.ignored;
     if (event is KeyDownEvent) {
       // 1. Ctrl+V (Windows/Linux) 或 Cmd+V (macOS)：优先尝试粘贴剪贴板二进制图片
       if (event.logicalKey == LogicalKeyboardKey.keyV &&
@@ -148,8 +151,12 @@ class _PromptInputState extends State<PromptInput> with WidgetsBindingObserver {
         return KeyEventResult.handled;
       }
 
-      // 3. Esc 键闭环：生成中按 Esc 中止生成；空闲时失焦
+      // 3. Esc 键闭环：生成中按 Esc 中止生成；空闲时失焦。
+      // 有 Dialog / BottomSheet 盖在上面时不处理，把 Esc 让给上层关闭。
       if (event.logicalKey == LogicalKeyboardKey.escape) {
+        if (Get.isDialogOpen == true || Get.isBottomSheetOpen == true) {
+          return KeyEventResult.ignored;
+        }
         final state = _ctrl.stateOf(widget.sessionId);
         if (state.isGenerating.value) {
           _handleAbort();
@@ -179,7 +186,10 @@ class _PromptInputState extends State<PromptInput> with WidgetsBindingObserver {
       // 读取剪贴板图像异常时静默降级为文本粘贴
     }
 
-    // 剪贴板无图片时，回退到系统文本粘贴
+    // 剪贴板无图片时，回退到系统文本粘贴；IME 合成中则跳过，
+    // 避免手动改值破坏拼音上屏。
+    final composing = _textController.value.composing;
+    if (composing.isValid && !composing.isCollapsed) return;
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     final text = data?.text;
     if (text != null && text.isNotEmpty) {

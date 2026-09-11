@@ -38,3 +38,14 @@ target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.
 add_dependencies(${BINARY_NAME} flutter_assemble)
+
+# Copy onnxruntime.dll to the build output directory for local debug runs.
+set(ONNXRUNTIME_DLL "${CMAKE_SOURCE_DIR}/../onnx/onnxruntime.dll")
+if(EXISTS "${ONNXRUNTIME_DLL}")
+  add_custom_command(
+    TARGET ${BINARY_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${ONNXRUNTIME_DLL}"
+      "$<TARGET_FILE_DIR:${BINARY_NAME}>"
+  )
+endif()

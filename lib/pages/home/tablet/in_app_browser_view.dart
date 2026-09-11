@@ -1,12 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart' as inapp;
 import 'package:get/get.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter/webview_flutter.dart' as wf;
 import '../../../controllers/session_controller.dart';
 import '../../../controllers/tablet_tool_controller.dart';
 import '../../../models/browser_tab.dart';
@@ -18,6 +22,7 @@ import '../../../utils/url_utils.dart';
 
 const String _kDesktopUserAgent =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+final bool _isWindows = !kIsWeb && Platform.isWindows;
 
 /// Open a URL in the in-app multi-tab browser.
 ///
@@ -589,7 +594,35 @@ class _BrowserTabView extends StatefulWidget {
 
 class _BrowserTabViewState extends State<_BrowserTabView>
     with AutomaticKeepAliveClientMixin {
-  WebViewController? _controller;
+  static inapp.WebViewEnvironment? _windowsWebViewEnvironment;
+  static bool _envInitStarted = false;
+
+  static Future<inapp.WebViewEnvironment?> _getOrCreateWebViewEnvironment() async {
+    if (_windowsWebViewEnvironment != null) return _windowsWebViewEnvironment;
+    if (_envInitStarted) {
+      while (_envInitStarted && _windowsWebViewEnvironment == null) {
+        await Future.delayed(const Duration(milliseconds: 50));
+      }
+      return _windowsWebViewEnvironment;
+    }
+    _envInitStarted = true;
+    try {
+      final appSupportDir = await getApplicationSupportDirectory();
+      final envDir = '${appSupportDir.path}/inappwebview';
+      _windowsWebViewEnvironment = await inapp.WebViewEnvironment.create(
+        settings: inapp.WebViewEnvironmentSettings(userDataFolder: envDir),
+      );
+    } catch (e) {
+      debugPrint('InAppBrowser: Failed to create WebViewEnvironment: $e');
+    } finally {
+      _envInitStarted = false;
+    }
+    return _windowsWebViewEnvironment;
+  }
+
+  wf.WebViewController? _controller;
+  inapp.InAppWebViewController? _inAppController;
+  bool _envReady = false;
   bool _isDesktopMode = false;
   bool _isLoading = false;
   int _loadingProgress = 0;
@@ -612,24 +645,38 @@ class _BrowserTabViewState extends State<_BrowserTabView>
     super.initState();
     _isDesktopMode = widget.initialDesktopMode;
     final startUrl = normalizeWebUrl(widget.initialUrl);
-    if (startUrl.isNotEmpty) {
-      _controller = _createController()..loadRequest(Uri.parse(startUrl));
-      _currentUrl = startUrl;
+    _currentUrl = startUrl;
+
+    if (_isWindows) {
+      _initWindowsEnv();
+    } else {
+      if (startUrl.isNotEmpty) {
+        _controller = _createController()..loadRequest(Uri.parse(startUrl));
+      }
     }
   }
 
-  WebViewController _createController() {
-    final controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+  Future<void> _initWindowsEnv() async {
+    await _getOrCreateWebViewEnvironment();
+    if (mounted) {
+      setState(() {
+        _envReady = true;
+      });
+    }
+  }
+
+  wf.WebViewController _createController() {
+    final controller = wf.WebViewController()
+      ..setJavaScriptMode(wf.JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.transparent)
       ..addJavaScriptChannel(
         'BrowserScreenshotChannel',
-        onMessageReceived: (JavaScriptMessage message) {
+        onMessageReceived: (wf.JavaScriptMessage message) {
           _onScreenshotMessage(message.message);
         },
       )
       ..setNavigationDelegate(
-        NavigationDelegate(
+        wf.NavigationDelegate(
           onPageStarted: (String url) {
             if (!mounted) return;
             setState(() {
@@ -661,7 +708,7 @@ class _BrowserTabViewState extends State<_BrowserTabView>
             _updateNavState();
             _updateTitle();
           },
-          onWebResourceError: (WebResourceError error) {
+          onWebResourceError: (wf.WebResourceError error) {
             // Ignore non-main-frame sub-resource errors (tracking scripts, ads).
             if (error.isForMainFrame ?? true) {
               if (!mounted) return;
@@ -684,7 +731,7 @@ class _BrowserTabViewState extends State<_BrowserTabView>
     return controller;
   }
 
-  WebViewController _ensureController() {
+  wf.WebViewController _ensureController() {
     return _controller ??= _createController();
   }
 
@@ -704,6 +751,22 @@ class _BrowserTabViewState extends State<_BrowserTabView>
   }
 
   Future<void> _updateTitle() async {
+    if (_isWindows) {
+      final c = _inAppController;
+      if (c == null) return;
+      try {
+        final title = await c.getTitle();
+        if (!mounted) return;
+        final trimmed = title?.trim() ?? '';
+        if (trimmed.isEmpty) return;
+        setState(() {
+          _currentTitle = trimmed;
+        });
+        _emit();
+      } catch (_) {}
+      return;
+    }
+
     final c = _controller;
     if (c == null) return;
     try {
@@ -719,6 +782,22 @@ class _BrowserTabViewState extends State<_BrowserTabView>
   }
 
   Future<void> _updateNavState() async {
+    if (_isWindows) {
+      final c = _inAppController;
+      if (c == null) return;
+      try {
+        final back = await c.canGoBack();
+        final forward = await c.canGoForward();
+        if (!mounted) return;
+        setState(() {
+          _canGoBack = back;
+          _canGoForward = forward;
+        });
+        _emit();
+      } catch (_) {}
+      return;
+    }
+
     final c = _controller;
     if (c == null) return;
     try {
@@ -735,40 +814,83 @@ class _BrowserTabViewState extends State<_BrowserTabView>
 
   void goBack() {
     try {
-      _controller?.goBack();
+      if (_isWindows) {
+        _inAppController?.goBack();
+      } else {
+        _controller?.goBack();
+      }
     } catch (_) {}
   }
 
   void goForward() {
     try {
-      _controller?.goForward();
+      if (_isWindows) {
+        _inAppController?.goForward();
+      } else {
+        _controller?.goForward();
+      }
     } catch (_) {}
   }
 
   void reload() {
     try {
-      _controller?.reload();
+      if (_isWindows) {
+        _inAppController?.reload();
+      } else {
+        _controller?.reload();
+      }
     } catch (_) {}
   }
 
   void loadUrl(String rawUrl) {
     final normalized = normalizeWebUrl(rawUrl);
     if (normalized.isEmpty) return;
-    final uri = Uri.tryParse(normalized);
-    if (uri == null) return;
     setState(() {
       _currentUrl = normalized;
     });
+
+    if (_isWindows) {
+      try {
+        if (_inAppController != null) {
+          _inAppController?.loadUrl(
+            urlRequest: inapp.URLRequest(url: inapp.WebUri(normalized)),
+          );
+        }
+      } catch (_) {}
+      return;
+    }
+
+    final uri = Uri.tryParse(normalized);
+    if (uri == null) return;
     try {
       _ensureController().loadRequest(uri);
     } catch (_) {}
   }
 
-  /// Capture the current page as PNG bytes by rendering its DOM to a canvas
-  /// (html-to-image) inside the WebView and receiving the result over the
-  /// [JavaScriptChannel]. Returns null on failure or timeout; the reason is
-  /// exposed via [screenshotError].
+  /// Capture the current page as PNG bytes.
+  /// On Windows, leverages native WebView2 surface capture via [inapp.InAppWebViewController.takeScreenshot].
+  /// On mobile platforms, renders DOM to canvas (html-to-image) inside the WebView.
   Future<Uint8List?> capture() async {
+    if (_isWindows) {
+      final inApp = _inAppController;
+      _shotError = null;
+      if (inApp == null) {
+        _shotError = 'no webview controller';
+        return null;
+      }
+      try {
+        final bytes = await inApp.takeScreenshot();
+        if (bytes == null || bytes.isEmpty) {
+          _shotError = 'takeScreenshot returned empty image';
+          return null;
+        }
+        return bytes;
+      } catch (e) {
+        _shotError = 'takeScreenshot error: $e';
+        return null;
+      }
+    }
+
     final c = _controller;
     _shotError = null;
     if (c == null) {
@@ -829,12 +951,6 @@ class _BrowserTabViewState extends State<_BrowserTabView>
     );
   }
 
-  /// Renders the full page into a PNG data URL and posts it back on the
-  /// [JavaScriptChannel]. Already-broken images are swapped for a transparent
-  /// placeholder up front (html-to-image otherwise rejects with a raw `Event`
-  /// from `img.onerror` when an image can never load). Errors are reported as
-  /// `ERROR:<detail>` so Dart can surface a failure instead of silently
-  /// dropping the capture.
   static const String _browserScreenshotSnippet = '''
 ;(async function () {
   function describe(e) {
@@ -881,6 +997,21 @@ class _BrowserTabViewState extends State<_BrowserTabView>
     setState(() {
       _isDesktopMode = next;
     });
+
+    if (_isWindows) {
+      final c = _inAppController;
+      if (c == null) return;
+      try {
+        final settings = await c.getSettings();
+        if (settings != null) {
+          settings.userAgent = next ? _kDesktopUserAgent : '';
+          await c.setSettings(settings: settings);
+          c.reload();
+        }
+      } catch (_) {}
+      return;
+    }
+
     final c = _controller;
     if (c == null) return;
     try {
@@ -898,13 +1029,90 @@ class _BrowserTabViewState extends State<_BrowserTabView>
     super.build(context);
     final theme = Theme.of(context);
 
+    Widget webWidget;
+    if (_isWindows) {
+      if (!_envReady || _currentUrl.isEmpty) {
+        webWidget = const _EmptyWebPlaceholder();
+      } else {
+        webWidget = inapp.InAppWebView(
+          webViewEnvironment: _windowsWebViewEnvironment,
+          initialUrlRequest: inapp.URLRequest(url: inapp.WebUri(_currentUrl)),
+          initialSettings: inapp.InAppWebViewSettings(
+            userAgent: _isDesktopMode ? _kDesktopUserAgent : '',
+            transparentBackground: true,
+            isInspectable: kDebugMode,
+          ),
+          onWebViewCreated: (controller) {
+            _inAppController = controller;
+          },
+          onLoadStart: (controller, url) {
+            if (!mounted) return;
+            setState(() {
+              _isLoading = true;
+              _loadingProgress = 0;
+              _errorMessage = null;
+              if (url != null) _currentUrl = url.toString();
+              _currentTitle = '';
+            });
+            _emit();
+            _updateNavState();
+          },
+          onProgressChanged: (controller, progress) {
+            if (!mounted) return;
+            setState(() {
+              _loadingProgress = progress;
+            });
+            _emit();
+          },
+          onLoadStop: (controller, url) async {
+            if (!mounted) return;
+            setState(() {
+              _isLoading = false;
+              _loadingProgress = 100;
+              if (url != null) _currentUrl = url.toString();
+              _errorMessage = null;
+            });
+            _emit();
+            _updateNavState();
+            _updateTitle();
+          },
+          onReceivedError: (controller, request, error) {
+            if (request.isForMainFrame ?? true) {
+              if (!mounted) return;
+              setState(() {
+                _isLoading = false;
+                _errorMessage = error.description;
+              });
+              _emit();
+            }
+          },
+          onTitleChanged: (controller, title) {
+            if (!mounted) return;
+            final trimmed = title?.trim() ?? '';
+            if (trimmed.isNotEmpty) {
+              setState(() {
+                _currentTitle = trimmed;
+              });
+              _emit();
+            }
+          },
+        );
+      }
+    } else {
+      if (_controller != null) {
+        webWidget = wf.WebViewWidget(controller: _controller!);
+      } else {
+        webWidget = const _EmptyWebPlaceholder();
+      }
+    }
+
+    final hasController =
+        _isWindows ? (_inAppController != null) : (_controller != null);
+
     return Stack(
       children: [
-        if (_controller != null)
-          WebViewWidget(controller: _controller!)
-        else
-          const _EmptyWebPlaceholder(),
-        if (_controller != null && _errorMessage != null)
+        webWidget,
+        if (hasController && _errorMessage != null)
           Center(
             child: Padding(
               padding: const EdgeInsets.all(24.0),

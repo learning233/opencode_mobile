@@ -44,6 +44,7 @@ dependencies:
   flutter_slidable: ^4.0.3
   window_manager: ^0.5.1
   super_clipboard: ^0.9.1
+  flutter_inappwebview: ^6.1.5
 
 dev_dependencies:
   flutter_test:

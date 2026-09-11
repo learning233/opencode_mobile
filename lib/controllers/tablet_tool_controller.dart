@@ -714,6 +714,17 @@ class TabletToolController extends GetxController {
     reviewReloadTick.value++;
   }
 
+  /// Clear Review tab scope (e.g. on project switch): empties scope/selection
+  /// and bumps [reviewReloadTick] so `ReviewPage` reloads to its empty state.
+  /// Empty type returns early in `_load` without any network fetch.
+  void clearReview() {
+    reviewType.value = '';
+    reviewSessionId.value = '';
+    reviewMessageId.value = '';
+    reviewSelectedFile.value = '';
+    reviewReloadTick.value++;
+  }
+
   /// Toggle between full diff and changes-only rendering in the Review tab.
   void toggleReviewShowChangesOnly() {
     showChangesOnly.value = !showChangesOnly.value;

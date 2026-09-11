@@ -263,9 +263,12 @@ class ProjectController extends GetxController {
     // SSE 失效；切项目时整体清空，避免切回旧项目时命中过期列表。
     invalidateDirectoryCache();
 
-    // 切换项目时清理已打开的文件页签与工作区内容缓存，防止旧项目文件残留在新工程
+    // 切换项目时清理已打开的文件页签与工作区内容缓存，防止旧项目文件残留在新工程；
+    // Review 同步清空 scope（只清本地态，空 type 下 ReviewPage 直接回空态，不发网络请求）。
     if (Get.isRegistered<TabletToolController>()) {
-      Get.find<TabletToolController>().closeAllFiles();
+      final toolCtrl = Get.find<TabletToolController>();
+      toolCtrl.closeAllFiles();
+      toolCtrl.clearReview();
     }
 
     // Refresh sessions and re-scope SSE for the new project

@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../api/models/message.dart';
@@ -392,11 +394,14 @@ class _ChatViewState extends State<ChatView> {
                     );
                   }
 
-                  return CustomScrollView(
+                  return _TimelineScrollbar(
                     controller: _scrollController,
-                    center: ValueKey('center_${centerMsg.id}'),
-                    anchor: 0.0,
-                    slivers: slivers,
+                    child: CustomScrollView(
+                      controller: _scrollController,
+                      center: ValueKey('center_${centerMsg.id}'),
+                      anchor: 0.0,
+                      slivers: slivers,
+                    ),
                   );
                 }
 
@@ -442,9 +447,12 @@ class _ChatViewState extends State<ChatView> {
                   );
                 }
 
-                return CustomScrollView(
+                return _TimelineScrollbar(
                   controller: _scrollController,
-                  slivers: slivers,
+                  child: CustomScrollView(
+                    controller: _scrollController,
+                    slivers: slivers,
+                  ),
                 );
               });
             },
@@ -482,6 +490,282 @@ class _ChatErrorCard extends StatelessWidget {
           height: 1.4,
           fontFamily: 'monospace',
         ),
+      ),
+    );
+  }
+}
+
+class _TimelineScrollbar extends StatefulWidget {
+  final ScrollController controller;
+  final Widget child;
+
+  const _TimelineScrollbar({required this.controller, required this.child});
+
+  @override
+  State<_TimelineScrollbar> createState() => _TimelineScrollbarState();
+}
+
+class _TimelineScrollbarState extends State<_TimelineScrollbar> {
+  bool _isHovered = false;
+  bool _isDragging = false;
+  double _scrollbarOpacity = 0.0;
+  Timer? _fadeTimer;
+
+  final GlobalKey _trackKey = GlobalKey();
+  double _dragOffsetFromThumbTop = 0.0;
+
+  // Snapshotted metrics to lock dimensions during dragging
+  double _dragStartMinExt = 0.0;
+  double _dragStartMaxExt = 0.0;
+  double _dragStartThumbHeight = 0.0;
+  double _dragStartTotalRange = 0.0;
+  double _dragStartThumbScrollableRange = 0.0;
+
+  @override
+  void dispose() {
+    _fadeTimer?.cancel();
+    super.dispose();
+  }
+
+  bool _onScrollNotification(ScrollNotification notification) {
+    if (!mounted) return false;
+    if (notification is UserScrollNotification ||
+        (notification is ScrollUpdateNotification &&
+            notification.dragDetails != null)) {
+      _showScrollbar();
+    }
+    return false;
+  }
+
+  void _showScrollbar() {
+    if (_fadeTimer != null) {
+      _fadeTimer!.cancel();
+    }
+    if (_scrollbarOpacity != 1.0) {
+      setState(() {
+        _scrollbarOpacity = 1.0;
+      });
+    }
+    _fadeTimer = Timer(const Duration(milliseconds: 1500), () {
+      if (!mounted) return;
+      if (!_isHovered && !_isDragging) {
+        setState(() {
+          _scrollbarOpacity = 0.0;
+        });
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) {
+        setState(() {
+          _isHovered = true;
+          _scrollbarOpacity = 1.0;
+        });
+      },
+      onExit: (_) {
+        setState(() {
+          _isHovered = false;
+        });
+        _showScrollbar();
+      },
+      child: Stack(
+        children: [
+          Listener(
+            onPointerSignal: (event) {
+              if (event is PointerScrollEvent) {
+                _showScrollbar();
+              }
+            },
+            child: NotificationListener<ScrollNotification>(
+              onNotification: _onScrollNotification,
+              child: ScrollConfiguration(
+                behavior: ScrollConfiguration.of(
+                  context,
+                ).copyWith(scrollbars: false),
+                child: widget.child,
+              ),
+            ),
+          ),
+          Positioned(
+            right: 2,
+            top: 2,
+            bottom: 2,
+            width: 12,
+            child: AnimatedBuilder(
+              animation: widget.controller,
+              builder: (context, _) {
+                final ctrl = widget.controller;
+                if (!ctrl.hasClients) return const SizedBox.shrink();
+
+                final pos = ctrl.position;
+                if (!pos.hasContentDimensions || !pos.hasPixels) {
+                  return const SizedBox.shrink();
+                }
+
+                final double minExt = _isDragging
+                    ? _dragStartMinExt
+                    : pos.minScrollExtent;
+                final double maxExt = _isDragging
+                    ? _dragStartMaxExt
+                    : pos.maxScrollExtent;
+                final double pixels = pos.pixels;
+                final double viewportHeight = pos.viewportDimension;
+
+                final double totalRange = _isDragging
+                    ? _dragStartTotalRange
+                    : (maxExt - minExt);
+                if (totalRange <= 0) return const SizedBox.shrink();
+
+                final double trackHeight = viewportHeight - 4;
+
+                double thumbHeight;
+                double thumbScrollableRange;
+                if (_isDragging) {
+                  thumbHeight = _dragStartThumbHeight;
+                  thumbScrollableRange = _dragStartThumbScrollableRange;
+                } else {
+                  thumbHeight =
+                      (viewportHeight / (totalRange + viewportHeight)) *
+                      trackHeight;
+                  thumbHeight = thumbHeight.clamp(36.0, trackHeight);
+                  thumbScrollableRange = trackHeight - thumbHeight;
+                }
+
+                final double relativePixels = pixels - minExt;
+                final double percentage = (relativePixels / totalRange).clamp(
+                  0.0,
+                  1.0,
+                );
+                final double thumbTop = percentage * thumbScrollableRange;
+
+                return AnimatedOpacity(
+                  opacity: (_isHovered || _isDragging || _scrollbarOpacity > 0)
+                      ? 1.0
+                      : 0.0,
+                  duration: const Duration(milliseconds: 200),
+                  child: Stack(
+                    key: _trackKey,
+                    children: [
+                      Positioned.fill(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTapDown: (details) {
+                            final tapY = details.localPosition.dy;
+                            final double relativeTap = (tapY - thumbHeight / 2)
+                                .clamp(0.0, thumbScrollableRange);
+                            final double tapPercentage =
+                                thumbScrollableRange > 0
+                                ? relativeTap / thumbScrollableRange
+                                : 0.0;
+                            final double targetPixels =
+                                minExt + tapPercentage * totalRange;
+                            ctrl.jumpTo(targetPixels.clamp(minExt, maxExt));
+                          },
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: _isHovered
+                                  ? (Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? Colors.white.withValues(alpha: 0.03)
+                                        : Colors.black.withValues(alpha: 0.03))
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        top: thumbTop,
+                        left: 3,
+                        width: 6,
+                        height: thumbHeight,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onVerticalDragStart: (details) {
+                            final RenderBox? trackBox =
+                                _trackKey.currentContext?.findRenderObject()
+                                    as RenderBox?;
+                            if (trackBox != null) {
+                              final localY = trackBox
+                                  .globalToLocal(details.globalPosition)
+                                  .dy;
+
+                              // Snapshot and lock metrics to prevent dynamic layout height adjustments
+                              // during dragging from causing feedback loop jitter.
+                              _dragStartMinExt = minExt;
+                              _dragStartMaxExt = maxExt;
+                              _dragStartThumbHeight = thumbHeight;
+                              _dragStartTotalRange = totalRange;
+                              _dragStartThumbScrollableRange =
+                                  thumbScrollableRange;
+
+                              _dragOffsetFromThumbTop = localY - thumbTop;
+
+                              setState(() {
+                                _isDragging = true;
+                              });
+                            }
+                          },
+                          onVerticalDragEnd: (_) {
+                            setState(() {
+                              _isDragging = false;
+                            });
+                            _showScrollbar();
+                          },
+                          onVerticalDragCancel: () {
+                            setState(() {
+                              _isDragging = false;
+                            });
+                            _showScrollbar();
+                          },
+                          onVerticalDragUpdate: (details) {
+                            if (thumbScrollableRange <= 0) return;
+                            final RenderBox? trackBox =
+                                _trackKey.currentContext?.findRenderObject()
+                                    as RenderBox?;
+                            if (trackBox != null) {
+                              final localY = trackBox
+                                  .globalToLocal(details.globalPosition)
+                                  .dy;
+                              double targetThumbTop =
+                                  localY - _dragOffsetFromThumbTop;
+                              targetThumbTop = targetThumbTop.clamp(
+                                0.0,
+                                thumbScrollableRange,
+                              );
+                              final double percentage =
+                                  targetThumbTop / thumbScrollableRange;
+                              final double targetPixels =
+                                  minExt + percentage * totalRange;
+                              ctrl.jumpTo(targetPixels.clamp(minExt, maxExt));
+                            }
+                          },
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: _isDragging
+                                  ? Theme.of(
+                                      context,
+                                    ).colorScheme.primary.withValues(alpha: 0.8)
+                                  : _isHovered
+                                  ? Theme.of(
+                                      context,
+                                    ).colorScheme.primary.withValues(alpha: 0.5)
+                                  : Colors.grey.withValues(alpha: 0.35),
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
